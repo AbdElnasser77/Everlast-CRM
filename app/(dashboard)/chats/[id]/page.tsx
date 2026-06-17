@@ -9,7 +9,6 @@ import {
   Paperclip,
   Send,
   Smile,
-  Play,
   Download,
   X,
 } from "lucide-react";
@@ -149,11 +148,18 @@ function getAgentAvatar(
 
 
 /* ── media src hook ──
-   directSrc: Cloudinary URL (agent-sent) → use immediately, no fetch
-   fetchUrl:  proxy URL (customer-sent)   → fetch with credentials, blob URL */
+   directSrc: Cloudinary URL → use immediately (agent-sent, or customer after media_ready)
+   fetchUrl:  proxy URL     → fetch with credentials + blob URL (customer fallback) */
 function useMediaSrc(directSrc: string | null, fetchUrl: string | null) {
   const [src, setSrc] = useState<string | null>(directSrc);
   const [loading, setLoading] = useState(!directSrc);
+
+  // When directSrc arrives late (media_ready socket event), update src immediately
+  useEffect(() => {
+    if (!directSrc) return;
+    setSrc(directSrc);
+    setLoading(false);
+  }, [directSrc]);
 
   useEffect(() => {
     if (directSrc || !fetchUrl) return;
@@ -230,41 +236,16 @@ function AudioMessage({ directSrc, fetchUrl }: { directSrc: string | null; fetch
   return <audio controls src={src} className="w-full min-w-[220px] block" />;
 }
 
-function VideoMessage({ directSrc, fetchUrl, isAgent }: { directSrc: string | null; fetchUrl: string | null; isAgent: boolean }) {
-  const [triggered, setTriggered] = useState(false);
-  const [lazySrc, setLazySrc] = useState<string | null>(null);
-  const [loadingVideo, setLoadingVideo] = useState(false);
-
-  // Agent video: Cloudinary URL → play immediately
-  if (directSrc) {
-    return <video controls src={directSrc} className="max-w-full rounded-xl block" style={{ maxHeight: 240 }} />;
-  }
-
-  // Customer video: lazy-fetch on tap
-  if (!triggered) {
+function VideoMessage({ src }: { src: string | null }) {
+  if (!src) {
     return (
-      <button type="button" onClick={async () => {
-        setTriggered(true);
-        setLoadingVideo(true);
-        try {
-          const res = await fetch(fetchUrl!, { credentials: "include" });
-          if (!res.ok) throw new Error();
-          setLazySrc(URL.createObjectURL(await res.blob()));
-        } catch {}
-        finally { setLoadingVideo(false); }
-      }}
-        className={`flex items-center gap-2 px-3 py-2 rounded-xl text-[13px] font-medium transition-colors cursor-pointer ${
-          isAgent ? "bg-white/10 hover:bg-white/20 text-white" : "bg-gray-100 hover:bg-gray-200 text-gray-700"
-        }`}
-      >
-        <Play className="w-4 h-4" />
-        Tap to load video
-      </button>
+      <div className="w-[260px] h-[120px] bg-gray-100 rounded-xl flex flex-col items-center justify-center gap-2 text-gray-400">
+        <svg className="w-8 h-8 opacity-50" viewBox="0 0 24 24" fill="currentColor"><path d="M17 10.5V7a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h12a1 1 0 001-1v-3.5l4 4v-11l-4 4z"/></svg>
+        <span className="text-[12px]">Video processing…</span>
+      </div>
     );
   }
-  if (loadingVideo) return <div className="w-[260px] h-[160px] bg-gray-200/60 animate-pulse rounded-xl" />;
-  if (!lazySrc) return <span className="text-[12px] text-gray-400">Failed to load video</span>;
-  return <video controls src={lazySrc} className="max-w-full rounded-xl block" style={{ maxHeight: 240 }} />;
+  return <video controls src={src} className="max-w-full rounded-xl block" style={{ maxHeight: 240 }} />;
 }
 
 function DocumentMessage({ directSrc, fetchUrl, isAgent }: { directSrc: string | null; fetchUrl: string | null; isAgent: boolean }) {
@@ -302,13 +283,16 @@ function MessageContent({ msg, isAgent }: { msg: Message; isAgent: boolean }) {
   const rawId = msg._id ?? (msg as unknown as { id: unknown }).id;
   const proxyUrl = `${process.env.NEXT_PUBLIC_API_URL}/api/messages/${rawId}/media`;
 
-  // Agent-sent: content IS the Cloudinary URL → no auth fetch needed
-  // Customer-sent: content is a placeholder → proxy with auth → blob URL
-  const directSrc = isAgent ? msg.content : null;
-  const fetchUrl  = isAgent ? null : proxyUrl;
+  // Agent-sent:    content IS the Cloudinary URL — use directly
+  // Customer-sent: prefer mediaUrl (Cloudinary, set after background upload),
+  //                fall back to proxy endpoint until media_ready fires
+  const directSrc = isAgent ? msg.content : (msg.mediaUrl ?? null);
+  const fetchUrl  = isAgent ? null : (msg.mediaUrl ? null : proxyUrl);
 
   if (msg.messageType === "IMAGE") return <ImageMessage directSrc={directSrc} fetchUrl={fetchUrl} />;
-  if (msg.messageType === "VIDEO") return <VideoMessage directSrc={directSrc} fetchUrl={fetchUrl} isAgent={isAgent} />;
+  // VIDEO: never proxy-fetch (large file — stalls/fails as blob). Use Cloudinary URL
+  // directly; show placeholder until media_ready fires if not yet available.
+  if (msg.messageType === "VIDEO") return <VideoMessage src={directSrc} />;
   if (msg.messageType === "AUDIO") return <AudioMessage directSrc={directSrc} fetchUrl={fetchUrl} />;
   if (msg.messageType === "DOCUMENT") return <DocumentMessage directSrc={directSrc} fetchUrl={fetchUrl} isAgent={isAgent} />;
 
@@ -327,15 +311,23 @@ function MediaPreviewPanel({
   onRemove,
 }: {
   files: File[];
-  onSend: (files: File[], caption: string) => void;
+  onSend: (files: File[], captions: string[]) => void;
   onClose: () => void;
   onAddMore: (f: File[]) => void;
   onRemove: (index: number) => void;
 }) {
   const [activeIdx, setActiveIdx] = useState(0);
-  const [caption, setCaption] = useState("");
+  const [captions, setCaptions] = useState<string[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
   const addMoreRef = useRef<HTMLInputElement>(null);
+
+  // Keep captions array in sync with files length
+  useEffect(() => {
+    setCaptions((prev) => {
+      const next = files.map((_, i) => prev[i] ?? "");
+      return next;
+    });
+  }, [files.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const urls = files.map((f) => URL.createObjectURL(f));
@@ -406,16 +398,22 @@ function MediaPreviewPanel({
         <div className="flex-1 bg-gray-100 rounded-full px-4 py-2.5">
           <input
             type="text"
-            value={caption}
-            onChange={(e) => setCaption(e.target.value)}
+            value={captions[activeIdx] ?? ""}
+            onChange={(e) =>
+              setCaptions((prev) => {
+                const next = [...prev];
+                next[activeIdx] = e.target.value;
+                return next;
+              })
+            }
             placeholder="Type a message…"
             className="w-full bg-transparent text-[14px] text-gray-700 placeholder:text-gray-400 outline-none"
-            onKeyDown={(e) => { if (e.key === "Enter") onSend(files, caption); }}
+            onKeyDown={(e) => { if (e.key === "Enter") onSend(files, captions); }}
           />
         </div>
         <button
           type="button"
-          onClick={() => onSend(files, caption)}
+          onClick={() => onSend(files, captions)}
           className="h-11 px-4 rounded-full bg-[#3B694C] hover:bg-[#2f5840] flex items-center gap-2 text-white transition-colors cursor-pointer shrink-0"
         >
           <Send className="w-[18px] h-[18px]" />
@@ -672,46 +670,81 @@ export default function ConversationPage() {
     setPendingFiles((prev) => [...prev, ...files]);
   }
 
-  async function handleSendPending(files: File[], caption: string) {
+  async function handleSendPending(files: File[], captions: string[]) {
     setPendingFiles([]);
     handleTypingStop();
     setSending(true);
 
-    const text = caption.trim();
-
-    // Build optimistic messages immediately so all appear at once
-    const optimistics = files.map((file) => {
+    // Build all optimistic messages upfront (text + media pairs) so they all
+    // appear in "sending" state immediately before any network requests start.
+    type OptimisticPair = { textTempId: string | null; textMsg: Message | null; mediaTempId: string; mediaMsg: Message; file: File };
+    const pairs: OptimisticPair[] = files.map((file, i) => {
+      const caption = (captions[i] ?? "").trim();
       const msgType: Message["messageType"] =
         file.type.startsWith("image/") ? "IMAGE" :
         file.type.startsWith("video/") ? "VIDEO" :
         file.type.startsWith("audio/") ? "AUDIO" : "DOCUMENT";
-      const localUrl = URL.createObjectURL(file);
-      const tempId = `temp-${Date.now()}-${Math.random()}`;
-      const msg: Message = {
-        _id: tempId,
+
+      // Text optimistic (if caption exists)
+      let textTempId: string | null = null;
+      let textMsg: Message | null = null;
+      if (caption) {
+        textTempId = `temp-${Date.now()}-${Math.random()}`;
+        textMsg = {
+          _id: textTempId,
+          conversationId: id,
+          senderType: "AGENT",
+          senderId: null,
+          content: caption,
+          messageType: "TEXT",
+          status: null,
+          createdAt: new Date().toISOString(),
+        };
+        appendOptimistic(textMsg);
+      }
+
+      // Media optimistic
+      const mediaTempId = `temp-${Date.now()}-${Math.random()}`;
+      const mediaMsg: Message = {
+        _id: mediaTempId,
         conversationId: id,
         senderType: "AGENT",
         senderId: null,
-        content: localUrl,
+        content: URL.createObjectURL(file),
         messageType: msgType,
         status: null,
         createdAt: new Date().toISOString(),
       };
-      appendOptimistic(msg);
-      return { file, tempId, optimistic: msg };
+      appendOptimistic(mediaMsg);
+
+      return { textTempId, textMsg, mediaTempId, mediaMsg, file };
     });
 
-    // Upload and send sequentially — each confirms before the next starts
-    for (const { file, tempId, optimistic } of optimistics) {
+    // Send each pair sequentially: TEXT first, then media
+    for (const { textTempId, textMsg, mediaTempId, mediaMsg, file } of pairs) {
+      // 1. Send caption text first (if present)
+      if (textTempId && textMsg) {
+        try {
+          const res = await apiSendMessage(id, textMsg.content);
+          const realId =
+            ((res.data as Record<string, unknown>)._id as string) ??
+            String((res.data as Record<string, unknown>).id);
+          confirmOptimistic(textTempId, { ...textMsg, _id: realId, status: res.data.status });
+        } catch {
+          confirmOptimistic(textTempId, { ...textMsg, status: "FAILED" });
+        }
+      }
+
+      // 2. Then send the media file
       try {
         const { url, messageType } = await apiUploadMedia(file);
-        const res = await apiSendMessage(id, text, url, messageType);
+        const res = await apiSendMessage(id, "", url, messageType);
         const realId =
           ((res.data as Record<string, unknown>)._id as string) ??
           String((res.data as Record<string, unknown>).id);
-        confirmOptimistic(tempId, { ...optimistic, _id: realId, content: url, messageType, status: res.data.status });
+        confirmOptimistic(mediaTempId, { ...mediaMsg, _id: realId, content: url, messageType, status: res.data.status });
       } catch {
-        confirmOptimistic(tempId, { ...optimistic, status: "FAILED" });
+        confirmOptimistic(mediaTempId, { ...mediaMsg, status: "FAILED" });
       }
     }
 

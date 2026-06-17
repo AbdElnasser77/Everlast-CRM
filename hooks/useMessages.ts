@@ -138,14 +138,33 @@ export function useMessages(conversationId: string): UseMessagesReturn {
       setTypingUsers((prev) => prev.filter((u) => u !== username));
     };
 
+    const handleMediaReady = ({
+      messageId,
+      mediaUrl,
+    }: {
+      messageId: number | string;
+      mediaUrl: string;
+    }) => {
+      const targetId = String(messageId);
+      setMessages((prev) => {
+        const idx = prev.findIndex((m) => getLocalId(m) === targetId);
+        if (idx === -1) return prev;
+        const next = [...prev];
+        next[idx] = { ...next[idx], mediaUrl };
+        return next;
+      });
+    };
+
     socket.on("message.created", handleMessageCreated);
     socket.on("message.status_updated", handleStatusUpdated);
+    socket.on("message.media_ready", handleMediaReady);
     socket.on("typing.start", handleTypingStart);
     socket.on("typing.stop", handleTypingStop);
 
     return () => {
       socket.off("message.created", handleMessageCreated);
       socket.off("message.status_updated", handleStatusUpdated);
+      socket.off("message.media_ready", handleMediaReady);
       socket.off("typing.start", handleTypingStart);
       socket.off("typing.stop", handleTypingStop);
     };

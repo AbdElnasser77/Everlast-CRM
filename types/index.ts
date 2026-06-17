@@ -39,6 +39,7 @@ export interface Message {
   messageType: "TEXT" | "IMAGE" | "VIDEO" | "AUDIO" | "DOCUMENT";
   status: "PENDING" | "SENT" | "DELIVERED" | "READ" | "FAILED" | null;
   whatsappMessageId?: string | null;
+  mediaUrl?: string | null;
   createdAt: string;
   updatedAt?: string;
 }
