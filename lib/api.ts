@@ -253,3 +253,69 @@ export function apiGetStatsConversations() {
 export function apiGetStatsCustomers() {
   return apiFetch<{ success: boolean; data: unknown }>("/api/stats/customers");
 }
+
+// Templates
+export function apiGetTemplates(params?: { category?: string; status?: string }) {
+  const q = new URLSearchParams();
+  if (params?.category) q.set("category", params.category);
+  if (params?.status) q.set("status", params.status);
+  const qs = q.toString();
+  return apiFetch<import("@/types").TemplateListResponse>(`/api/templates${qs ? "?" + qs : ""}`);
+}
+
+export function apiCreateTemplate(data: {
+  name: string;
+  category: import("@/types").TemplateCategory;
+  language?: string;
+  header?: string;
+  body: string;
+  footer?: string;
+  buttons?: import("@/types").TemplateButton[];
+}) {
+  return apiFetch<import("@/types").TemplateResponse>("/api/templates", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function apiUpdateTemplate(
+  id: number,
+  data: Partial<{
+    name: string;
+    category: import("@/types").TemplateCategory;
+    language: string;
+    header: string;
+    body: string;
+    footer: string;
+    buttons: import("@/types").TemplateButton[];
+  }>
+) {
+  return apiFetch<import("@/types").TemplateResponse>(`/api/templates/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export function apiDeleteTemplate(id: number) {
+  return apiFetch<{ success: boolean }>(`/api/templates/${id}`, { method: "DELETE" });
+}
+
+export function apiSubmitTemplate(id: number) {
+  return apiFetch<import("@/types").TemplateResponse>(`/api/templates/${id}/submit`, {
+    method: "POST",
+  });
+}
+
+export function apiSyncTemplates() {
+  return apiFetch<{ success: boolean; updated: number; approved: number; rejected: number }>(
+    "/api/templates/sync",
+    { method: "POST" }
+  );
+}
+
+export function apiSendTemplate(conversationId: string, templateId: number) {
+  return apiFetch<{ success: boolean; data: import("@/types").Message }>(
+    `/api/templates/conversations/${conversationId}/send-template`,
+    { method: "POST", body: JSON.stringify({ templateId }) }
+  );
+}

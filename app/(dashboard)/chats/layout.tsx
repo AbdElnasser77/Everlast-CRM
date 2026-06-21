@@ -5,11 +5,16 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import type { ReactNode } from "react";
-import { LogOut } from "lucide-react";
+import { LogOut, Clock } from "lucide-react";
 import { useConversations } from "@/hooks/useConversations";
 import { disconnectSocket } from "@/lib/socket";
 import { ConversationsContext } from "@/components/ConversationsContext";
 import type { User } from "@/types";
+
+function isWindowClosed(lastCustomerMessageAt: string | null | undefined): boolean {
+  if (!lastCustomerMessageAt) return false;
+  return Date.now() - new Date(lastCustomerMessageAt).getTime() > 24 * 60 * 60 * 1000;
+}
 
 function getId(c: import("@/types").Conversation): string {
   const raw = c.id ?? c._id;
@@ -284,6 +289,7 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
                 const unread = isActive ? 0 : c.unreadCount;
                 const displayName = customer?.name || customer?.phone || "Unknown";
                 const initials = getInitials(customer?.name || customer?.phone);
+                const windowClosed = isWindowClosed(c.lastCustomerMessageAt);
                 return (
                   <Link
                     key={cid || i}
@@ -308,9 +314,12 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
                         <span className="font-semibold text-[14px] text-gray-900 truncate">
                           {displayName}
                         </span>
-                        <span className={`text-[11.5px] ml-2 shrink-0 ${unread > 0 ? "text-[#3B694C] font-semibold" : "text-gray-400"}`}>
-                          {c.lastMessageAt ? formatTime(c.lastMessageAt) : "—"}
-                        </span>
+                        <div className="flex items-center gap-1 ml-2 shrink-0">
+                          {windowClosed && <Clock className="w-3 h-3 text-orange-400" />}
+                          <span className={`text-[11.5px] ${windowClosed ? "text-orange-400 font-medium" : unread > 0 ? "text-[#3B694C] font-semibold" : "text-gray-400"}`}>
+                            {c.lastMessageAt ? formatTime(c.lastMessageAt) : "—"}
+                          </span>
+                        </div>
                       </div>
 
                       {/* Preview + unread badge */}

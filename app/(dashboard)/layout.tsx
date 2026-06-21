@@ -12,6 +12,7 @@ import {
   UsersRound,
   Settings,
   ClipboardList,
+  LayoutTemplate,
   ChevronsRight,
   ChevronsLeft,
   Menu,
@@ -70,6 +71,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const adminNav = [
     { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard"     },
     { href: "/team",      icon: UsersRound,      label: "Team & Access" },
+    { href: "/templates", icon: LayoutTemplate,  label: "Templates"     },
     { href: "/audit",     icon: ClipboardList,   label: "Audit Log"     },
     { href: "/settings",  icon: Settings,        label: "Settings"      },
   ];

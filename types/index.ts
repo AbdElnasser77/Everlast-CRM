@@ -27,6 +27,7 @@ export interface Conversation {
   lastMessage: string | null;
   lastMessageAt: string | null;
   lastSenderType: "CUSTOMER" | "AGENT" | null;
+  lastCustomerMessageAt?: string | null;
 }
 
 export interface Message {
@@ -164,6 +165,42 @@ export interface StatsAgentsResponse {
     agents: AgentStat[];
     statusSummary: { ONLINE: number; ON_BREAK: number; OFFLINE: number };
   };
+}
+
+export type TemplateStatus = "DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED";
+export type TemplateCategory = "GENERAL" | "RE_ENGAGEMENT" | "CAMPAIGN";
+
+export interface TemplateButton {
+  id: string;
+  title: string;
+}
+
+export interface Template {
+  id: number;
+  name: string;
+  metaTemplateName: string | null;
+  metaTemplateId: string | null;
+  category: TemplateCategory;
+  approvalStatus: TemplateStatus;
+  rejectionReason: string | null;
+  language: string;
+  header: string | null;
+  body: string;
+  footer: string | null;
+  buttons: TemplateButton[] | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TemplateListResponse {
+  success: boolean;
+  data: Template[];
+}
+
+export interface TemplateResponse {
+  success: boolean;
+  data: Template;
 }
 
 export interface AgentUser {
