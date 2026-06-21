@@ -117,6 +117,55 @@ export interface AuditLogResponse {
 
 export type UserStatus = "ONLINE" | "OFFLINE" | "ON_BREAK";
 
+export interface StatsOverview {
+  messages: { today: number; last7Days: number };
+  conversations: { open: number; pending: number; resolved: number; unassigned: number; total: number };
+  customers: { total: number; newLast7Days: number };
+  agents: { online: number; onBreak: number; offline: number };
+  unreadMessages: number;
+}
+
+export interface MessageChartDay {
+  date: string;
+  incoming: number;
+  outgoing: number;
+}
+
+export interface AgentStat {
+  id: string;
+  name: string | null;
+  username: string;
+  status: string;
+  lastActiveAt: string | null;
+  assignedConversations: number;
+  openConversations: number;
+  messagesSentLast7Days: number;
+  avgResponseTimeMinutes: number | null;
+}
+
+export interface StatsOverviewResponse {
+  success: boolean;
+  data: StatsOverview;
+}
+
+export interface StatsMessagesResponse {
+  success: boolean;
+  data: {
+    chart: MessageChartDay[];
+    typeBreakdown: Record<string, number>;
+    statusBreakdown: Record<string, number>;
+    peakHour: number | null;
+  };
+}
+
+export interface StatsAgentsResponse {
+  success: boolean;
+  data: {
+    agents: AgentStat[];
+    statusSummary: { ONLINE: number; ON_BREAK: number; OFFLINE: number };
+  };
+}
+
 export interface AgentUser {
   id: number;
   name: string | null;

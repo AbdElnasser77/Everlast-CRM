@@ -19,7 +19,7 @@ import {
   LogOut,
 } from "lucide-react";
 import { disconnectSocket } from "@/lib/socket";
-import { apiGetMe } from "@/lib/api";
+import { apiGetMe, apiLogout } from "@/lib/api";
 
 
 const COLLAPSED_W = "w-14";   // 56px icon rail
@@ -35,12 +35,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   async function handleLogout() {
     document.cookie = "logged_in=; path=/; max-age=0";
     localStorage.removeItem("user");
-    try {
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/logout`, {
-        method: "POST",
-        credentials: "include",
-      });
-    } catch {}
+    try { await apiLogout(); } catch {}
     disconnectSocket();
     router.push("/login");
   }

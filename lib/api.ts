@@ -229,3 +229,27 @@ export function apiResetUserPassword(id: number | string, password: string) {
 export function apiUpdateMyStatus(status: import("@/types").UserStatus) {
   return apiFetch<import("@/types").UserResponse>("/api/users/me/status", { method: "PUT", body: JSON.stringify({ status }) });
 }
+
+export function apiLogout() {
+  return apiFetch<{ success: boolean }>("/api/auth/logout", { method: "POST" });
+}
+
+export function apiGetStatsOverview() {
+  return apiFetch<import("@/types").StatsOverviewResponse>("/api/stats/overview");
+}
+
+export function apiGetStatsMessages(days = 7) {
+  return apiFetch<import("@/types").StatsMessagesResponse>(`/api/stats/messages?days=${days}`);
+}
+
+export function apiGetStatsAgents() {
+  return apiFetch<import("@/types").StatsAgentsResponse>("/api/stats/agents");
+}
+
+export function apiGetStatsConversations() {
+  return apiFetch<{ success: boolean; data: unknown }>("/api/stats/conversations");
+}
+
+export function apiGetStatsCustomers() {
+  return apiFetch<{ success: boolean; data: unknown }>("/api/stats/customers");
+}
