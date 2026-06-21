@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useState, useEffect, useRef, startTransition } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, startTransition } from "react";
 import { createPortal } from "react-dom";
 import {
   ArrowLeft,
@@ -280,14 +280,13 @@ function DocumentMessage({ directSrc, fetchUrl, isAgent }: { directSrc: string |
 }
 
 function MessageContent({ msg, isAgent }: { msg: Message; isAgent: boolean }) {
-  const rawId = msg._id ?? (msg as unknown as { id: unknown }).id;
-  const proxyUrl = `${process.env.NEXT_PUBLIC_API_URL}/api/messages/${rawId}/media`;
-
-  // Agent-sent:    content IS the Cloudinary URL — use directly
-  // Customer-sent: prefer mediaUrl (Cloudinary, set after background upload),
-  //                fall back to proxy endpoint until media_ready fires
-  const directSrc = isAgent ? msg.content : (msg.mediaUrl ?? null);
-  const fetchUrl  = isAgent ? null : (msg.mediaUrl ? null : proxyUrl);
+  // Agent media:    URL lives in content (mediaUrl is always null for agent-sent)
+  // Customer media: URL lives in mediaUrl (Cloudinary, set after background upload)
+  //                 Never fall back to the proxy — WhatsApp media URLs expire in minutes
+  //                 so the proxy returns 502 for any message older than ~5 min.
+  const resolvedUrl = msg.mediaUrl ?? null;
+  const directSrc = resolvedUrl ?? (isAgent ? (msg.content || null) : null);
+  const fetchUrl  = null; // proxy disabled — old WhatsApp URLs always 502
 
   if (msg.messageType === "IMAGE") return <ImageMessage directSrc={directSrc} fetchUrl={fetchUrl} />;
   // VIDEO: never proxy-fetch (large file — stalls/fails as blob). Use Cloudinary URL
@@ -323,9 +322,8 @@ function MediaPreviewPanel({
 
   // Keep captions array in sync with files length
   useEffect(() => {
-    setCaptions((prev) => {
-      const next = files.map((_, i) => prev[i] ?? "");
-      return next;
+    startTransition(() => {
+      setCaptions((prev) => files.map((_, i) => prev[i] ?? ""));
     });
   }, [files.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -494,6 +492,9 @@ export default function ConversationPage() {
   const {
     messages,
     loading,
+    loadingMore,
+    hasMore,
+    loadMore,
     appendOptimistic,
     confirmOptimistic,
     typingUsers,
@@ -531,6 +532,9 @@ export default function ConversationPage() {
     } catch {}
   }, []);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const prevScrollHeightRef = useRef(0);
+  const isNearBottomRef = useRef(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -541,9 +545,36 @@ export default function ConversationPage() {
     };
   }, [id, markRead]);
 
+  // Scroll to bottom on initial load (instant, no animation)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, typingUsers]);
+    if (!loading) {
+      const el = messagesContainerRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
+    }
+  }, [loading]);
+
+  // After messages change: restore position (load more) or scroll to bottom (new message)
+  useLayoutEffect(() => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    if (prevScrollHeightRef.current > 0) {
+      // Prepend happened — restore scroll so the view doesn't jump
+      el.scrollTop += el.scrollHeight - prevScrollHeightRef.current;
+      prevScrollHeightRef.current = 0;
+    } else if (isNearBottomRef.current) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [messages]);
+
+  function handleMessagesScroll() {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    isNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    if (el.scrollTop < 80 && hasMore && !loadingMore) {
+      prevScrollHeightRef.current = el.scrollHeight;
+      loadMore();
+    }
+  }
 
   // Fetch names for any agent senderIds not already known
   useEffect(() => {
@@ -742,7 +773,7 @@ export default function ConversationPage() {
         const realId =
           ((res.data as Record<string, unknown>)._id as string) ??
           String((res.data as Record<string, unknown>).id);
-        confirmOptimistic(mediaTempId, { ...mediaMsg, _id: realId, content: url, messageType, status: res.data.status });
+        confirmOptimistic(mediaTempId, { ...mediaMsg, _id: realId, content: url, mediaUrl: url, messageType, status: res.data.status });
       } catch {
         confirmOptimistic(mediaTempId, { ...mediaMsg, status: "FAILED" });
       }
@@ -858,7 +889,16 @@ export default function ConversationPage() {
           <span className="text-[13px] text-gray-400">Loading messages…</span>
         </div>
       ) : (
-        <div className="relative z-10 flex-1 overflow-y-auto overflow-x-hidden px-6 py-5 space-y-3 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-[#3B694C]/20 [&::-webkit-scrollbar-thumb]:rounded-full">
+        <div
+          ref={messagesContainerRef}
+          onScroll={handleMessagesScroll}
+          className="relative z-10 flex-1 overflow-y-auto overflow-x-hidden px-6 py-5 space-y-3 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-[#3B694C]/20 [&::-webkit-scrollbar-thumb]:rounded-full"
+        >
+          {loadingMore && (
+            <div className="flex justify-center py-2">
+              <span className="text-[12px] text-gray-400">Loading…</span>
+            </div>
+          )}
           {messages.map((msg, i) => {
             const mid =
               msg._id != null

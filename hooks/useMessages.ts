@@ -1,13 +1,18 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { apiGetMessages, apiMarkRead } from "@/lib/api";
 import { getSocket } from "@/lib/socket";
 import type { Message } from "@/types";
 
+const PAGE_SIZE = 50;
+
 interface UseMessagesReturn {
   messages: Message[];
   loading: boolean;
+  loadingMore: boolean;
+  hasMore: boolean;
+  loadMore: () => void;
   error: string | null;
   appendOptimistic: (msg: Message) => void;
   confirmOptimistic: (tempId: string, confirmed: Message) => void;
@@ -33,18 +38,32 @@ export function emitTypingStop(conversationId: number | string, username: string
 export function useMessages(conversationId: string): UseMessagesReturn {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
 
+  // Refs avoid stale-closure issues in the loadMore guard
+  const pageRef = useRef(1);
+  const loadingMoreRef = useRef(false);
+  const hasMoreRef = useRef(false);
+
+  // Initial load — backend returns DESC (newest first), reverse for display
   useEffect(() => {
     if (!conversationId) return;
     setLoading(true);
     setMessages([]);
     setError(null);
+    setHasMore(false);
+    hasMoreRef.current = false;
+    pageRef.current = 1;
 
-    apiGetMessages(conversationId)
+    apiGetMessages(conversationId, 1, PAGE_SIZE)
       .then((res) => {
-        setMessages(res.data);
+        setMessages([...res.data].reverse());
+        const more = res.data.length >= PAGE_SIZE;
+        setHasMore(more);
+        hasMoreRef.current = more;
         apiMarkRead(conversationId).catch(() => {});
       })
       .catch((err) => {
@@ -53,6 +72,29 @@ export function useMessages(conversationId: string): UseMessagesReturn {
       .finally(() => setLoading(false));
   }, [conversationId]);
 
+  // Load older messages (scroll-up triggered)
+  const loadMore = useCallback(async () => {
+    if (loadingMoreRef.current || !hasMoreRef.current) return;
+    const nextPage = pageRef.current + 1;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    try {
+      const res = await apiGetMessages(conversationId, nextPage, PAGE_SIZE);
+      const older = [...res.data].reverse();
+      setMessages((prev) => [...older, ...prev]);
+      const more = res.data.length >= PAGE_SIZE;
+      setHasMore(more);
+      hasMoreRef.current = more;
+      pageRef.current = nextPage;
+    } catch {
+      // silently keep what we have
+    } finally {
+      loadingMoreRef.current = false;
+      setLoadingMore(false);
+    }
+  }, [conversationId]);
+
+  // Real-time socket events
   useEffect(() => {
     if (!conversationId) return;
     const socket = getSocket();
@@ -67,16 +109,12 @@ export function useMessages(conversationId: string): UseMessagesReturn {
       if (String(cid) !== conversationId) return;
 
       setMessages((prev) => {
-        // 1. ID dedup first — if confirmOptimistic already placed the real message,
-        //    discard the socket echo immediately regardless of message type
         const incoming = getLocalId(message);
         if (incoming && prev.some((m) => getLocalId(m) === incoming)) return prev;
 
-        // 2. Agent message: replace matching optimistic temp in-place
         if (String(message.senderType) === "AGENT") {
           const tempIdx = prev.findIndex((m) => {
             if (!isTemp(m)) return false;
-            // TEXT: match by content; media: match by messageType
             return message.messageType === "TEXT"
               ? m.content === message.content
               : m.messageType === message.messageType;
@@ -88,7 +126,6 @@ export function useMessages(conversationId: string): UseMessagesReturn {
           }
         }
 
-        // 3. New message — mark read if customer and append
         if (String(message.senderType) === "CUSTOMER") {
           apiMarkRead(conversationId).catch(() => {});
         }
@@ -170,7 +207,6 @@ export function useMessages(conversationId: string): UseMessagesReturn {
     };
   }, [conversationId]);
 
-  // Reset typing users when switching conversations
   useEffect(() => {
     setTypingUsers([]);
   }, [conversationId]);
@@ -179,17 +215,25 @@ export function useMessages(conversationId: string): UseMessagesReturn {
     setMessages((prev) => [...prev, msg]);
   }, []);
 
-  // Fallback: if socket replaces the temp first, this is a no-op.
-  // If socket is slow / fails, this ensures the UI updates.
   const confirmOptimistic = useCallback((tempId: string, confirmed: Message) => {
     setMessages((prev) => {
       const idx = prev.findIndex((m) => getLocalId(m) === tempId);
-      if (idx === -1) return prev;  // socket already replaced it — done
+      if (idx === -1) return prev;
       const next = [...prev];
       next[idx] = confirmed;
       return next;
     });
   }, []);
 
-  return { messages, loading, error, appendOptimistic, confirmOptimistic, typingUsers };
+  return {
+    messages,
+    loading,
+    loadingMore,
+    hasMore,
+    loadMore,
+    error,
+    appendOptimistic,
+    confirmOptimistic,
+    typingUsers,
+  };
 }
