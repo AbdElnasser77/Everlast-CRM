@@ -64,9 +64,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   }
 
   const mainNav = [
-    { href: "/chats",           icon: MessageSquare,   label: "Inbox",        enabled: true  },
+    { href: "/chats",            icon: MessageSquare,   label: "Inbox",        enabled: true  },
+    { href: "/customers",        icon: Contact,         label: "Contacts",     enabled: true  },
     { href: null as string|null, icon: Megaphone,       label: "Campaigns",    enabled: false },
-    { href: null as string|null, icon: Contact,         label: "Contacts",     enabled: false },
   ];
   const adminNav = [
     { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard"     },

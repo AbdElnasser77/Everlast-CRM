@@ -44,10 +44,10 @@ export function apiLogin(username: string, password: string) {
   });
 }
 
-export function apiGetConversations(page = 1, limit = 50) {
-  return apiFetch<ConversationListResponse>(
-    `/api/conversations?page=${page}&limit=${limit}`
-  );
+export function apiGetConversations(page = 1, limit = 50, lastSenderType?: string) {
+  const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (lastSenderType) params.append("lastSenderType", lastSenderType);
+  return apiFetch<ConversationListResponse>(`/api/conversations?${params}`);
 }
 
 export function apiGetMessages(conversationId: string, page = 1, limit = 200) {
@@ -310,6 +310,13 @@ export function apiSyncTemplates() {
   return apiFetch<{ success: boolean; updated: number; approved: number; rejected: number }>(
     "/api/templates/sync",
     { method: "POST" }
+  );
+}
+
+export function apiCreateConversation(customerId: number) {
+  return apiFetch<{ success: boolean; data: import("@/types").Conversation; created: boolean }>(
+    "/api/conversations",
+    { method: "POST", body: JSON.stringify({ customerId }) }
   );
 }
 
