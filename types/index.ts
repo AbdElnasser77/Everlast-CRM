@@ -37,7 +37,7 @@ export interface Message {
   senderType: "CUSTOMER" | "AGENT";
   senderId: string | null;
   content: string;
-  messageType: "TEXT" | "IMAGE" | "VIDEO" | "AUDIO" | "DOCUMENT";
+  messageType: "TEXT" | "IMAGE" | "VIDEO" | "AUDIO" | "DOCUMENT" | "TEMPLATE" | "INTERACTIVE";
   status: "PENDING" | "SENT" | "DELIVERED" | "READ" | "FAILED" | null;
   whatsappMessageId?: string | null;
   mediaUrl?: string | null;

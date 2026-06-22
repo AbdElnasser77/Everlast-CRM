@@ -34,6 +34,19 @@ function isWindowClosed(lastCustomerMessageAt: string | null | undefined): boole
   return Date.now() - new Date(lastCustomerMessageAt).getTime() > 24 * 60 * 60 * 1000;
 }
 
+function parseTemplateContent(content: string): {
+  header?: string;
+  body: string;
+  footer?: string;
+  buttons?: { id: string; title: string }[];
+} | null {
+  try {
+    const p = JSON.parse(content);
+    if (p && typeof p === "object" && typeof p.body === "string") return p;
+  } catch {}
+  return null;
+}
+
 function formatMessageTime(iso: string): string {
   return new Date(iso).toLocaleTimeString([], {
     hour: "2-digit",
@@ -1136,6 +1149,53 @@ export default function ConversationPage() {
                   !prevMsg ||
                   prevMsg.senderType !== "AGENT" ||
                   String(prevMsg.senderId) !== String(msg.senderId);
+
+                // Template message — special rendering
+                const tpl = msg.messageType === "INTERACTIVE" ? parseTemplateContent(msg.content) : null;
+                if (tpl) {
+                  return (
+                    <div key={mid} className="flex justify-end items-end gap-2">
+                      <div className="max-w-[65%] min-w-0">
+                        {senderChanged && (
+                          <p className="text-[11px] text-gray-400 text-right mb-1">{agent.name}</p>
+                        )}
+                        {/* Bubble — header / body / footer / timestamp */}
+                        <div className={`bg-[#3B694C] rounded-2xl rounded-tr-sm px-4 pt-2.5 pb-2 shadow-sm transition-opacity ${isSending ? "opacity-75" : "opacity-100"} ${tpl.buttons?.length ? "rounded-b-none" : ""}`}>
+                          {tpl.header && (
+                            <p className="text-[14px] font-bold text-white mb-1 leading-snug">{tpl.header}</p>
+                          )}
+                          <p className="text-[14px] text-white leading-relaxed whitespace-pre-wrap break-words">{tpl.body}</p>
+                          {tpl.footer && (
+                            <p className="text-[11px] text-white/55 italic mt-2 leading-snug">{tpl.footer}</p>
+                          )}
+                          <div className="flex items-center justify-end gap-1 mt-1 -mb-0.5">
+                            <span className="text-[10px] text-white/60">{formatMessageTime(msg.createdAt)}</span>
+                            <MessageStatus isSending={isSending} status={msg.status} />
+                          </div>
+                        </div>
+                        {/* CTA buttons — below bubble, outside green area */}
+                        {tpl.buttons && tpl.buttons.length > 0 && (
+                          <div className="space-y-1 mt-1">
+                            {tpl.buttons.map((btn) => (
+                              <div key={btn.id}
+                                className="flex items-center justify-center py-2 bg-white border border-gray-200 rounded-xl text-[13px] font-medium text-[#3B694C] shadow-sm">
+                                {btn.title}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div
+                        className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0 cursor-default select-none"
+                        style={{ backgroundColor: agent.color }}
+                      >
+                        {agent.initials}
+                      </div>
+                    </div>
+                  );
+                }
+
+                // Regular agent message
                 return (
                   <div key={mid} className="flex justify-end items-end gap-2">
                     <div className="max-w-[65%] min-w-0">
