@@ -67,7 +67,7 @@ function MessageStatus({
   if (status === "DELIVERED")
     return <span className="text-[11px] text-white/60">✓✓</span>;
   if (status === "READ")
-    return <span className="text-[11px] text-[#DCF2E3]">✓✓</span>;
+    return <span className="text-[11px] text-[#60C4FF]">✓✓</span>;
   if (status === "FAILED")
     return <span className="text-[11px] text-red-300">✕</span>;
   return <span className="text-[11px] text-white/80">✓</span>;
@@ -683,32 +683,6 @@ function TemplatePickerModal({
   );
 }
 
-// ---------------------------------------------------------------------------
-// ReengagementBanner
-// ---------------------------------------------------------------------------
-
-function ReengagementBanner({ onOpenModal }: { onOpenModal: () => void }) {
-  return (
-    <div className="relative z-10 shrink-0 bg-white border-t border-gray-100 px-4 py-4">
-      <div className="flex items-center gap-3 bg-orange-50 border border-orange-200 rounded-2xl px-4 py-3">
-        <div className="w-9 h-9 rounded-full bg-orange-100 flex items-center justify-center shrink-0">
-          <Clock className="w-4 h-4 text-orange-500" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-[13px] font-semibold text-orange-800">24-hour window closed</p>
-          <p className="text-[12px] text-orange-600 mt-0.5">Send a re-engagement template to restart the conversation.</p>
-        </div>
-        <button
-          type="button"
-          onClick={onOpenModal}
-          className="shrink-0 bg-orange-500 hover:bg-orange-600 text-white text-[12px] font-semibold px-3 py-2 rounded-xl cursor-pointer transition-colors whitespace-nowrap"
-        >
-          Send Template
-        </button>
-      </div>
-    </div>
-  );
-}
 
 export default function ConversationPage() {
   const { id } = useParams<{ id: string }>();
@@ -1215,89 +1189,110 @@ export default function ConversationPage() {
 
       {/* Input bar — hidden while preview panel is open */}
       {pendingFiles.length === 0 && (
-        windowClosed
-          ? <ReengagementBanner onOpenModal={() => setReengagementOpen(true)} />
-          : <div className="relative z-10 shrink-0 flex items-end gap-3 px-4 py-3 bg-white border-t border-gray-100">
-              {/* Hidden file input */}
-              <input
-                ref={fileInputRef}
-                type="file"
-                className="hidden"
-                accept="image/*,video/mp4,video/3gpp,audio/*,.pdf,.doc,.docx,.xls,.xlsx"
-                onChange={handleFileSelect}
-              />
-              <div className="flex-1 flex items-end gap-3 bg-gray-50 border border-gray-200 rounded-2xl px-4 py-2.5">
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={sending}
-                  className="text-gray-400 hover:text-gray-600 disabled:opacity-40 transition-colors cursor-pointer shrink-0 mb-0.5"
-                >
-                  <Paperclip className="w-4 h-4" />
-                </button>
+        <div className="relative z-10 shrink-0 bg-white border-t border-gray-100">
+          {/* 24h window closed notice */}
+          {windowClosed && (
+            <div className="flex items-center gap-2 px-4 pt-3 pb-1">
+              <Clock className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+              <p className="text-[12px] text-orange-500 font-medium">
+                24-hour messaging window closed — use a re-engagement template to restart the conversation.
+              </p>
+            </div>
+          )}
 
-                <textarea
-                  ref={textareaRef}
-                  rows={1}
-                  value={message}
-                  onChange={(e) => {
-                    setMessage(e.target.value);
-                    e.target.style.height = "auto";
-                    e.target.style.height = `${e.target.scrollHeight}px`;
-
-                    if (user?.username) {
-                      emitTypingStart(id, user.username);
-                      if (typingTimerRef.current)
-                        clearTimeout(typingTimerRef.current);
-                      typingTimerRef.current = setTimeout(() => {
-                        emitTypingStop(id, user.username!);
-                        typingTimerRef.current = null;
-                      }, 2000);
-                    }
-                  }}
-                  onBlur={() => {
-                    handleTypingStop();
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSend();
-                      if (textareaRef.current)
-                        textareaRef.current.style.height = "auto";
-                    }
-                  }}
-                  placeholder="Type a message..."
-                  className="flex-1 text-[14px] text-gray-700 placeholder:text-gray-400 outline-none bg-transparent resize-none overflow-hidden leading-[1.5] py-0.5 max-h-40"
-                />
-
-                <button
-                  type="button"
-                  className="text-gray-400 hover:text-gray-600 transition-colors cursor-pointer shrink-0 mb-0.5"
-                >
-                  <Smile className="w-4 h-4" />
-                </button>
-              </div>
-
+          <div className="flex items-end gap-3 px-4 py-3">
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              accept="image/*,video/mp4,video/3gpp,audio/*,.pdf,.doc,.docx,.xls,.xlsx"
+              onChange={handleFileSelect}
+            />
+            <div className={`flex-1 flex items-end gap-3 rounded-2xl px-4 py-2.5 border transition-colors ${
+              windowClosed
+                ? "bg-gray-100 border-gray-200 opacity-60 cursor-not-allowed"
+                : "bg-gray-50 border-gray-200"
+            }`}>
               <button
                 type="button"
-                onClick={() => setTemplatePickerOpen(true)}
-                title="Insert template"
-                className="flex items-center gap-1.5 text-[12px] font-medium text-gray-500 hover:text-[#3B694C] hover:bg-[#EEF6F1] border border-gray-200 hover:border-[#3B694C]/30 rounded-xl px-2.5 py-2 transition-colors cursor-pointer shrink-0"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={sending || windowClosed}
+                className="text-gray-400 hover:text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer shrink-0 mb-0.5"
               >
-                <LayoutTemplate className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Template</span>
+                <Paperclip className="w-4 h-4" />
               </button>
 
+              <textarea
+                ref={textareaRef}
+                rows={1}
+                value={windowClosed ? "" : message}
+                disabled={windowClosed}
+                onChange={(e) => {
+                  if (windowClosed) return;
+                  setMessage(e.target.value);
+                  e.target.style.height = "auto";
+                  e.target.style.height = `${e.target.scrollHeight}px`;
+
+                  if (user?.username) {
+                    emitTypingStart(id, user.username);
+                    if (typingTimerRef.current)
+                      clearTimeout(typingTimerRef.current);
+                    typingTimerRef.current = setTimeout(() => {
+                      emitTypingStop(id, user.username!);
+                      typingTimerRef.current = null;
+                    }, 2000);
+                  }
+                }}
+                onBlur={() => { handleTypingStop(); }}
+                onKeyDown={(e) => {
+                  if (windowClosed) return;
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSend();
+                    if (textareaRef.current)
+                      textareaRef.current.style.height = "auto";
+                  }
+                }}
+                placeholder={windowClosed ? "Messaging disabled — 24h window closed" : "Type a message..."}
+                className="flex-1 text-[14px] text-gray-700 placeholder:text-gray-400 outline-none bg-transparent resize-none overflow-hidden leading-[1.5] py-0.5 max-h-40 disabled:cursor-not-allowed"
+              />
+
               <button
                 type="button"
-                onClick={handleSend}
-                disabled={!message.trim() || sending}
-                className="flex items-center gap-2 bg-[#3B694C] hover:bg-[#2f5840] disabled:opacity-50 disabled:cursor-not-allowed text-white text-[13px] font-semibold px-4 py-2.5 rounded-xl transition-colors cursor-pointer shrink-0"
+                disabled={windowClosed}
+                className="text-gray-400 hover:text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer shrink-0 mb-0.5"
               >
-                Send
-                <Send className="w-3.5 h-3.5" />
+                <Smile className="w-4 h-4" />
               </button>
             </div>
+
+            {/* Template button — always accessible; RE_ENGAGEMENT when window is closed */}
+            <button
+              type="button"
+              onClick={() => windowClosed ? setReengagementOpen(true) : setTemplatePickerOpen(true)}
+              title={windowClosed ? "Send re-engagement template" : "Insert template"}
+              className={`flex items-center gap-1.5 text-[12px] font-medium border rounded-xl px-2.5 py-2 transition-colors cursor-pointer shrink-0 ${
+                windowClosed
+                  ? "text-orange-600 bg-orange-50 border-orange-300 hover:bg-orange-100 hover:border-orange-400"
+                  : "text-gray-500 hover:text-[#3B694C] hover:bg-[#EEF6F1] border-gray-200 hover:border-[#3B694C]/30"
+              }`}
+            >
+              <LayoutTemplate className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Template</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleSend}
+              disabled={!message.trim() || sending || windowClosed}
+              className="flex items-center gap-2 bg-[#3B694C] hover:bg-[#2f5840] disabled:opacity-50 disabled:cursor-not-allowed text-white text-[13px] font-semibold px-4 py-2.5 rounded-xl transition-colors cursor-pointer shrink-0"
+            >
+              Send
+              <Send className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
       )}
 
       {templatePickerOpen && (
