@@ -19,8 +19,8 @@ import {
   X,
   LogOut,
 } from "lucide-react";
-import { disconnectSocket } from "@/lib/socket";
-import { apiGetMe, apiLogout } from "@/lib/api";
+import { getSocket, disconnectSocket } from "@/lib/socket";
+import { apiGetMe, apiLogout, apiGetStatsOverview } from "@/lib/api";
 
 
 const COLLAPSED_W = "w-14";   // 56px icon rail
@@ -32,6 +32,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   async function handleLogout() {
     document.cookie = "logged_in=; path=/; max-age=0";
@@ -51,6 +52,22 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    function fetchUnread() {
+      apiGetStatsOverview()
+        .then((res) => setUnreadCount(res.data.unreadMessages))
+        .catch(() => {});
+    }
+    fetchUnread();
+    const socket = getSocket();
+    socket.on("message.new", fetchUnread);
+    socket.on("conversation.updated", fetchUnread);
+    return () => {
+      socket.off("message.new", fetchUnread);
+      socket.off("conversation.updated", fetchUnread);
+    };
+  }, []);
+
   // Auto-close on navigation
   useEffect(() => {
     startTransition(() => {
@@ -64,9 +81,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   }
 
   const mainNav = [
-    { href: "/chats",            icon: MessageSquare,   label: "Inbox",        enabled: true  },
+    { href: "/chats",            icon: MessageSquare,   label: "Inbox",        enabled: true,  badge: unreadCount > 0 ? unreadCount : undefined },
     { href: "/customers",        icon: Contact,         label: "Contacts",     enabled: true  },
-    { href: null as string|null, icon: Megaphone,       label: "Campaigns",    enabled: false },
+    { href: "/campaigns",        icon: Megaphone,       label: "Campaigns",    enabled: true  },
   ];
   const adminNav = [
     { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard"     },
@@ -78,10 +95,23 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
   /* ── desktop nav item: icon + label that fades in on expand ── */
   const DesktopItem = ({
-    href, icon: Icon, label, enabled = true,
-  }: { href: string|null; icon: React.ElementType; label: string; enabled?: boolean }) => {
+    href, icon: Icon, label, enabled = true, badge,
+  }: { href: string|null; icon: React.ElementType; label: string; enabled?: boolean; badge?: number }) => {
     const active = href ? isActive(href) : false;
     const base   = "relative flex items-center h-10 w-full rounded-xl transition-colors overflow-hidden";
+    const badgeLabel = badge ? (badge > 99 ? "99+" : String(badge)) : null;
+
+    const iconEl = (
+      <span className="relative shrink-0 flex items-center justify-center">
+        <Icon className="w-[18px] h-[18px]" />
+        {badgeLabel && !expanded && (
+          <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] flex items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold leading-none px-[3px]">
+            {badgeLabel}
+          </span>
+        )}
+      </span>
+    );
+
     const labelEl = (
       <span
         className={`text-[13.5px] font-medium whitespace-nowrap transition-[opacity,max-width] duration-200 delay-75 ${
@@ -92,13 +122,20 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       </span>
     );
 
+    const badgeEl = badgeLabel && expanded ? (
+      <span className="ml-auto shrink-0 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold leading-none px-1.5">
+        {badgeLabel}
+      </span>
+    ) : null;
+
     if (!enabled || !href) {
       return (
         <div title={!expanded ? label : undefined}
           className={`${base} ${expanded ? "gap-3 px-3" : "justify-center"} text-gray-300 cursor-default`}>
           {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-[#3B694C] rounded-r-full" />}
-          <Icon className="w-[18px] h-[18px] shrink-0" />
+          {iconEl}
           {labelEl}
+          {badgeEl}
         </div>
       );
     }
@@ -113,17 +150,19 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         }`}
       >
         {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-[#3B694C] rounded-r-full" />}
-        <Icon className="w-[18px] h-[18px] shrink-0" />
+        {iconEl}
         {labelEl}
+        {badgeEl}
       </Link>
     );
   };
 
   /* ── mobile nav item (always shows text) ── */
   const MobileItem = ({
-    href, icon: Icon, label, enabled = true,
-  }: { href: string|null; icon: React.ElementType; label: string; enabled?: boolean }) => {
+    href, icon: Icon, label, enabled = true, badge,
+  }: { href: string|null; icon: React.ElementType; label: string; enabled?: boolean; badge?: number }) => {
     const active = href ? isActive(href) : false;
+    const badgeLabel = badge ? (badge > 99 ? "99+" : String(badge)) : null;
     if (!enabled || !href) {
       return (
         <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13.5px] text-gray-300 cursor-default">
@@ -142,7 +181,12 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       >
         {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-[#3B694C] rounded-r-full" />}
         <Icon className="w-[17px] h-[17px] shrink-0" />
-        <span>{label}</span>
+        <span className="flex-1">{label}</span>
+        {badgeLabel && (
+          <span className="min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold leading-none px-1.5">
+            {badgeLabel}
+          </span>
+        )}
       </Link>
     );
   };

@@ -313,6 +313,49 @@ export function apiSyncTemplates() {
   );
 }
 
+// Campaigns
+export function apiGetCampaigns() {
+  return apiFetch<import("@/types").CampaignListResponse>("/api/campaigns");
+}
+
+export function apiGetCampaign(id: number) {
+  return apiFetch<import("@/types").CampaignResponse>(`/api/campaigns/${id}`);
+}
+
+export function apiCreateCampaign(data: {
+  name: string;
+  templateId: number;
+  recipientIds: number[];
+  scheduledAt?: string;
+}) {
+  return apiFetch<import("@/types").CampaignResponse>("/api/campaigns", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function apiUpdateCampaign(
+  id: number,
+  data: Partial<{ name: string; templateId: number; recipientIds: number[]; scheduledAt: string | null }>
+) {
+  return apiFetch<import("@/types").CampaignResponse>(`/api/campaigns/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export function apiDeleteCampaign(id: number) {
+  return apiFetch<{ success: boolean }>(`/api/campaigns/${id}`, { method: "DELETE" });
+}
+
+export function apiSendCampaignNow(id: number) {
+  return apiFetch<{ success: boolean }>(`/api/campaigns/${id}/send`, { method: "POST" });
+}
+
+export function apiCancelCampaign(id: number) {
+  return apiFetch<{ success: boolean }>(`/api/campaigns/${id}/cancel`, { method: "POST" });
+}
+
 export function apiCreateConversation(customerId: number) {
   return apiFetch<{ success: boolean; data: import("@/types").Conversation; created: boolean }>(
     "/api/conversations",

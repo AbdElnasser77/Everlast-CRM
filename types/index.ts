@@ -225,3 +225,48 @@ export interface UserResponse {
   success: boolean;
   data: AgentUser;
 }
+
+export type CampaignStatus = "DRAFT" | "SCHEDULED" | "RUNNING" | "COMPLETED" | "CANCELLED";
+export type CampaignRecipientStatus = "PENDING" | "SENT" | "FAILED" | "SKIPPED";
+
+export interface Campaign {
+  id: number;
+  name: string;
+  templateId: number;
+  template?: Pick<Template, "id" | "name" | "category" | "body" | "header" | "footer" | "buttons">;
+  status: CampaignStatus;
+  scheduledAt?: string | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  sentCount: number;
+  failedCount: number;
+  totalRecipients: number;
+  deliveredCount?: number;
+  readCount?: number;
+  repliedCount?: number;
+  createdById: number;
+  createdAt: string;
+  updatedAt: string;
+  recipients?: CampaignRecipient[];
+}
+
+export interface CampaignRecipient {
+  id: number;
+  campaignId: number;
+  customerId: number;
+  customer?: Pick<Customer, "id" | "name" | "phone" | "tags">;
+  status: CampaignRecipientStatus;
+  messageId?: number | null;
+  error?: string | null;
+  sentAt?: string | null;
+}
+
+export interface CampaignListResponse {
+  success: boolean;
+  data: Campaign[];
+}
+
+export interface CampaignResponse {
+  success: boolean;
+  data: Campaign;
+}
