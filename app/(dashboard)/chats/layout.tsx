@@ -119,7 +119,7 @@ function LogoutDrawer({ open, onConfirm, onCancel }: { open: boolean; onConfirm:
   );
 }
 
-const FILTERS = ["All", "Unread", "AI handling", "Booked"];
+const FILTERS = ["All", "Unread", "Window closed", "AI handling"];
 
 export default function ChatsLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -176,6 +176,7 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
 
   const filtered = conversations.filter((c) => {
     if (activeFilter === "Unread") return c.unreadCount > 0;
+    if (activeFilter === "Window closed") return isWindowClosed(c.lastCustomerMessageAt);
     if (activeFilter === "AI handling") return aiStates[getId(c)];
     return true;
   });
@@ -253,7 +254,9 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
                   type="button"
                   onClick={() => setActiveFilter(f)}
                   className={`px-3 py-1.5 rounded-full text-[13px] border transition-colors cursor-pointer ${
-                    active
+                    active && f === "Window closed"
+                      ? "bg-red-50 border-red-400 text-red-500 font-semibold"
+                      : active
                       ? "bg-[#DCF2E3] border-[#3B694C] text-[#3B694C] font-semibold"
                       : "border-gray-200 text-gray-500 hover:bg-gray-50"
                   }`}
@@ -294,10 +297,12 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
                   <Link
                     key={cid || i}
                     href={`/chats/${cid}`}
-                    className={`flex gap-3 px-4 py-3 border-b border-gray-100 border-l-[3px] transition-colors ${
+                    className={`flex gap-3 px-4 py-3 border-b border-l-[3px] transition-colors ${
                       isActive
-                        ? "bg-[#DCF2E3] border-l-[#3B694C]"
-                        : "border-l-transparent hover:border-l-[#3B694C] hover:bg-[#DCF2E3]"
+                        ? "bg-[#DCF2E3] border-l-[#3B694C] border-b-gray-100"
+                        : windowClosed
+                        ? "bg-red-50 border-l-red-400 border-b-red-100 hover:bg-red-100"
+                        : "border-l-transparent border-b-gray-100 hover:border-l-[#3B694C] hover:bg-[#DCF2E3]"
                     }`}
                   >
                     {/* Avatar */}
@@ -315,9 +320,11 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
                           {displayName}
                         </span>
                         <div className="flex items-center gap-1 ml-2 shrink-0">
-                          {windowClosed && <Clock className="w-3 h-3 text-orange-400" />}
-                          <span className={`text-[11.5px] ${windowClosed ? "text-orange-400 font-medium" : unread > 0 ? "text-[#3B694C] font-semibold" : "text-gray-400"}`}>
-                            {c.lastMessageAt ? formatTime(c.lastMessageAt) : "—"}
+                          {windowClosed && <Clock className="w-3 h-3 text-red-400" />}
+                          <span className={`text-[11.5px] ${windowClosed ? "text-red-400 font-medium" : unread > 0 ? "text-[#3B694C] font-semibold" : "text-gray-400"}`}>
+                            {windowClosed
+                              ? (c.lastCustomerMessageAt ? formatTime(c.lastCustomerMessageAt) : "—")
+                              : (c.lastMessageAt ? formatTime(c.lastMessageAt) : "—")}
                           </span>
                         </div>
                       </div>

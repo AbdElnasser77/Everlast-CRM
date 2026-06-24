@@ -19,6 +19,7 @@ import {
 const COST_PER_MSG = 0.018;
 const SEND_RATE_S = 2.5;
 
+
 const CATEGORY_LABELS: Record<string, string> = {
   GENERAL: "General",
   CAMPAIGN: "Promotion",
@@ -478,6 +479,14 @@ function Step3({
   const [sendMode, setSendMode] = useState<"now" | "later">("now");
   const [schedDate, setSchedDate] = useState("");
   const [schedTime, setSchedTime] = useState("");
+  const [schedTz, setSchedTz] = useState("Asia/Dubai");
+  const [detectedTz, setDetectedTz] = useState<string | null>(null);
+
+  useEffect(() => {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (tz) { setDetectedTz(tz); setSchedTz(tz); }
+  }, []);
+
 
   const count = selectedIds.size;
   const estimatedSeconds = count / SEND_RATE_S;
@@ -490,14 +499,26 @@ function Step3({
 
   const sampleName = selectedCustomers[0]?.name || "Sample Customer";
 
+  function tzToISO(date: string, time: string, tz: string): string {
+    const naiveUtc = new Date(`${date}T${time}:00.000Z`);
+    const fmt = new Intl.DateTimeFormat("en-CA", {
+      timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+    });
+    const p = Object.fromEntries(fmt.formatToParts(naiveUtc).map(({ type, value }) => [type, value]));
+    const h = p.hour === "24" ? "00" : p.hour;
+    const tzAsUtc = new Date(`${p.year}-${p.month}-${p.day}T${h}:${p.minute}:${p.second}.000Z`).getTime();
+    return new Date(naiveUtc.getTime() - (tzAsUtc - naiveUtc.getTime())).toISOString();
+  }
+
   const scheduledAt = sendMode === "later" && schedDate && schedTime
-    ? new Date(`${schedDate}T${schedTime}`).toISOString()
+    ? tzToISO(schedDate, schedTime, schedTz)
     : undefined;
 
   const startDisplay = sendMode === "now"
     ? "Now"
     : scheduledAt
-    ? new Date(scheduledAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+    ? new Date(scheduledAt).toLocaleString("en-US", { timeZone: schedTz, month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
     : "—";
 
   const etaMs = sendMode === "now" ? Date.now() : scheduledAt ? new Date(scheduledAt).getTime() : Date.now();
@@ -584,16 +605,17 @@ function Step3({
             <button
               type="button"
               onClick={() => setSendMode("later")}
-              className={`flex-1 py-2.5 rounded-xl text-[13px] font-medium transition-colors border ${
+              className={`flex-1 py-2.5 rounded-xl text-[13px] font-medium transition-colors border cursor-pointer ${
                 sendMode === "later"
                   ? "bg-[#EEF6F1] border-[#3B694C] text-[#3B694C]"
-                  : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+                  : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-gray-800"
               }`}
             >
               Schedule for later
             </button>
           </div>
           {sendMode === "later" && (
+            <div className="space-y-2">
             <div className="flex gap-3">
               <div className="flex-1">
                 <label className="block text-[11px] font-medium text-gray-500 mb-1">Date</label>
@@ -614,12 +636,11 @@ function Step3({
                   className="w-full px-3 py-2.5 text-[13px] border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3B694C]/20 focus:border-[#3B694C]"
                 />
               </div>
-              <div className="flex-1">
-                <label className="block text-[11px] font-medium text-gray-500 mb-1">Timezone</label>
-                <div className="px-3 py-2.5 text-[13px] border border-gray-200 rounded-xl bg-gray-50 text-gray-500">
-                  GST · Dubai
-                </div>
-              </div>
+            </div>
+            <p className="text-[11px] text-gray-400 flex items-center gap-1">
+              <svg className="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20M12 2a14.5 14.5 0 0 1 0 20M2 12h20"/></svg>
+              Time is in <span className="font-medium text-gray-500">{schedTz.replace(/_/g, " ")}</span> — auto-detected from your device
+            </p>
             </div>
           )}
         </div>
@@ -663,13 +684,6 @@ function Step3({
               : schedDate && schedTime
               ? `Schedule for ${new Date(`${schedDate}T${schedTime}`).toLocaleDateString("en-US", { month: "short", day: "numeric" })} · ${new Date(`${schedDate}T${schedTime}`).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`
               : "Schedule"}
-          </button>
-          <button
-            disabled
-            title="Coming soon"
-            className="w-full py-3 rounded-xl text-[14px] font-medium text-gray-400 border border-gray-200 bg-white disabled:cursor-not-allowed"
-          >
-            Send test to me first
           </button>
         </div>
       </div>

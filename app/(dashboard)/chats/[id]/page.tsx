@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useState, useEffect, useLayoutEffect, useRef, startTransition } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, startTransition, lazy, Suspense } from "react";
 import { createPortal } from "react-dom";
 import {
   ArrowLeft,
@@ -13,6 +13,8 @@ import {
   X,
   LayoutTemplate,
   Clock,
+  CornerUpLeft,
+  ChevronDown,
 } from "lucide-react";
 import {
   useMessages,
@@ -27,7 +29,30 @@ import {
   apiGetTemplates,
   apiSendTemplate,
 } from "@/lib/api";
-import type { Message, Template } from "@/types";
+import type { Message, QuotedMessage, Template } from "@/types";
+import {
+  MediaPlayer,
+  MediaPlayerAudio,
+  MediaPlayerVideo,
+  MediaPlayerControls,
+  MediaPlayerControlsOverlay,
+  MediaPlayerPlay,
+  MediaPlayerSeek,
+  MediaPlayerTime,
+  MediaPlayerVolume,
+  MediaPlayerFullscreen,
+  MediaPlayerLoading,
+  MediaPlayerDownload,
+  useMediaPlayer,
+} from "@/components/ui/media-player";
+import {
+  useMediaDispatch,
+  MediaActionTypes,
+} from "media-chrome/react/media-store";
+
+const EmojiPicker = lazy(() =>
+  import("@emoji-mart/react").then((m) => ({ default: m.default }))
+);
 
 function isWindowClosed(lastCustomerMessageAt: string | null | undefined): boolean {
   if (!lastCustomerMessageAt) return false;
@@ -251,23 +276,86 @@ function ImageMessage({ directSrc, fetchUrl }: { directSrc: string | null; fetch
   );
 }
 
+const SPEEDS = [1, 1.25, 1.5, 1.75, 2, 0.5, 0.75];
+
+function SpeedCycleButton() {
+  const dispatch = useMediaDispatch();
+  const rate = useMediaPlayer((state) => (state as { mediaPlaybackRate?: number }).mediaPlaybackRate ?? 1);
+  function cycle() {
+    const idx = SPEEDS.indexOf(rate);
+    const next = SPEEDS[(idx + 1) % SPEEDS.length];
+    dispatch({ type: MediaActionTypes.MEDIA_PLAYBACK_RATE_REQUEST, detail: next });
+  }
+  return (
+    <button
+      type="button"
+      onClick={cycle}
+      className="text-[11px] font-bold w-8 h-8 rounded-md flex items-center justify-center hover:bg-accent text-primary transition-colors shrink-0 tabular-nums cursor-pointer"
+    >
+      {rate === 1 ? "1×" : `${rate}×`}
+    </button>
+  );
+}
+
 function AudioMessage({ directSrc, fetchUrl }: { directSrc: string | null; fetchUrl: string | null }) {
   const { src, loading } = useMediaSrc(directSrc, fetchUrl);
-  if (loading) return <div className="w-[240px] h-8 bg-gray-200/60 animate-pulse rounded-full" />;
+  if (loading) return <div className="w-[260px] h-12 bg-gray-200/60 animate-pulse rounded-lg" />;
   if (!src) return <span className="text-[12px] text-gray-400">Failed to load audio</span>;
-  return <audio controls src={src} className="w-full min-w-[220px] block" />;
+  return (
+    <MediaPlayer
+      autoHide={false}
+      className="w-[400px] h-auto rounded-xl"
+      style={{
+        "--background":          "0 0% 100%",
+        "--foreground":          "142 28% 25%",
+        "--primary":             "142 28% 32%",
+        "--primary-foreground":  "0 0% 100%",
+        "--accent":              "142 30% 92%",
+        "--accent-foreground":   "142 28% 25%",
+        "--muted":               "142 30% 92%",
+        "--muted-foreground":    "142 20% 45%",
+        "--border":              "142 20% 85%",
+        "--ring":                "142 28% 32%",
+        "--popover":             "0 0% 100%",
+        "--popover-foreground":  "142 28% 25%",
+      } as React.CSSProperties}
+    >
+      <MediaPlayerAudio src={src} />
+      <div className="flex items-center gap-2 px-3 py-3">
+        <MediaPlayerPlay className="size-9 shrink-0 cursor-pointer" />
+        <MediaPlayerSeek className="flex-1" />
+        <MediaPlayerTime className="text-[12px] tabular-nums" />
+        <MediaPlayerVolume expandable />
+        <SpeedCycleButton />
+      </div>
+    </MediaPlayer>
+  );
 }
 
 function VideoMessage({ src }: { src: string | null }) {
   if (!src) {
     return (
-      <div className="w-[260px] h-[120px] bg-gray-100 rounded-xl flex flex-col items-center justify-center gap-2 text-gray-400">
-        <svg className="w-8 h-8 opacity-50" viewBox="0 0 24 24" fill="currentColor"><path d="M17 10.5V7a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h12a1 1 0 001-1v-3.5l4 4v-11l-4 4z"/></svg>
+      <div className="w-[260px] h-[148px] bg-gray-900 rounded-lg flex flex-col items-center justify-center gap-2 text-gray-400">
+        <svg className="w-8 h-8 opacity-40" viewBox="0 0 24 24" fill="currentColor"><path d="M17 10.5V7a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h12a1 1 0 001-1v-3.5l4 4v-11l-4 4z"/></svg>
         <span className="text-[12px]">Video processing…</span>
       </div>
     );
   }
-  return <video controls src={src} className="max-w-full rounded-xl block" style={{ maxHeight: 240 }} />;
+  return (
+    <MediaPlayer className="video-player w-[400px] aspect-video rounded-xl overflow-hidden">
+      <MediaPlayerVideo src={src} className="size-full object-contain" />
+      <MediaPlayerControlsOverlay />
+      <MediaPlayerControls>
+        <MediaPlayerPlay className="size-9 shrink-0" />
+        <MediaPlayerVolume expandable />
+        <MediaPlayerSeek className="flex-1" />
+        <MediaPlayerTime className="text-[12px] tabular-nums" />
+        <MediaPlayerDownload className="size-8 shrink-0" />
+        <MediaPlayerFullscreen className="size-9 shrink-0" />
+      </MediaPlayerControls>
+      <MediaPlayerLoading />
+    </MediaPlayer>
+  );
 }
 
 function DocumentMessage({ directSrc, fetchUrl, isAgent }: { directSrc: string | null; fetchUrl: string | null; isAgent: boolean }) {
@@ -316,6 +404,13 @@ function MessageContent({ msg, isAgent }: { msg: Message; isAgent: boolean }) {
   if (msg.messageType === "VIDEO") return <VideoMessage src={directSrc} />;
   if (msg.messageType === "AUDIO") return <AudioMessage directSrc={directSrc} fetchUrl={fetchUrl} />;
   if (msg.messageType === "DOCUMENT") return <DocumentMessage directSrc={directSrc} fetchUrl={fetchUrl} isAgent={isAgent} />;
+  if (msg.messageType === "STICKER") {
+    if (!directSrc) return <p className="text-[13px] text-gray-400 italic">Sticker (loading…)</p>;
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={directSrc} alt="sticker" className="w-40 h-40 object-contain" />
+    );
+  }
 
   return (
     <p className={`text-[14px] leading-relaxed whitespace-pre-wrap break-words ${isAgent ? "text-white" : "text-gray-800"}`}>
@@ -718,6 +813,7 @@ export default function ConversationPage() {
   const [aiReply, setAiReply] = useState(false);
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<QuotedMessage | null>(null);
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
   const [reengagementOpen, setReengagementOpen] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
@@ -754,6 +850,26 @@ export default function ConversationPage() {
   const isNearBottomRef = useRef(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showScrollDown, setShowScrollDown] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const prevLastMsgKeyRef = useRef("");
+  const emojiPickerRef = useRef<HTMLDivElement>(null);
+  const emojiButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Close emoji picker on outside click
+  useEffect(() => {
+    if (!showEmojiPicker) return;
+    function onPointerDown(e: PointerEvent) {
+      if (
+        emojiPickerRef.current?.contains(e.target as Node) ||
+        emojiButtonRef.current?.contains(e.target as Node)
+      ) return;
+      setShowEmojiPicker(false);
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [showEmojiPicker]);
 
   // Mark as read when leaving the conversation
   useEffect(() => {
@@ -783,10 +899,32 @@ export default function ConversationPage() {
     }
   }, [messages]);
 
+  // Count new customer messages arriving while scrolled up
+  useEffect(() => {
+    if (messages.length === 0) return;
+    const last = messages[messages.length - 1];
+    const key = last._id != null ? String(last._id) : last.id != null ? String(last.id) : "";
+    if (!key || key === prevLastMsgKeyRef.current) return;
+    prevLastMsgKeyRef.current = key;
+    if (!isNearBottomRef.current && String(last.senderType) === "CUSTOMER") {
+      setUnreadCount((n) => n + 1);
+    }
+  }, [messages]);
+
+  // Reset unread counter when switching conversations
+  useEffect(() => {
+    setUnreadCount(0);
+    setShowScrollDown(false);
+    prevLastMsgKeyRef.current = "";
+  }, [id]);
+
   function handleMessagesScroll() {
     const el = messagesContainerRef.current;
     if (!el) return;
-    isNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    isNearBottomRef.current = nearBottom;
+    setShowScrollDown(!nearBottom);
+    if (nearBottom) setUnreadCount(0);
     if (el.scrollTop < 80 && hasMore && !loadingMore) {
       prevScrollHeightRef.current = el.scrollHeight;
       loadMore();
@@ -833,12 +971,35 @@ export default function ConversationPage() {
     }
   }
 
+  function highlightEl(row: HTMLElement) {
+    row.classList.remove("msg-highlight");
+    void row.offsetHeight;
+    row.classList.add("msg-highlight");
+    row.addEventListener("animationend", () => row.classList.remove("msg-highlight"), { once: true });
+  }
+
+  function scrollToMessage(msgId: number) {
+    const container = messagesContainerRef.current;
+    const row = document.querySelector<HTMLElement>(`[data-msg-id="${msgId}"]`);
+    if (!row || !container) return;
+    const containerRect = container.getBoundingClientRect();
+    const rowRect = row.getBoundingClientRect();
+    const targetScrollTop =
+      container.scrollTop + rowRect.top - containerRect.top - container.clientHeight / 2 + rowRect.height / 2;
+    container.scrollTo({ top: targetScrollTop, behavior: "smooth" });
+    highlightEl(row);
+  }
+
   async function handleSend() {
     const text = message.trim();
     if (!text || sending) return;
     setMessage("");
     if (textareaRef.current) textareaRef.current.style.height = "auto";
     setSending(true);
+
+    // Capture reply context then clear it
+    const quotedMsg = replyingTo;
+    setReplyingTo(null);
 
     // Stop typing indicator on send
     handleTypingStop();
@@ -853,11 +1014,14 @@ export default function ConversationPage() {
       messageType: "TEXT",
       status: null, // null = still sending
       createdAt: new Date().toISOString(),
+      quotedMessageId: quotedMsg?.id ?? undefined,
+      quotedMessage: quotedMsg ?? undefined,
     };
+    isNearBottomRef.current = true;
     appendOptimistic(optimistic);
 
     try {
-      const res = await apiSendMessage(id, text);
+      const res = await apiSendMessage(id, text, undefined, "TEXT", quotedMsg?.id ?? undefined);
       // Backend may use `id` or `_id` — handle both
       const realId =
         ((res.data as Record<string, unknown>)._id as string) ??
@@ -948,6 +1112,7 @@ export default function ConversationPage() {
           status: null,
           createdAt: new Date().toISOString(),
         };
+        isNearBottomRef.current = true;
         appendOptimistic(textMsg);
       }
 
@@ -963,6 +1128,7 @@ export default function ConversationPage() {
         status: null,
         createdAt: new Date().toISOString(),
       };
+      isNearBottomRef.current = true;
       appendOptimistic(mediaMsg);
 
       return { textTempId, textMsg, mediaTempId, mediaMsg, file };
@@ -1106,11 +1272,12 @@ export default function ConversationPage() {
           <span className="text-[13px] text-gray-400">Loading messages…</span>
         </div>
       ) : (
-        <div
-          ref={messagesContainerRef}
-          onScroll={handleMessagesScroll}
-          className="relative z-10 flex-1 overflow-y-auto overflow-x-hidden px-6 py-5 space-y-3 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-[#3B694C]/20 [&::-webkit-scrollbar-thumb]:rounded-full"
-        >
+        <div className="relative flex-1 z-10 min-h-0">
+          <div
+            ref={messagesContainerRef}
+            onScroll={handleMessagesScroll}
+            className="absolute inset-0 overflow-y-auto overflow-x-hidden px-6 py-5 space-y-3 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-[#3B694C]/20 [&::-webkit-scrollbar-thumb]:rounded-full"
+          >
           {loadingMore && (
             <div className="flex justify-center py-2">
               <span className="text-[12px] text-gray-400">Loading…</span>
@@ -1125,16 +1292,67 @@ export default function ConversationPage() {
                   : `msg-${i}`;
             const isSending = mid.startsWith("temp-");
 
+            const isMediaMsg = msg.messageType === "AUDIO" || msg.messageType === "VIDEO" || msg.messageType === "STICKER";
+
             return msg.senderType === "CUSTOMER" ? (
-              <div key={mid} className="flex justify-start">
-                <div className="max-w-[65%] min-w-0">
-                  <div className="bg-white border border-gray-100 rounded-2xl rounded-tl-sm px-4 pt-2.5 pb-2 shadow-sm">
-                    <MessageContent msg={msg} isAgent={false} />
-                    <p className="text-[10px] text-gray-400 text-right mt-1 -mb-0.5">
-                      {formatMessageTime(msg.createdAt)}
-                    </p>
-                  </div>
+              <div key={mid} data-msg-id={mid} className="group/msg flex justify-start items-end gap-1" onDoubleClick={(e) => { window.getSelection()?.removeAllRanges(); highlightEl(e.currentTarget); setReplyingTo({ id: Number(msg.id ?? msg._id), content: msg.content, messageType: msg.messageType, senderType: msg.senderType, mediaUrl: msg.mediaUrl }); }}>
+                <div className={isMediaMsg ? "" : "max-w-[65%] min-w-0"}>
+                  {isMediaMsg ? (
+                    <div>
+                      <MessageContent msg={msg} isAgent={false} />
+                      <div className="bg-white border border-gray-100 rounded-xl rounded-tl-sm px-3 py-1 shadow-sm inline-flex mt-1">
+                        <p className="text-[10px] text-gray-400">{formatMessageTime(msg.createdAt)}</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="msg-bubble bg-white border border-gray-100 rounded-2xl rounded-tl-sm px-4 pt-2.5 pb-2 shadow-sm">
+                      {msg.quotedMessage && (() => {
+                        const qm = msg.quotedMessage;
+                        const qImg = qm.messageType === "IMAGE" ? (qm.mediaUrl ?? qm.content) : null;
+                        return (
+                          <div onClick={() => scrollToMessage(qm.id)} className="border-l-2 border-[#3B694C]/60 pl-2 mb-2 py-0.5 pr-1 bg-[#3B694C]/5 rounded-r-sm cursor-pointer hover:bg-[#3B694C]/10 transition-colors">
+                            <p className="text-[10px] font-semibold text-[#3B694C] leading-tight">
+                              {qm.senderType === "AGENT" ? "You" : customer?.name || "Contact"}
+                            </p>
+                            {qImg ? (
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={qImg} alt="" className="w-8 h-8 rounded object-cover shrink-0" />
+                                <span className="text-[12px] text-gray-500">Photo</span>
+                              </div>
+                            ) : (
+                              <p className="text-[12px] text-gray-500 truncate leading-tight">
+                                {qm.messageType !== "TEXT" ? `[${qm.messageType.toLowerCase()}]` : qm.content}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })()}
+                      <MessageContent msg={msg} isAgent={false} />
+                      <p className="text-[10px] text-gray-400 text-right mt-1 -mb-0.5">
+                        {formatMessageTime(msg.createdAt)}
+                      </p>
+                    </div>
+                  )}
+                  {msg.reactions && Object.keys(msg.reactions).length > 0 && (
+                    <div className="flex gap-1 mt-0.5 flex-wrap">
+                      {Object.entries(msg.reactions).map(([emoji, count]) => (
+                        <span key={emoji} className="bg-white border border-gray-200 shadow-sm rounded-full px-1.5 py-0.5 flex items-center gap-0.5 leading-none">
+                          <span className="text-base leading-none">{emoji}</span>
+                          {count > 1 && <span className="text-[11px] text-gray-500 font-medium">{count}</span>}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
+                <button
+                  type="button"
+                  title="Reply"
+                  onClick={() => setReplyingTo({ id: Number(msg.id ?? msg._id), content: msg.content, messageType: msg.messageType, senderType: msg.senderType, mediaUrl: msg.mediaUrl })}
+                  className="opacity-0 group-hover/msg:opacity-100 self-center shrink-0 w-7 h-7 rounded-full bg-white border border-gray-200 shadow-sm hover:bg-gray-50 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-all cursor-pointer"
+                >
+                  <CornerUpLeft className="w-3.5 h-3.5" />
+                </button>
               </div>
             ) : (
               (() => {
@@ -1154,13 +1372,21 @@ export default function ConversationPage() {
                 const tpl = msg.messageType === "INTERACTIVE" ? parseTemplateContent(msg.content) : null;
                 if (tpl) {
                   return (
-                    <div key={mid} className="flex justify-end items-end gap-2">
+                    <div key={mid} data-msg-id={mid} className="group/msg flex justify-end items-end gap-1 pr-4" onDoubleClick={(e) => { window.getSelection()?.removeAllRanges(); highlightEl(e.currentTarget); setReplyingTo({ id: Number(msg.id ?? msg._id), content: tpl.body, messageType: msg.messageType, senderType: msg.senderType, mediaUrl: null }); }}>
+                      <button
+                        type="button"
+                        title="Reply"
+                        onClick={() => setReplyingTo({ id: Number(msg.id ?? msg._id), content: tpl.body, messageType: msg.messageType, senderType: msg.senderType, mediaUrl: null })}
+                        className="opacity-0 group-hover/msg:opacity-100 self-center shrink-0 w-7 h-7 rounded-full bg-white border border-gray-200 shadow-sm hover:bg-gray-50 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-all cursor-pointer"
+                      >
+                        <CornerUpLeft className="w-3.5 h-3.5" />
+                      </button>
                       <div className="max-w-[65%] min-w-0">
                         {senderChanged && (
                           <p className="text-[11px] text-gray-400 text-right mb-1">{agent.name}</p>
                         )}
                         {/* Bubble — header / body / footer / timestamp */}
-                        <div className={`bg-[#3B694C] rounded-2xl rounded-tr-sm px-4 pt-2.5 pb-2 shadow-sm transition-opacity ${isSending ? "opacity-75" : "opacity-100"} ${tpl.buttons?.length ? "rounded-b-none" : ""}`}>
+                        <div className={`msg-bubble bg-[#3B694C] rounded-2xl rounded-tr-sm px-4 pt-2.5 pb-2 shadow-sm transition-opacity ${isSending ? "opacity-75" : "opacity-100"} ${tpl.buttons?.length ? "rounded-b-none" : ""}`}>
                           {tpl.header && (
                             <p className="text-[14px] font-bold text-white mb-1 leading-snug">{tpl.header}</p>
                           )}
@@ -1184,6 +1410,16 @@ export default function ConversationPage() {
                             ))}
                           </div>
                         )}
+                        {msg.reactions && Object.keys(msg.reactions).length > 0 && (
+                          <div className="flex gap-1 mt-0.5 flex-wrap justify-end">
+                            {Object.entries(msg.reactions).map(([emoji, count]) => (
+                              <span key={emoji} className="bg-white border border-gray-200 shadow-sm rounded-full px-1.5 py-0.5 flex items-center gap-0.5 leading-none">
+                                <span className="text-base leading-none">{emoji}</span>
+                                {count > 1 && <span className="text-[11px] text-gray-500 font-medium">{count}</span>}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                       <div
                         className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0 cursor-default select-none"
@@ -1197,27 +1433,81 @@ export default function ConversationPage() {
 
                 // Regular agent message
                 return (
-                  <div key={mid} className="flex justify-end items-end gap-2">
-                    <div className="max-w-[65%] min-w-0">
+                  <div key={mid} data-msg-id={mid} className="group/msg flex justify-end items-end gap-1 pr-4" onDoubleClick={(e) => { window.getSelection()?.removeAllRanges(); highlightEl(e.currentTarget); setReplyingTo({ id: Number(msg.id ?? msg._id), content: msg.content, messageType: msg.messageType, senderType: msg.senderType, mediaUrl: msg.mediaUrl ?? (msg.messageType === "IMAGE" ? msg.content : null) }); }}>
+                    <button
+                      type="button"
+                      title="Reply"
+                      onClick={() => setReplyingTo({ id: Number(msg.id ?? msg._id), content: msg.content, messageType: msg.messageType, senderType: msg.senderType, mediaUrl: msg.mediaUrl ?? (msg.messageType === "IMAGE" ? msg.content : null) })}
+                      className="opacity-0 group-hover/msg:opacity-100 self-center shrink-0 w-7 h-7 rounded-full bg-white border border-gray-200 shadow-sm hover:bg-gray-50 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-all cursor-pointer"
+                    >
+                      <CornerUpLeft className="w-3.5 h-3.5" />
+                    </button>
+                    <div className={isMediaMsg ? "" : "max-w-[65%] min-w-0"}>
                       {senderChanged && (
                         <p className="text-[11px] text-gray-400 text-right mb-1">
                           {agent.name}
                         </p>
                       )}
-                      <div
-                        className={`bg-[#3B694C] rounded-2xl rounded-tr-sm px-4 pt-2.5 pb-2 shadow-sm transition-opacity ${isSending ? "opacity-75" : "opacity-100"}`}
-                      >
-                        <MessageContent msg={msg} isAgent={true} />
-                        <div className="flex items-center justify-end gap-1 mt-1 -mb-0.5">
-                          <span className="text-[10px] text-white/60">
-                            {formatMessageTime(msg.createdAt)}
-                          </span>
-                          <MessageStatus
-                            isSending={isSending}
-                            status={msg.status}
-                          />
+                      {isMediaMsg ? (
+                        <div className={`transition-opacity ${isSending ? "opacity-75" : "opacity-100"}`}>
+                          <MessageContent msg={msg} isAgent={true} />
+                          <div className="flex justify-end mt-1">
+                            <div className="bg-[#3B694C] rounded-xl rounded-tr-sm px-3 py-1 shadow-sm inline-flex items-center gap-1">
+                              <span className="text-[10px] text-white/70">{formatMessageTime(msg.createdAt)}</span>
+                              <MessageStatus isSending={isSending} status={msg.status} />
+                            </div>
+                          </div>
                         </div>
-                      </div>
+                      ) : (
+                        <>
+                          <div
+                            className={`msg-bubble bg-[#3B694C] rounded-2xl rounded-tr-sm px-4 pt-2.5 pb-2 shadow-sm transition-opacity ${isSending ? "opacity-75" : "opacity-100"}`}
+                          >
+                            {msg.quotedMessage && (() => {
+                              const qm = msg.quotedMessage;
+                              const qImg = qm.messageType === "IMAGE" ? (qm.mediaUrl ?? qm.content) : null;
+                              return (
+                                <div onClick={() => scrollToMessage(qm.id)} className="border-l-2 border-white/50 pl-2 mb-2 py-0.5 pr-1 bg-white/10 rounded-r-sm cursor-pointer hover:bg-white/20 transition-colors">
+                                  <p className="text-[10px] font-semibold text-white/90 leading-tight">
+                                    {qm.senderType === "AGENT" ? "You" : customer?.name || "Contact"}
+                                  </p>
+                                  {qImg ? (
+                                    <div className="flex items-center gap-1.5 mt-0.5">
+                                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                                      <img src={qImg} alt="" className="w-8 h-8 rounded object-cover shrink-0" />
+                                      <span className="text-[12px] text-white/70">Photo</span>
+                                    </div>
+                                  ) : (
+                                    <p className="text-[12px] text-white/70 truncate leading-tight">
+                                      {qm.messageType !== "TEXT" ? `[${qm.messageType.toLowerCase()}]` : qm.content}
+                                    </p>
+                                  )}
+                                </div>
+                              );
+                            })()}
+                            <MessageContent msg={msg} isAgent={true} />
+                            <div className="flex items-center justify-end gap-1 mt-1 -mb-0.5">
+                              <span className="text-[10px] text-white/60">
+                                {formatMessageTime(msg.createdAt)}
+                              </span>
+                              <MessageStatus
+                                isSending={isSending}
+                                status={msg.status}
+                              />
+                            </div>
+                          </div>
+                          {msg.reactions && Object.keys(msg.reactions).length > 0 && (
+                            <div className="flex gap-1 mt-0.5 flex-wrap justify-end">
+                              {Object.entries(msg.reactions).map(([emoji, count]) => (
+                                <span key={emoji} className="bg-white border border-gray-200 shadow-sm rounded-full px-1.5 py-0.5 flex items-center gap-0.5 leading-none">
+                                  <span className="text-base leading-none">{emoji}</span>
+                                  {count > 1 && <span className="text-[11px] text-gray-500 font-medium">{count}</span>}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      )}
                     </div>
                     <div
                       className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0 cursor-default select-none"
@@ -1244,17 +1534,62 @@ export default function ConversationPage() {
           )}
 
           <div ref={messagesEndRef} />
+          </div>
+          {showScrollDown && (
+            <button
+              onClick={() => { messagesContainerRef.current?.scrollTo({ top: messagesContainerRef.current.scrollHeight, behavior: "smooth" }); setUnreadCount(0); }}
+              className="absolute bottom-5 right-7 z-20 w-11 h-11 rounded-full bg-white border border-gray-200 shadow-md flex items-center justify-center text-[#3B694C] hover:bg-[#3B694C] hover:text-white hover:border-[#3B694C] transition-all cursor-pointer"
+            >
+              <ChevronDown className="w-5 h-5" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-[#3B694C] text-white text-[10px] font-semibold flex items-center justify-center leading-none">
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </span>
+              )}
+            </button>
+          )}
         </div>
       ))}
 
       {/* Input bar — hidden while preview panel is open */}
       {pendingFiles.length === 0 && (
         <div className="relative z-10 shrink-0 bg-white border-t border-gray-100">
+          {/* Replying-to preview bar */}
+          {replyingTo && (
+            <div className="flex items-center gap-3 px-4 pt-2.5 pb-1 border-b border-gray-100">
+              <div className="flex-1 border-l-2 border-[#3B694C] pl-2 min-w-0">
+                <p className="text-[11px] font-semibold text-[#3B694C] leading-tight">
+                  {replyingTo.senderType === "AGENT" ? "You" : customer?.name || "Contact"}
+                </p>
+                {replyingTo.messageType === "IMAGE" && replyingTo.mediaUrl ? (
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={replyingTo.mediaUrl} alt="" className="w-7 h-7 rounded object-cover shrink-0" />
+                    <span className="text-[12px] text-gray-500">Photo</span>
+                  </div>
+                ) : (
+                  <p className="text-[12px] text-gray-500 truncate leading-tight">
+                    {replyingTo.messageType !== "TEXT"
+                      ? `[${replyingTo.messageType.toLowerCase()}]`
+                      : replyingTo.content}
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setReplyingTo(null)}
+                className="shrink-0 w-6 h-6 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
           {/* 24h window closed notice */}
           {windowClosed && (
             <div className="flex items-center gap-2 px-4 pt-3 pb-1">
-              <Clock className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-              <p className="text-[12px] text-orange-500 font-medium">
+              <Clock className="w-3.5 h-3.5 text-red-400 shrink-0" />
+              <p className="text-[12px] text-red-500 font-medium">
                 24-hour messaging window closed — use a re-engagement template to restart the conversation.
               </p>
             </div>
@@ -1318,13 +1653,39 @@ export default function ConversationPage() {
                 className="flex-1 text-[14px] text-gray-700 placeholder:text-gray-400 outline-none bg-transparent resize-none overflow-hidden leading-[1.5] py-0.5 max-h-40 disabled:cursor-not-allowed"
               />
 
-              <button
-                type="button"
-                disabled={windowClosed}
-                className="text-gray-400 hover:text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer shrink-0 mb-0.5"
-              >
-                <Smile className="w-4 h-4" />
-              </button>
+              <div className="relative shrink-0">
+                <button
+                  ref={emojiButtonRef}
+                  type="button"
+                  disabled={windowClosed}
+                  onClick={() => setShowEmojiPicker((v) => !v)}
+                  className={`text-gray-400 hover:text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer mb-0.5 ${showEmojiPicker ? "text-[#3B694C]" : ""}`}
+                >
+                  <Smile className="w-4 h-4" />
+                </button>
+                {showEmojiPicker && (
+                  <div ref={emojiPickerRef} className="absolute bottom-8 right-0 z-50 emoji-picker-green">
+                    <Suspense fallback={null}>
+                      <EmojiPicker
+                        theme="light"
+                        onEmojiSelect={(emoji: { native: string }) => {
+                          const ta = textareaRef.current;
+                          if (!ta) return;
+                          const start = ta.selectionStart ?? message.length;
+                          const end = ta.selectionEnd ?? message.length;
+                          const next = message.slice(0, start) + emoji.native + message.slice(end);
+                          setMessage(next);
+                          requestAnimationFrame(() => {
+                            ta.focus();
+                            const pos = start + emoji.native.length;
+                            ta.setSelectionRange(pos, pos);
+                          });
+                        }}
+                      />
+                    </Suspense>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Template button — always accessible; RE_ENGAGEMENT when window is closed */}
@@ -1334,7 +1695,7 @@ export default function ConversationPage() {
               title={windowClosed ? "Send re-engagement template" : "Insert template"}
               className={`flex items-center gap-1.5 text-[12px] font-medium border rounded-xl px-2.5 py-2 transition-colors cursor-pointer shrink-0 ${
                 windowClosed
-                  ? "text-orange-600 bg-orange-50 border-orange-300 hover:bg-orange-100 hover:border-orange-400"
+                  ? "text-red-600 bg-red-50 border-red-300 hover:bg-red-100 hover:border-red-400"
                   : "text-gray-500 hover:text-[#3B694C] hover:bg-[#EEF6F1] border-gray-200 hover:border-[#3B694C]/30"
               }`}
             >

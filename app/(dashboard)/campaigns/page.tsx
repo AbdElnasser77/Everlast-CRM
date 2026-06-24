@@ -156,12 +156,32 @@ export default function CampaignsPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  // Poll-safe load: never roll back progress on a RUNNING campaign
+  const pollLoad = useCallback(() => {
+    apiGetCampaigns()
+      .then((res) => {
+        setCampaigns((prev) =>
+          res.data.map((fresh) => {
+            const existing = prev.find((c) => c.id === fresh.id);
+            if (existing?.status === "RUNNING" && fresh.status === "RUNNING") {
+              return {
+                ...fresh,
+                sentCount: Math.max(existing.sentCount, fresh.sentCount),
+                failedCount: Math.max(existing.failedCount, fresh.failedCount),
+              };
+            }
+            return fresh;
+          })
+        );
+      })
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     load();
     const socket = getSocket();
     const refresh = () => load();
-    socket.on("campaign.started", refresh);
-    socket.on("campaign.progress", (data: { campaignId: number; sentCount: number; failedCount: number; totalRecipients: number }) => {
+    const onProgress = (data: { campaignId: number; sentCount: number; failedCount: number; totalRecipients: number }) => {
       setCampaigns((prev) =>
         prev.map((c) =>
           c.id === data.campaignId
@@ -169,16 +189,26 @@ export default function CampaignsPage() {
             : c
         )
       );
-    });
+    };
+    socket.on("campaign.started", refresh);
+    socket.on("campaign.progress", onProgress);
     socket.on("campaign.completed", refresh);
     socket.on("campaign.cancelled", refresh);
     return () => {
       socket.off("campaign.started", refresh);
-      socket.off("campaign.progress");
+      socket.off("campaign.progress", onProgress);
       socket.off("campaign.completed", refresh);
       socket.off("campaign.cancelled", refresh);
     };
   }, [load]);
+
+  // Poll every 3s while any campaign is running — catches missed socket events
+  const hasRunning = campaigns.some((c) => c.status === "RUNNING");
+  useEffect(() => {
+    if (!hasRunning) return;
+    const interval = setInterval(pollLoad, 3000);
+    return () => clearInterval(interval);
+  }, [hasRunning, pollLoad]);
 
   const handleCancel = async (id: number) => {
     try {

@@ -81,7 +81,11 @@ export function useMessages(conversationId: string): UseMessagesReturn {
     try {
       const res = await apiGetMessages(conversationId, nextPage, PAGE_SIZE);
       const older = [...res.data].reverse();
-      setMessages((prev) => [...older, ...prev]);
+      setMessages((prev) => {
+        const existingIds = new Set(prev.map(getLocalId).filter(Boolean));
+        const fresh = older.filter((m) => !existingIds.has(getLocalId(m)));
+        return [...fresh, ...prev];
+      });
       const more = res.data.length >= PAGE_SIZE;
       setHasMore(more);
       hasMoreRef.current = more;
@@ -109,10 +113,11 @@ export function useMessages(conversationId: string): UseMessagesReturn {
       if (String(cid) !== conversationId) return;
 
       setMessages((prev) => {
-        const incoming = getLocalId(message);
-        if (incoming && prev.some((m) => getLocalId(m) === incoming)) return prev;
+        // Dedup: if the real ID already exists (confirmed via HTTP before socket fired), skip
+        if (message.id != null && prev.some((m) => m.id != null && String(m.id) === String(message.id))) return prev;
 
         if (String(message.senderType) === "AGENT") {
+          // Replace the optimistic temp with the confirmed message
           const tempIdx = prev.findIndex((m) => {
             if (!isTemp(m)) return false;
             return message.messageType === "TEXT"
@@ -192,9 +197,27 @@ export function useMessages(conversationId: string): UseMessagesReturn {
       });
     };
 
+    const handleReaction = ({
+      messageId,
+      reactions,
+    }: {
+      messageId: number | string;
+      reactions: Record<string, number> | null;
+    }) => {
+      const targetId = String(messageId);
+      setMessages((prev) => {
+        const idx = prev.findIndex((m) => getLocalId(m) === targetId);
+        if (idx === -1) return prev;
+        const next = [...prev];
+        next[idx] = { ...next[idx], reactions };
+        return next;
+      });
+    };
+
     socket.on("message.created", handleMessageCreated);
     socket.on("message.status_updated", handleStatusUpdated);
     socket.on("message.media_ready", handleMediaReady);
+    socket.on("message.reaction", handleReaction);
     socket.on("typing.start", handleTypingStart);
     socket.on("typing.stop", handleTypingStop);
 
@@ -202,6 +225,7 @@ export function useMessages(conversationId: string): UseMessagesReturn {
       socket.off("message.created", handleMessageCreated);
       socket.off("message.status_updated", handleStatusUpdated);
       socket.off("message.media_ready", handleMediaReady);
+      socket.off("message.reaction", handleReaction);
       socket.off("typing.start", handleTypingStart);
       socket.off("typing.stop", handleTypingStop);
     };

@@ -30,6 +30,14 @@ export interface Conversation {
   lastCustomerMessageAt?: string | null;
 }
 
+export interface QuotedMessage {
+  id: number;
+  content: string;
+  messageType: "TEXT" | "IMAGE" | "VIDEO" | "AUDIO" | "DOCUMENT" | "TEMPLATE" | "INTERACTIVE" | "STICKER";
+  senderType: "CUSTOMER" | "AGENT";
+  mediaUrl?: string | null;
+}
+
 export interface Message {
   _id?: string;
   id?: string | number;
@@ -37,10 +45,13 @@ export interface Message {
   senderType: "CUSTOMER" | "AGENT";
   senderId: string | null;
   content: string;
-  messageType: "TEXT" | "IMAGE" | "VIDEO" | "AUDIO" | "DOCUMENT" | "TEMPLATE" | "INTERACTIVE";
+  messageType: "TEXT" | "IMAGE" | "VIDEO" | "AUDIO" | "DOCUMENT" | "TEMPLATE" | "INTERACTIVE" | "STICKER";
   status: "PENDING" | "SENT" | "DELIVERED" | "READ" | "FAILED" | null;
   whatsappMessageId?: string | null;
   mediaUrl?: string | null;
+  reactions?: Record<string, number> | null;
+  quotedMessageId?: number | null;
+  quotedMessage?: QuotedMessage | null;
   createdAt: string;
   updatedAt?: string;
 }

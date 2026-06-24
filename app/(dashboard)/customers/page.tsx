@@ -4,6 +4,8 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   apiGetCustomers,
+  apiImportCustomers,
+  apiDeleteCustomer,
   apiGetConversations,
   apiGetCustomer,
   apiCreateCustomer,
@@ -149,9 +151,10 @@ interface DetailDrawerProps {
   conv: Conversation | undefined;
   onClose: () => void;
   onSaved: (updated: Customer) => void;
+  onDeleted: (id: number | string) => void;
 }
 
-function CustomerDetailDrawer({ customer, conv, onClose, onSaved }: DetailDrawerProps) {
+function CustomerDetailDrawer({ customer, conv, onClose, onSaved, onDeleted }: DetailDrawerProps) {
   const router = useRouter();
   const open = customer !== null;
 
@@ -166,8 +169,13 @@ function CustomerDetailDrawer({ customer, conv, onClose, onSaved }: DetailDrawer
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  // Delete state
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   useEffect(() => {
-    if (!customer) { setDetail(null); setEditing(null); return; }
+    if (!customer) { setDetail(null); setEditing(null); setConfirmDelete(false); setDeleteError(null); return; }
     setDetail(customer);
     setEditing(null);
     const id = customer._id ?? customer.id;
@@ -488,10 +496,62 @@ function CustomerDetailDrawer({ customer, conv, onClose, onSaved }: DetailDrawer
             </div>
 
             {/* Footer */}
-            <div className="shrink-0 border-t border-gray-100 px-5 py-3">
+            <div className="shrink-0 border-t border-gray-100 px-5 py-4 space-y-3">
               <p className="text-[12px] text-gray-400">
                 Member since <span className="font-medium text-gray-500">{formatMemberSince(c.createdAt)}</span>
               </p>
+
+              {confirmDelete ? (
+                <div className="space-y-2">
+                  <p className="text-[12px] text-red-500 font-medium">Delete this customer? This cannot be undone.</p>
+                  {deleteError && <p className="text-[11px] text-red-500">{deleteError}</p>}
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { setConfirmDelete(false); setDeleteError(null); }}
+                      className="flex-1 py-2 rounded-xl border border-gray-200 text-[13px] font-semibold text-gray-600 hover:bg-gray-50 transition-colors cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      disabled={deleting}
+                      onClick={async () => {
+                        const id = c._id ?? c.id;
+                        if (id == null) return;
+                        setDeleting(true);
+                        setDeleteError(null);
+                        try {
+                          await apiDeleteCustomer(id);
+                          onDeleted(id);
+                          onClose();
+                        } catch (err) {
+                          setDeleteError(err instanceof Error ? err.message : "Failed to delete");
+                        } finally {
+                          setDeleting(false);
+                        }
+                      }}
+                      className="flex-1 py-2 rounded-xl bg-red-500 hover:bg-red-600 disabled:opacity-60 disabled:cursor-not-allowed text-[13px] font-semibold text-white transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      {deleting ? (
+                        <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                      ) : (
+                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                      )}
+                      {deleting ? "Deleting…" : "Delete"}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmDelete(true)}
+                  className="flex items-center gap-1.5 text-[12px] font-medium text-red-400 hover:text-red-600 transition-colors cursor-pointer"
+                >
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                  Delete customer
+                </button>
+              )}
             </div>
           </>
         )}
@@ -526,47 +586,52 @@ function SkeletonRow() {
 
 // ─── Import Progress Modal ────────────────────────────────────────────────────
 
-interface ImportState {
+interface ImportResult {
   total: number;
-  done: number;
-  errors: string[];
-  finished: boolean;
+  created: number;
+  skipped: number;
+  errors: { row: number; reason: string }[];
 }
 
-function ImportProgressModal({ state, onClose }: { state: ImportState; onClose: () => void }) {
+function ImportResultModal({ result, onClose }: { result: ImportResult; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-2xl shadow-2xl px-6 py-6 w-80 space-y-4">
-        <h3 className="text-[15px] font-bold text-gray-900">
-          {state.finished ? "Import complete" : "Importing customers…"}
-        </h3>
+      <div className="bg-white rounded-2xl shadow-2xl px-6 py-6 w-[340px] space-y-4">
+        <h3 className="text-[15px] font-bold text-gray-900">Import complete</h3>
+
         <div className="space-y-2">
-          <div className="flex justify-between text-[13px] text-gray-500">
-            <span>{state.done} / {state.total}</span>
-            <span>{state.errors.length} error{state.errors.length !== 1 ? "s" : ""}</span>
+          <div className="flex items-center gap-3 p-3 bg-green-50 rounded-xl">
+            <svg className="w-4 h-4 text-green-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6 9 17l-5-5"/></svg>
+            <span className="text-[13px] font-semibold text-green-700">{result.created} imported</span>
           </div>
-          <div className="w-full bg-gray-100 rounded-full h-2">
-            <div
-              className="bg-[#3B694C] h-2 rounded-full transition-all duration-200"
-              style={{ width: `${state.total ? (state.done / state.total) * 100 : 0}%` }}
-            />
-          </div>
+          {result.skipped > 0 && (
+            <div className="flex items-center gap-3 p-3 bg-amber-50 rounded-xl">
+              <svg className="w-4 h-4 text-amber-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+              <span className="text-[13px] font-semibold text-amber-700">{result.skipped} skipped — duplicates</span>
+            </div>
+          )}
+          {result.errors.length > 0 && (
+            <details className="group">
+              <summary className="flex items-center gap-3 p-3 bg-red-50 rounded-xl cursor-pointer list-none">
+                <svg className="w-4 h-4 text-red-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg>
+                <span className="text-[13px] font-semibold text-red-600 flex-1">{result.errors.length} row{result.errors.length !== 1 ? "s" : ""} with errors</span>
+                <svg className="w-3.5 h-3.5 text-red-400 group-open:rotate-180 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="m6 9 6 6 6-6"/></svg>
+              </summary>
+              <div className="mt-1 max-h-36 overflow-y-auto space-y-1 px-1">
+                {result.errors.map((e, i) => (
+                  <p key={i} className="text-[11px] text-red-500 px-2 py-0.5">Row {e.row}: {e.reason}</p>
+                ))}
+              </div>
+            </details>
+          )}
         </div>
-        {state.errors.length > 0 && (
-          <div className="max-h-28 overflow-y-auto space-y-1">
-            {state.errors.map((e, i) => (
-              <p key={i} className="text-[11px] text-red-500">{e}</p>
-            ))}
-          </div>
-        )}
-        {state.finished && (
-          <button
-            onClick={onClose}
-            className="w-full py-2.5 rounded-xl bg-[#3B694C] hover:bg-[#2f5840] text-white text-[13px] font-semibold transition-colors cursor-pointer"
-          >
-            Done
-          </button>
-        )}
+
+        <button
+          onClick={onClose}
+          className="w-full py-2.5 rounded-xl bg-[#3B694C] hover:bg-[#2f5840] text-white text-[13px] font-semibold transition-colors cursor-pointer"
+        >
+          Done
+        </button>
       </div>
     </div>
   );
@@ -966,7 +1031,8 @@ export default function CRMPage() {
   const [showNew, setShowNew] = useState(false);
   const [detailCustomer, setDetailCustomer] = useState<Customer | null>(null);
   const [templateTarget, setTemplateTarget] = useState<Customer | null>(null);
-  const [importState, setImportState] = useState<ImportState | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1074,46 +1140,32 @@ export default function CRMPage() {
   }
 
   // ─ Import CSV ─────────────────────────────────────────────────────────────
-  function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = "";
-    const reader = new FileReader();
-    reader.onload = async (ev) => {
-      const text = ev.target?.result as string;
-      const rows = parseCSV(text);
-      if (rows.length === 0) return;
-      const state: ImportState = { total: rows.length, done: 0, errors: [], finished: false };
-      setImportState({ ...state });
-      for (const row of rows) {
-        const phone = row["phone"] ?? row["Phone"] ?? row["PHONE"] ?? "";
-        if (!phone) {
-          state.errors.push(`Row ${state.done + 1}: missing phone`);
-          state.done++;
-          setImportState({ ...state });
-          continue;
-        }
-        const tagsRaw = row["tags"] ?? row["Tags"] ?? "";
-        const tags = tagsRaw ? tagsRaw.split(";").map((t: string) => t.trim()).filter(Boolean) : undefined;
-        try {
-          await apiCreateCustomer({
-            phone,
-            ...(row["name"] || row["Name"] ? { name: row["name"] || row["Name"] } : {}),
-            ...(row["email"] || row["Email"] ? { email: row["email"] || row["Email"] } : {}),
-            ...(tags ? { tags } : {}),
-            ...(row["notes"] || row["Notes"] ? { notes: row["notes"] || row["Notes"] } : {}),
-          });
-        } catch (err) {
-          state.errors.push(`Row ${state.done + 1} (${phone}): ${err instanceof Error ? err.message : "error"}`);
-        }
-        state.done++;
-        setImportState({ ...state });
-      }
-      state.finished = true;
-      setImportState({ ...state });
+    setImporting(true);
+    try {
+      const res = await apiImportCustomers(file);
+      setImportResult(res.data);
       fetchPage1(searchRef.current);
-    };
-    reader.readAsText(file);
+    } catch (err) {
+      setImportResult({ total: 0, created: 0, skipped: 0, errors: [{ row: 0, reason: err instanceof Error ? err.message : "Import failed" }] });
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  // ─ Template download ───────────────────────────────────────────────────────
+  function downloadTemplate() {
+    const csv = "name,phone,email,tags,notes\nJohn Doe,+201001234567,john@example.com,\"VIP;lead\",Follow up";
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "customers_template.csv";
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   // ─ Conversation lookup helper ─────────────────────────────────────────────
@@ -1131,6 +1183,10 @@ export default function CRMPage() {
         customer={detailCustomer}
         conv={detailCustomer ? getConv(detailCustomer) : undefined}
         onClose={() => setDetailCustomer(null)}
+        onDeleted={(id) => {
+          setCustomers((prev) => prev.filter((c) => String(c._id ?? c.id) !== String(id)));
+          setDetailCustomer(null);
+        }}
         onSaved={(updated) => {
           setCustomers((prev) =>
             prev.map((c) => {
@@ -1161,10 +1217,10 @@ export default function CRMPage() {
           }
         }}
       />
-      {importState && (
-        <ImportProgressModal
-          state={importState}
-          onClose={() => setImportState(null)}
+      {importResult && (
+        <ImportResultModal
+          result={importResult}
+          onClose={() => setImportResult(null)}
         />
       )}
       <input ref={importRef} type="file" accept=".csv" className="hidden" onChange={handleImportFile} />
@@ -1178,11 +1234,24 @@ export default function CRMPage() {
         <div className="flex items-center gap-2 flex-wrap">
           <button
             type="button"
-            onClick={() => importRef.current?.click()}
-            className="flex items-center gap-1.5 border border-gray-200 text-gray-600 hover:bg-gray-50 text-[13px] font-semibold px-3.5 py-2 rounded-xl transition-colors cursor-pointer"
+            onClick={downloadTemplate}
+            className="flex items-center gap-1.5 border border-gray-200 text-gray-500 hover:bg-gray-50 text-[13px] font-semibold px-3.5 py-2 rounded-xl transition-colors cursor-pointer"
           >
             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Import CSV
+            Template
+          </button>
+          <button
+            type="button"
+            onClick={() => !importing && importRef.current?.click()}
+            disabled={importing}
+            className="flex items-center gap-1.5 border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed text-[13px] font-semibold px-3.5 py-2 rounded-xl transition-colors cursor-pointer"
+          >
+            {importing ? (
+              <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+            ) : (
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            )}
+            {importing ? "Importing…" : "Import CSV"}
           </button>
           <button
             type="button"
@@ -1190,7 +1259,7 @@ export default function CRMPage() {
             disabled={customers.length === 0}
             className="flex items-center gap-1.5 border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed text-[13px] font-semibold px-3.5 py-2 rounded-xl transition-colors cursor-pointer"
           >
-            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Export CSV
           </button>
           <button

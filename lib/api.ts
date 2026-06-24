@@ -71,7 +71,8 @@ export function apiSendMessage(
   conversationId: string,
   content: string,
   mediaUrl?: string,
-  messageType: import("@/types").Message["messageType"] = "TEXT"
+  messageType: import("@/types").Message["messageType"] = "TEXT",
+  quotedMessageId?: number | null,
 ) {
   return apiFetch<SendMessageResponse>("/api/messages/send", {
     method: "POST",
@@ -80,6 +81,7 @@ export function apiSendMessage(
       content,
       messageType,
       ...(mediaUrl ? { mediaUrl } : {}),
+      ...(quotedMessageId ? { quotedMessageId } : {}),
     }),
   });
 }
@@ -118,6 +120,19 @@ export function apiChangeConversationStatus(
       body: JSON.stringify({ status }),
     }
   );
+}
+
+export function apiDeleteCustomer(id: string | number) {
+  return apiFetch<{ success: boolean; message: string }>(`/api/customers/${id}`, { method: "DELETE" });
+}
+
+export function apiImportCustomers(file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  return apiFetch<{
+    success: boolean;
+    data: { total: number; created: number; skipped: number; errors: { row: number; reason: string }[] };
+  }>("/api/customers/import", { method: "POST", body: form });
 }
 
 export function apiGetCustomers(page = 1, limit = 20, search = "") {

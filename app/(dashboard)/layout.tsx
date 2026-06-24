@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { getSocket, disconnectSocket } from "@/lib/socket";
 import { apiGetMe, apiLogout, apiGetStatsOverview } from "@/lib/api";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 
 const COLLAPSED_W = "w-14";   // 56px icon rail
@@ -192,6 +193,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   };
 
   return (
+    <TooltipProvider>
     <>
       {/* ══════════════ MOBILE ══════════════ */}
 
@@ -319,5 +321,6 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         {children}
       </div>
     </>
+    </TooltipProvider>
   );
 }
