@@ -131,6 +131,7 @@ export default function CustomerDetailPage() {
   const [editEmail, setEditEmail] = useState("");
   const [editTags, setEditTags] = useState<string[]>([]);
   const [editNotes, setEditNotes] = useState("");
+  const [editOptedOut, setEditOptedOut] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -170,6 +171,7 @@ export default function CustomerDetailPage() {
     setEditEmail(customer.email ?? "");
     setEditTags([...(customer.tags ?? [])]);
     setEditNotes(customer.notes ?? "");
+    setEditOptedOut(customer.optedOut ?? false);
     setSaveError(null);
     setEditing(true);
   }
@@ -189,6 +191,7 @@ export default function CustomerDetailPage() {
         email: editEmail || undefined,
         tags: editTags,
         notes: editNotes || undefined,
+        optedOut: editOptedOut,
       });
       setCustomer(res.data);
       setEditing(false);
@@ -389,6 +392,40 @@ export default function CustomerDetailPage() {
                       <span className="text-gray-400 italic">No notes</span>
                     )}
                   </p>
+                )}
+              </Field>
+
+              {/* Marketing opt-out */}
+              <Field label="Marketing">
+                {editing ? (
+                  <button
+                    type="button"
+                    onClick={() => setEditOptedOut((v) => !v)}
+                    className="flex items-center gap-3 w-fit cursor-pointer"
+                  >
+                    <span
+                      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                        editOptedOut ? "bg-red-400" : "bg-[#3B694C]"
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                          editOptedOut ? "translate-x-[18px]" : "translate-x-1"
+                        }`}
+                      />
+                    </span>
+                    <span className="text-[13px] text-gray-700">
+                      {editOptedOut ? "Opted out of campaigns" : "Subscribed to campaigns"}
+                    </span>
+                  </button>
+                ) : customer.optedOut ? (
+                  <span className="inline-flex w-fit items-center bg-red-50 text-red-600 text-[12px] font-medium px-2.5 py-1 rounded-full">
+                    Opted out of campaigns
+                  </span>
+                ) : (
+                  <span className="inline-flex w-fit items-center bg-[#3B694C]/10 text-[#3B694C] text-[12px] font-medium px-2.5 py-1 rounded-full">
+                    Subscribed
+                  </span>
                 )}
               </Field>
 

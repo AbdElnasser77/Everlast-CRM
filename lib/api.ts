@@ -161,7 +161,7 @@ export function apiCreateCustomer(data: {
 
 export function apiUpdateCustomer(
   id: string | number,
-  data: Partial<{ name: string; email: string; tags: string[]; notes: string }>
+  data: Partial<{ name: string; email: string; tags: string[]; notes: string; optedOut: boolean }>
 ) {
   return apiFetch<CustomerResponse>(`/api/customers/${id}`, {
     method: "PUT",

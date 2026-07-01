@@ -12,6 +12,7 @@ export interface Customer {
   email: string | null;
   tags: string[];
   notes: string | null;
+  optedOut?: boolean;
   createdAt: string;
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import { Suspense, useEffect, useState, useRef, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Check, ArrowLeft, Loader2, Search, ChevronRight, ChevronLeft } from "lucide-react";
 import type { Template, Customer, Conversation } from "@/types";
@@ -13,6 +13,7 @@ import {
   apiUpdateCampaign,
   apiSendCampaignNow,
 } from "@/lib/api";
+import { useToast } from "@/components/ui/toast";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -693,8 +694,27 @@ function Step3({
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
+function NewCampaignLoading() {
+  return (
+    <div className="flex-1 flex items-center justify-center bg-white">
+      <svg className="w-10 h-10 animate-spin text-[#3B694C]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+        <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+      </svg>
+    </div>
+  );
+}
+
 export default function NewCampaignPage() {
+  return (
+    <Suspense fallback={<NewCampaignLoading />}>
+      <NewCampaignContent />
+    </Suspense>
+  );
+}
+
+function NewCampaignContent() {
   const router = useRouter();
+  const toast = useToast();
   const searchParams = useSearchParams();
   const draftIdParam = searchParams.get("draft");
   const [draftCampaignId, setDraftCampaignId] = useState<number | null>(
@@ -736,18 +756,57 @@ export default function NewCampaignPage() {
   }, [draftCampaignId]);
 
   useEffect(() => {
-    Promise.all([
-      apiGetCustomers(1, 200),
-      apiGetConversations(1, 500),
-    ]).then(([custRes, convRes]) => {
-      setCustomers(custRes.data);
-      const map = new Map<number, Conversation>();
-      convRes.data.forEach((conv) => {
-        if (conv.customerId != null) map.set(Number(conv.customerId), conv);
-      });
-      setConvMap(map);
-    }).catch(() => {}).finally(() => setLoadingCustomers(false));
-  }, []);
+    let cancelled = false;
+    (async () => {
+      const PAGE = 100; // backend caps page size at 100
+      const MAX_PAGES = 50; // safety cap → up to 5,000 recipients loaded
+      try {
+        // Load ALL customers across pages — otherwise recipients past the first
+        // page are silently unreachable and "Select all" would under-select.
+        const firstCust = await apiGetCustomers(1, PAGE);
+        const custItems = [...firstCust.data];
+        const custPages = Math.min(firstCust.pagination.totalPages, MAX_PAGES);
+        if (custPages > 1) {
+          const rest = await Promise.all(
+            Array.from({ length: custPages - 1 }, (_, i) => apiGetCustomers(i + 2, PAGE))
+          );
+          rest.forEach((r) => custItems.push(...r.data));
+        }
+
+        // Conversations (also paged) power the last-activity column and Lapsed filter.
+        const firstConv = await apiGetConversations(1, PAGE);
+        const convItems = [...firstConv.data];
+        const convPages = Math.min(firstConv.pagination.totalPages, MAX_PAGES);
+        if (convPages > 1) {
+          const rest = await Promise.all(
+            Array.from({ length: convPages - 1 }, (_, i) => apiGetConversations(i + 2, PAGE))
+          );
+          rest.forEach((r) => convItems.push(...r.data));
+        }
+
+        if (cancelled) return;
+        setCustomers(custItems);
+        const map = new Map<number, Conversation>();
+        convItems.forEach((conv) => {
+          if (conv.customerId != null) map.set(Number(conv.customerId), conv);
+        });
+        setConvMap(map);
+
+        if (firstCust.pagination.total > custItems.length) {
+          toast.info(
+            `Showing ${custItems.length} of ${firstCust.pagination.total} contacts. Use search or tags to reach the rest.`
+          );
+        }
+      } catch {
+        if (!cancelled) toast.error("Couldn't load contacts. Please refresh and try again.");
+      } finally {
+        if (!cancelled) setLoadingCustomers(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [toast]);
 
   useEffect(() => {
     if (selectedTemplate && !campaignName) {
@@ -789,9 +848,13 @@ export default function NewCampaignPage() {
       } else {
         await apiCreateCampaign(payload);
       }
-    } catch {}
-    router.push("/campaigns");
-    setSavingDraft(false);
+      toast.success("Draft saved.");
+      router.push("/campaigns");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't save draft. Please try again.");
+    } finally {
+      setSavingDraft(false);
+    }
   };
 
   const handleSubmit = async (scheduledAt?: string) => {
@@ -815,9 +878,10 @@ export default function NewCampaignPage() {
       if (!scheduledAt) {
         await apiSendCampaignNow(campaignId);
       }
+      toast.success(scheduledAt ? "Campaign scheduled." : "Campaign is sending now.");
       router.push("/campaigns");
     } catch (err) {
-      console.error("Campaign submit failed:", err);
+      toast.error(err instanceof Error ? err.message : "Failed to send campaign. Please try again.");
     } finally {
       setSubmitting(false);
     }

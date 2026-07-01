@@ -6,11 +6,10 @@ let socket: Socket | null = null;
 
 export function getSocket(): Socket {
   if (!socket) {
-    const token =
-      typeof window !== "undefined" ? localStorage.getItem("token") : null;
-
+    // Auth is carried by the httpOnly `token` cookie, sent on the handshake
+    // because of `withCredentials`. The server rejects unauthenticated sockets.
     socket = io(SOCKET_URL, {
-      auth: { token },
+      withCredentials: true,
       transports: ["websocket"],
       autoConnect: true,
     });
