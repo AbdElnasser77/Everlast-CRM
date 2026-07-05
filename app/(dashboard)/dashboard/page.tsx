@@ -334,7 +334,7 @@ export default function DashboardPage() {
           subGreen
         />
         <StatCard
-          title="New customers (7d)"
+          title="New contacts (7d)"
           value={loading ? "—" : (overview?.customers.newLast7Days ?? "—")}
           sub={overview ? `${overview.customers.total} total` : "—"}
         />

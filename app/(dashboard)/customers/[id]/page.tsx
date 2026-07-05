@@ -208,7 +208,7 @@ export default function CustomerDetailPage() {
   if (loading) {
     return (
       <div className="flex flex-1 items-center justify-center min-h-[60vh]">
-        <span className="text-[13px] text-gray-400">Loading customer…</span>
+        <span className="text-[13px] text-gray-400">Loading contact…</span>
       </div>
     );
   }
@@ -217,9 +217,9 @@ export default function CustomerDetailPage() {
   if (notFound || !customer) {
     return (
       <div className="flex flex-col flex-1 items-center justify-center gap-4 min-h-[60vh] px-6">
-        <p className="text-[15px] font-semibold text-gray-700">Customer not found</p>
+        <p className="text-[15px] font-semibold text-gray-700">Contact not found</p>
         <p className="text-[13px] text-gray-400 text-center max-w-xs">
-          The customer you are looking for does not exist or may have been removed.
+          The contact you are looking for does not exist or may have been removed.
         </p>
         <button
           type="button"
@@ -227,7 +227,7 @@ export default function CustomerDetailPage() {
           className="flex items-center gap-2 text-[13px] font-medium text-[#3B694C] hover:underline cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4" />
-          Back to Customers
+          Back to Contacts
         </button>
       </div>
     );
@@ -265,7 +265,7 @@ export default function CustomerDetailPage() {
             {/* Card header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <h2 className="text-[14px] font-semibold text-gray-800">
-                Customer Info
+                Contact Info
               </h2>
               {!editing ? (
                 <button
@@ -383,7 +383,7 @@ export default function CustomerDetailPage() {
                     value={editNotes}
                     onChange={(e) => setEditNotes(e.target.value)}
                     rows={4}
-                    placeholder="Add notes about this customer…"
+                    placeholder="Add notes about this contact…"
                     className="px-3 py-2 border border-gray-200 rounded-xl text-[13px] text-gray-700 placeholder:text-gray-400 outline-none focus:border-[#3B694C] transition-colors bg-white resize-y leading-relaxed"
                   />
                 ) : (

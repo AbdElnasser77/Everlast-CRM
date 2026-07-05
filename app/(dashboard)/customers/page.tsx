@@ -67,11 +67,6 @@ function formatRelativeTime(iso: string | null): string {
   return new Date(iso).toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
-function truncate(str: string | null, len = 60): string {
-  if (!str) return "";
-  return str.length > len ? str.slice(0, len) + "…" : str;
-}
-
 const TAG_PALETTES = [
   "bg-blue-100 text-blue-700",
   "bg-purple-100 text-purple-700",
@@ -96,35 +91,117 @@ function csvEscape(val: string): string {
   return val;
 }
 
-function parseCSV(text: string): Record<string, string>[] {
-  const lines = text.split(/\r?\n/).filter((l) => l.trim());
-  if (lines.length < 2) return [];
-  const headers = lines[0].split(",").map((h) => h.trim().toLowerCase().replace(/^"|"$/g, ""));
-  return lines.slice(1).map((line) => {
-    const vals: string[] = [];
-    let inQuote = false;
-    let cur = "";
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (ch === '"') {
-        if (inQuote && line[i + 1] === '"') { cur += '"'; i++; }
-        else inQuote = !inQuote;
-      } else if (ch === "," && !inQuote) {
-        vals.push(cur); cur = "";
-      } else {
-        cur += ch;
-      }
+function parseCSVLine(line: string): string[] {
+  const vals: string[] = [];
+  let inQuote = false;
+  let cur = "";
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuote && line[i + 1] === '"') { cur += '"'; i++; }
+      else inQuote = !inQuote;
+    } else if (ch === "," && !inQuote) {
+      vals.push(cur); cur = "";
+    } else {
+      cur += ch;
     }
-    vals.push(cur);
-    const row: Record<string, string> = {};
-    headers.forEach((h, i) => { row[h] = (vals[i] ?? "").trim(); });
-    return row;
-  });
+  }
+  vals.push(cur);
+  return vals.map((v) => v.trim().replace(/^"|"$/g, ""));
+}
+
+// Parse CSV preserving original header casing/order for the column-mapping UI.
+function parseCSVRows(text: string): { headers: string[]; rows: string[][] } {
+  const lines = text.split(/\r?\n/).filter((l) => l.trim());
+  if (lines.length === 0) return { headers: [], rows: [] };
+  const headers = parseCSVLine(lines[0]);
+  const rows = lines.slice(1).map(parseCSVLine);
+  return { headers, rows };
+}
+
+// System fields the importer can map to. `csv` is the canonical column name the
+// backend importer expects; `aliases` drive header auto-detection.
+interface ImportField {
+  key: string;
+  label: string;
+  csv: string;
+  required?: boolean;
+  aliases: string[];
+}
+
+const IMPORT_FIELDS: ImportField[] = [
+  { key: "chart_number", label: "Chart Number", csv: "chart_number", aliases: ["chartnumber", "chart", "chartno", "chartid", "mrn", "medicalrecord", "recordnumber", "file", "fileno", "filenumber"] },
+  { key: "name", label: "Full Name", csv: "name", aliases: ["name", "fullname", "patientname", "customername", "patient", "client"] },
+  { key: "phone", label: "Mobile", csv: "phone", required: true, aliases: ["phone", "mobile", "mobilenumber", "phonenumber", "cell", "cellphone", "whatsapp", "contact", "tel", "telephone", "number"] },
+  { key: "email", label: "Email", csv: "email", aliases: ["email", "emailaddress", "mail", "e-mail"] },
+  { key: "nationality", label: "Nationality", csv: "nationality", aliases: ["nationality", "nation", "country", "citizenship"] },
+  { key: "gender", label: "Gender", csv: "gender", aliases: ["gender", "sex"] },
+  { key: "date_of_birth", label: "Date of Birth", csv: "date_of_birth", aliases: ["dateofbirth", "dob", "birthdate", "birthday", "birth"] },
+  { key: "join_date", label: "Join Date", csv: "join_date", aliases: ["joindate", "datejoined", "registrationdate", "membersince", "registered", "enrolled", "enrollmentdate"] },
+  { key: "departments", label: "Departments", csv: "departments", aliases: ["departments", "department", "dept", "depts", "service", "services", "treatment", "treatments"] },
+  { key: "tags", label: "Tags", csv: "tags", aliases: ["tags", "tag", "labels", "label", "segment"] },
+  { key: "notes", label: "Notes", csv: "notes", aliases: ["notes", "note", "comment", "comments", "remark", "remarks"] },
+];
+
+const normalizeHeader = (h: string) => h.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+// Best-guess mapping: field key → header index (or -1 to skip).
+function autoMapHeaders(headers: string[]): Record<string, number> {
+  const norm = headers.map(normalizeHeader);
+  const mapping: Record<string, number> = {};
+  const used = new Set<number>();
+  for (const field of IMPORT_FIELDS) {
+    let idx = -1;
+    // 1) exact alias match, 2) header contains/contained-by an alias
+    idx = norm.findIndex((h, i) => !used.has(i) && field.aliases.includes(h));
+    if (idx === -1) idx = norm.findIndex((h, i) => !used.has(i) && field.aliases.some((a) => h.includes(a) || a.includes(h)));
+    mapping[field.key] = idx;
+    if (idx >= 0) used.add(idx);
+  }
+  return mapping;
+}
+
+// Re-serialize the mapped columns into a canonical CSV for the backend importer.
+function buildMappedCSV(headers: string[], rows: string[][], mapping: Record<string, number>): string {
+  const fields = IMPORT_FIELDS.filter((f) => mapping[f.key] >= 0);
+  const headerLine = fields.map((f) => f.csv).join(",");
+  const dataLines = rows.map((row) => fields.map((f) => csvEscape(row[mapping[f.key]] ?? "")).join(","));
+  return [headerLine, ...dataLines].join("\n");
 }
 
 function formatMemberSince(iso: string): string {
   return new Date(iso).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
 }
+
+// ─── Patient field helpers ─────────────────────────────────────────────────────
+
+function computeAge(iso: string | null): number | null {
+  if (!iso) return null;
+  const dob = new Date(iso);
+  if (isNaN(dob.getTime())) return null;
+  const now = new Date();
+  let age = now.getFullYear() - dob.getFullYear();
+  const m = now.getMonth() - dob.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < dob.getDate())) age--;
+  return age >= 0 && age < 200 ? age : null;
+}
+
+function formatDate(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleDateString([], { year: "numeric", month: "short", day: "numeric" });
+}
+
+// Value for <input type="date"> (YYYY-MM-DD)
+function toDateInput(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  return d.toISOString().slice(0, 10);
+}
+
+const GENDER_LABEL: Record<string, string> = { MALE: "Male", FEMALE: "Female" };
 
 function getWindowStatus(conv: Conversation | undefined): { label: string; open: boolean } {
   if (!conv?.lastCustomerMessageAt) return { label: "No messages yet", open: false };
@@ -145,7 +222,10 @@ const STATUS_STYLES: Record<string, string> = {
 
 // ─── Customer Detail Drawer ───────────────────────────────────────────────────
 
-type EditingField = "name" | "email" | "tags" | "notes" | null;
+type EditingField =
+  | "name" | "email" | "tags" | "notes"
+  | "chartNumber" | "nationality" | "gender" | "dateOfBirth" | "joinDate" | "departments"
+  | null;
 
 interface DetailDrawerProps {
   customer: Customer | null;
@@ -167,6 +247,9 @@ function CustomerDetailDrawer({ customer, conv, onClose, onSaved, onDeleted }: D
   const [editValue, setEditValue] = useState("");
   const [editTags, setEditTags] = useState<string[]>([]);
   const [editTagInput, setEditTagInput] = useState("");
+  const [editGender, setEditGender] = useState<"MALE" | "FEMALE" | "">("");
+  const [editDepts, setEditDepts] = useState<string[]>([]);
+  const [editDeptInput, setEditDeptInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -198,11 +281,18 @@ function CustomerDetailDrawer({ customer, conv, onClose, onSaved, onDeleted }: D
     if (field === "name") setEditValue(c.name ?? "");
     else if (field === "email") setEditValue(c.email ?? "");
     else if (field === "notes") setEditValue(c.notes ?? "");
+    else if (field === "chartNumber") setEditValue(c.chartNumber ?? "");
+    else if (field === "nationality") setEditValue(c.nationality ?? "");
+    else if (field === "dateOfBirth") setEditValue(toDateInput(c.dateOfBirth));
+    else if (field === "joinDate") setEditValue(toDateInput(c.joinDate));
+    else if (field === "gender") setEditGender(c.gender ?? "");
     else if (field === "tags") { setEditTags([...(c.tags ?? [])]); setEditTagInput(""); }
+    else if (field === "departments") { setEditDepts([...(c.departments ?? [])]); setEditDeptInput(""); }
   }
 
   function cancelEdit() {
-    setEditing(null); setEditValue(""); setEditTags([]); setEditTagInput(""); setSaveError(null);
+    setEditing(null); setEditValue(""); setEditTags([]); setEditTagInput("");
+    setEditGender(""); setEditDepts([]); setEditDeptInput(""); setSaveError(null);
   }
 
   async function saveField() {
@@ -221,11 +311,22 @@ function CustomerDetailDrawer({ customer, conv, onClose, onSaved, onDeleted }: D
     }
     setSaving(true); setSaveError(null);
     try {
-      const payload: Partial<{ name: string; email: string; tags: string[]; notes: string }> = {};
+      const payload: Partial<{
+        name: string; email: string; tags: string[]; notes: string;
+        chartNumber: string | null; nationality: string | null;
+        gender: "MALE" | "FEMALE" | null; dateOfBirth: string | null;
+        joinDate: string | null; departments: string[];
+      }> = {};
       if (editing === "name") payload.name = editValue.trim() || undefined;
       else if (editing === "email") payload.email = editValue.trim() || undefined;
       else if (editing === "notes") payload.notes = editValue.trim() || undefined;
       else if (editing === "tags") payload.tags = editTags;
+      else if (editing === "chartNumber") payload.chartNumber = editValue.trim() || null;
+      else if (editing === "nationality") payload.nationality = editValue.trim() || null;
+      else if (editing === "dateOfBirth") payload.dateOfBirth = editValue || null;
+      else if (editing === "joinDate") payload.joinDate = editValue || null;
+      else if (editing === "gender") payload.gender = editGender || null;
+      else if (editing === "departments") payload.departments = editDepts;
       const res = await apiUpdateCustomer(id, payload);
       setDetail(res.data);
       onSaved(res.data);
@@ -350,6 +451,129 @@ function CustomerDetailDrawer({ customer, conv, onClose, onSaved, onDeleted }: D
 
             {/* Body */}
             <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb]:rounded-full">
+
+              {/* Patient Info */}
+              <div className="space-y-4">
+                <p className="text-[12px] font-bold text-gray-900 uppercase tracking-wider">Patient Info</p>
+
+                {/* Chart Number */}
+                <div>
+                  <FieldLabel label="Chart Number" field="chartNumber" />
+                  {editing === "chartNumber" ? (
+                    <div>
+                      <input autoFocus type="text" value={editValue} onChange={(e) => setEditValue(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") saveField(); if (e.key === "Escape") cancelEdit(); }} placeholder="e.g. CH-00123" className="w-full text-[14px] text-gray-800 border border-[#3B694C] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[#3B694C]/20 placeholder:text-gray-300" />
+                      <EditActions />
+                    </div>
+                  ) : (
+                    <p className="text-[14px] text-gray-700 font-mono">{c.chartNumber || <span className="text-gray-300 font-sans">—</span>}</p>
+                  )}
+                </div>
+
+                {/* Gender */}
+                <div>
+                  <FieldLabel label="Gender" field="gender" />
+                  {editing === "gender" ? (
+                    <div>
+                      <div className="flex gap-2">
+                        {(["MALE", "FEMALE"] as const).map((g) => (
+                          <button key={g} type="button" onClick={() => setEditGender((prev) => (prev === g ? "" : g))}
+                            className={`flex-1 py-2 rounded-lg border text-[13px] font-semibold transition-colors cursor-pointer ${editGender === g ? "border-[#3B694C] bg-[#EEF6F1] text-[#3B694C]" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}>
+                            {GENDER_LABEL[g]}
+                          </button>
+                        ))}
+                      </div>
+                      <EditActions />
+                    </div>
+                  ) : (
+                    <p className="text-[14px] text-gray-700">{c.gender ? GENDER_LABEL[c.gender] : <span className="text-gray-300">—</span>}</p>
+                  )}
+                </div>
+
+                {/* Date of Birth */}
+                <div>
+                  <FieldLabel label="Date of Birth" field="dateOfBirth" />
+                  {editing === "dateOfBirth" ? (
+                    <div>
+                      <input autoFocus type="date" value={editValue} onChange={(e) => setEditValue(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") saveField(); if (e.key === "Escape") cancelEdit(); }} className="w-full text-[14px] text-gray-800 border border-[#3B694C] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[#3B694C]/20" />
+                      <EditActions />
+                    </div>
+                  ) : (
+                    <p className="text-[14px] text-gray-700">
+                      {c.dateOfBirth ? (
+                        <>{formatDate(c.dateOfBirth)}{computeAge(c.dateOfBirth) != null && <span className="text-gray-400"> · {computeAge(c.dateOfBirth)} yrs</span>}</>
+                      ) : <span className="text-gray-300">—</span>}
+                    </p>
+                  )}
+                </div>
+
+                {/* Nationality */}
+                <div>
+                  <FieldLabel label="Nationality" field="nationality" />
+                  {editing === "nationality" ? (
+                    <div>
+                      <input autoFocus type="text" value={editValue} onChange={(e) => setEditValue(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") saveField(); if (e.key === "Escape") cancelEdit(); }} placeholder="e.g. Egyptian" className="w-full text-[14px] text-gray-800 border border-[#3B694C] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[#3B694C]/20 placeholder:text-gray-300" />
+                      <EditActions />
+                    </div>
+                  ) : (
+                    <p className="text-[14px] text-gray-700">{c.nationality || <span className="text-gray-300">—</span>}</p>
+                  )}
+                </div>
+
+                {/* Join Date */}
+                <div>
+                  <FieldLabel label="Join Date" field="joinDate" />
+                  {editing === "joinDate" ? (
+                    <div>
+                      <input autoFocus type="date" value={editValue} onChange={(e) => setEditValue(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") saveField(); if (e.key === "Escape") cancelEdit(); }} className="w-full text-[14px] text-gray-800 border border-[#3B694C] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[#3B694C]/20" />
+                      <EditActions />
+                    </div>
+                  ) : (
+                    <p className="text-[14px] text-gray-700">{c.joinDate ? formatDate(c.joinDate) : <span className="text-gray-300">—</span>}</p>
+                  )}
+                </div>
+
+                {/* Departments */}
+                <div>
+                  <FieldLabel label="Departments" field="departments" />
+                  {editing === "departments" ? (
+                    <div>
+                      <div className="border border-[#3B694C] rounded-lg px-3 py-2 focus-within:ring-2 focus-within:ring-[#3B694C]/20 bg-white">
+                        {editDepts.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 mb-2">
+                            {editDepts.map((dep, idx) => (
+                              <span key={dep} className={`inline-flex items-center gap-1 text-[12px] font-medium px-2 py-0.5 rounded-full ${idx === 0 ? "bg-[#3B694C] text-white" : "bg-gray-100 text-gray-600"}`}>
+                                {idx === 0 && <span className="text-[10px] opacity-80">TOP</span>}
+                                {dep}
+                                <button type="button" onClick={() => setEditDepts((p) => p.filter((d) => d !== dep))} className="w-3.5 h-3.5 flex items-center justify-center rounded-full hover:bg-black/10 cursor-pointer leading-none">×</button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        <input autoFocus={editDepts.length === 0} type="text" value={editDeptInput} onChange={(e) => setEditDeptInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") { e.preventDefault(); const d = editDeptInput.trim(); if (d && !editDepts.includes(d)) setEditDepts((p) => [...p, d]); setEditDeptInput(""); }
+                            if (e.key === "Escape") cancelEdit();
+                          }}
+                          placeholder="Add in priority order…" className="w-full text-[13px] text-gray-700 placeholder:text-gray-300 outline-none bg-transparent" />
+                      </div>
+                      <EditActions />
+                    </div>
+                  ) : (
+                    c.departments && c.departments.length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {c.departments.map((dep, idx) => (
+                          <span key={dep} className={`text-[12px] font-medium px-2.5 py-0.5 rounded-full ${idx === 0 ? "bg-[#3B694C] text-white" : "bg-gray-100 text-gray-600"}`}>
+                            {idx === 0 ? `Top: ${dep}` : dep}
+                          </span>
+                        ))}
+                      </div>
+                    ) : <p className="text-[13px] text-gray-300">—</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Divider */}
+              <div className="border-t border-gray-100" />
 
               {/* Contact Info */}
               <div className="space-y-4">
@@ -504,7 +728,7 @@ function CustomerDetailDrawer({ customer, conv, onClose, onSaved, onDeleted }: D
 
               {confirmDelete ? (
                 <div className="space-y-2">
-                  <p className="text-[12px] text-red-500 font-medium">Delete this customer? This cannot be undone.</p>
+                  <p className="text-[12px] text-red-500 font-medium">Delete this contact? This cannot be undone.</p>
                   {deleteError && <p className="text-[11px] text-red-500">{deleteError}</p>}
                   <div className="flex gap-2">
                     <button
@@ -550,7 +774,7 @@ function CustomerDetailDrawer({ customer, conv, onClose, onSaved, onDeleted }: D
                   className="flex items-center gap-1.5 text-[12px] font-medium text-red-400 hover:text-red-600 transition-colors cursor-pointer"
                 >
                   <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-                  Delete customer
+                  Delete contact
                 </button>
               )}
             </div>
@@ -576,12 +800,14 @@ function SkeletonRow() {
           </div>
         </div>
       </td>
-      <td className="px-4 py-3.5"><div className="h-3 bg-gray-100 rounded w-32" /></td>
-      <td className="px-4 py-3.5"><div className="flex gap-1.5"><div className="h-5 bg-gray-100 rounded-full w-14" /><div className="h-5 bg-gray-100 rounded-full w-10" /></div></td>
-      <td className="px-4 py-3.5"><div className="h-3 bg-gray-100 rounded w-40" /></td>
+      <td className="px-4 py-3.5"><div className="h-3 bg-gray-100 rounded w-12" /></td>
+      <td className="px-4 py-3.5"><div className="h-3 bg-gray-100 rounded w-8" /></td>
+      <td className="px-4 py-3.5"><div className="h-3 bg-gray-100 rounded w-16" /></td>
       <td className="px-4 py-3.5"><div className="h-5 bg-gray-100 rounded-full w-20" /></td>
+      <td className="px-4 py-3.5"><div className="h-3 bg-gray-100 rounded w-20" /></td>
+      <td className="px-4 py-3.5"><div className="h-3 bg-gray-100 rounded w-32" /></td>
       <td className="px-4 py-3.5"><div className="h-3 bg-gray-100 rounded w-24" /></td>
-      <td className="px-4 py-3.5"><div className="flex gap-2"><div className="h-7 bg-gray-100 rounded-lg w-20" /><div className="h-7 bg-gray-100 rounded-lg w-14" /></div></td>
+      <td className="px-4 py-3.5"><div className="flex gap-2"><div className="h-7 bg-gray-100 rounded-lg w-20" /></div></td>
     </tr>
   );
 }
@@ -639,7 +865,168 @@ function ImportResultModal({ result, onClose }: { result: ImportResult; onClose:
   );
 }
 
-// ─── New Customer Drawer ──────────────────────────────────────────────────────
+// ─── Column Mapping Modal (CSV import) ────────────────────────────────────────
+
+interface MappingData {
+  headers: string[];
+  rows: string[][];
+  fileName: string;
+}
+
+function ColumnMappingModal({
+  data,
+  onClose,
+  onImported,
+}: {
+  data: MappingData;
+  onClose: () => void;
+  onImported: (result: ImportResult) => void;
+}) {
+  const [mapping, setMapping] = useState<Record<string, number>>(() => autoMapHeaders(data.headers));
+  const [importing, setImporting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const phoneMapped = mapping["phone"] >= 0;
+  const mappedFields = IMPORT_FIELDS.filter((f) => mapping[f.key] >= 0);
+  const preview = data.rows.slice(0, 5);
+
+  function setField(key: string, idx: number) {
+    setMapping((m) => ({ ...m, [key]: idx }));
+    setError(null);
+  }
+
+  async function handleImport() {
+    if (!phoneMapped) { setError("Map the Mobile column — it's required."); return; }
+    setImporting(true); setError(null);
+    try {
+      const csv = buildMappedCSV(data.headers, data.rows, mapping);
+      const file = new File([csv], "mapped-import.csv", { type: "text/csv" });
+      const res = await apiImportCustomers(file);
+      onImported(res.data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Import failed");
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 px-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[880px] max-h-[88vh] flex flex-col">
+        {/* Header */}
+        <div className="shrink-0 flex items-start justify-between px-6 pt-5 pb-4 border-b border-gray-100">
+          <div className="min-w-0">
+            <h3 className="text-[16px] font-bold text-gray-900">Map your columns</h3>
+            <p className="text-[12px] text-gray-400 mt-0.5 truncate">
+              {data.fileName} · {data.rows.length} row{data.rows.length !== 1 ? "s" : ""} · {data.headers.length} column{data.headers.length !== 1 ? "s" : ""} detected
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors cursor-pointer shrink-0">
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb]:rounded-full">
+          {/* Field mapping */}
+          <div>
+            <p className="text-[12px] font-bold text-gray-900 uppercase tracking-wider mb-3">Match fields to your columns</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+              {IMPORT_FIELDS.map((f) => {
+                const missing = f.required && mapping[f.key] < 0;
+                return (
+                  <div key={f.key} className="flex items-center gap-3">
+                    <label className="text-[13px] font-medium text-gray-700 w-28 shrink-0">
+                      {f.label}{f.required && <span className="text-red-500"> *</span>}
+                    </label>
+                    <div className="relative flex-1">
+                      <select
+                        value={mapping[f.key]}
+                        onChange={(e) => setField(f.key, Number(e.target.value))}
+                        className={`w-full text-[13px] rounded-lg border px-2.5 py-2 pr-7 outline-none cursor-pointer bg-white appearance-none transition-colors ${
+                          missing ? "border-red-300 bg-red-50" : "border-gray-200"
+                        } focus:ring-2 focus:ring-[#3B694C]/20 focus:border-[#3B694C]`}
+                      >
+                        <option value={-1}>— Skip —</option>
+                        {data.headers.map((h, i) => (
+                          <option key={i} value={i}>{h || `Column ${i + 1}`}</option>
+                        ))}
+                      </select>
+                      <svg className="w-3.5 h-3.5 text-gray-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="m6 9 6 6 6-6"/></svg>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Live preview */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[12px] font-bold text-gray-900 uppercase tracking-wider">Live preview</p>
+              <p className="text-[11px] text-gray-400">First {preview.length} of {data.rows.length} row{data.rows.length !== 1 ? "s" : ""}</p>
+            </div>
+            {mappedFields.length === 0 ? (
+              <p className="text-[13px] text-gray-400 py-6 text-center border border-dashed border-gray-200 rounded-xl">Map at least one field to preview your data.</p>
+            ) : (
+              <div className="overflow-x-auto border border-gray-100 rounded-xl [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb]:rounded-full">
+                <table className="w-full border-collapse text-left">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-100">
+                      {mappedFields.map((f) => (
+                        <th key={f.key} className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider px-3 py-2 whitespace-nowrap">
+                          {f.label}{f.required && <span className="text-red-400"> *</span>}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.map((row, ri) => (
+                      <tr key={ri} className="border-b border-gray-50 last:border-0">
+                        {mappedFields.map((f) => (
+                          <td key={f.key} className="px-3 py-2">
+                            <span className="block text-[12px] text-gray-700 max-w-[200px] truncate">
+                              {row[mapping[f.key]] || <span className="text-gray-300">—</span>}
+                            </span>
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="shrink-0 border-t border-gray-100 px-6 py-4 flex items-center justify-between gap-3">
+          <p className="text-[12px] text-red-500 min-h-[16px]">
+            {error || (!phoneMapped ? "Map the Mobile column — it's required." : "")}
+          </p>
+          <div className="flex gap-3 shrink-0">
+            <button type="button" onClick={onClose} disabled={importing} className="py-2.5 px-4 rounded-xl border border-gray-200 text-[13px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-60 transition-colors cursor-pointer">
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleImport}
+              disabled={importing || !phoneMapped}
+              className="py-2.5 px-4 rounded-xl bg-[#3B694C] hover:bg-[#2f5840] disabled:opacity-50 disabled:cursor-not-allowed text-[13px] font-semibold text-white transition-colors cursor-pointer flex items-center justify-center gap-2 whitespace-nowrap"
+            >
+              {importing && (
+                <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+              )}
+              {importing ? "Importing…" : `Import ${data.rows.length} row${data.rows.length !== 1 ? "s" : ""}`}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── New Contact Drawer ──────────────────────────────────────────────────────
 
 interface NewDrawerProps {
   open: boolean;
@@ -654,6 +1041,14 @@ function NewCustomerDrawer({ open, onClose, onCreated }: NewDrawerProps) {
   const [notes, setNotes] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
+  // Patient fields
+  const [chartNumber, setChartNumber] = useState("");
+  const [nationality, setNationality] = useState("");
+  const [gender, setGender] = useState<"MALE" | "FEMALE" | "">("");
+  const [dateOfBirth, setDateOfBirth] = useState("");
+  const [joinDate, setJoinDate] = useState("");
+  const [departments, setDepartments] = useState<string[]>([]);
+  const [deptInput, setDeptInput] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -667,6 +1062,8 @@ function NewCustomerDrawer({ open, onClose, onCreated }: NewDrawerProps) {
     if (open) {
       setPhone(""); setName(""); setEmail(""); setNotes("");
       setTags([]); setTagInput(""); setApiError(null); setErrors({});
+      setChartNumber(""); setNationality(""); setGender("");
+      setDateOfBirth(""); setJoinDate(""); setDepartments([]); setDeptInput("");
       setTimeout(() => phoneRef.current?.focus(), 150);
     }
   }, [open]);
@@ -694,10 +1091,16 @@ function NewCustomerDrawer({ open, onClose, onCreated }: NewDrawerProps) {
         ...(email.trim() ? { email: email.trim() } : {}),
         ...(notes.trim() ? { notes: notes.trim() } : {}),
         ...(tags.length > 0 ? { tags } : {}),
+        ...(chartNumber.trim() ? { chartNumber: chartNumber.trim() } : {}),
+        ...(nationality.trim() ? { nationality: nationality.trim() } : {}),
+        ...(gender ? { gender } : {}),
+        ...(dateOfBirth ? { dateOfBirth } : {}),
+        ...(joinDate ? { joinDate } : {}),
+        ...(departments.length > 0 ? { departments } : {}),
       });
       onCreated(); onClose();
     } catch (err) {
-      setApiError(err instanceof Error ? err.message : "Failed to create customer");
+      setApiError(err instanceof Error ? err.message : "Failed to create contact");
     } finally {
       setSubmitting(false);
     }
@@ -716,16 +1119,16 @@ function NewCustomerDrawer({ open, onClose, onCreated }: NewDrawerProps) {
       <div className={`relative bg-white rounded-t-2xl shadow-2xl px-5 pt-4 pb-10 transition-transform duration-300 ease-out max-h-[92dvh] overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb]:rounded-full ${open ? "translate-y-0" : "translate-y-full"}`}>
         <div className="w-9 h-1 rounded-full bg-gray-200 mx-auto mb-5" />
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-[17px] font-bold text-gray-900">New Customer</h2>
+          <h2 className="text-[17px] font-bold text-gray-900">New Contact</h2>
           <button type="button" onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors cursor-pointer">
             <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Phone */}
+          {/* Mobile */}
           <div className="space-y-1.5">
-            <label className="text-[13px] font-medium text-gray-700">Phone <span className="text-red-500">*</span></label>
+            <label className="text-[13px] font-medium text-gray-700">Mobile <span className="text-red-500">*</span></label>
             <input
               ref={phoneRef}
               type="tel"
@@ -758,11 +1161,93 @@ function NewCustomerDrawer({ open, onClose, onCreated }: NewDrawerProps) {
             {errors.name && <p className="text-[12px] text-red-500">{errors.name}</p>}
           </div>
 
+          {/* Chart Number */}
+          <div className="space-y-1.5">
+            <label className="text-[13px] font-medium text-gray-700">Chart Number</label>
+            <input type="text" value={chartNumber} onChange={(e) => setChartNumber(e.target.value)} placeholder="e.g. CH-00123" className={inputCls("chartNumber")} />
+          </div>
+
           {/* Email */}
           <div className="space-y-1.5">
             <label className="text-[13px] font-medium text-gray-700">Email</label>
             <input type="text" value={email} onChange={(e) => { setEmail(e.target.value); setErrors((p) => ({ ...p, email: "" })); }} placeholder="name@example.com" className={inputCls("email")} />
             {errors.email && <p className="text-[12px] text-red-500">{errors.email}</p>}
+          </div>
+
+          {/* Gender + Date of birth */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-[13px] font-medium text-gray-700">Gender</label>
+              <div className="flex gap-2">
+                {(["MALE", "FEMALE"] as const).map((g) => (
+                  <button
+                    key={g}
+                    type="button"
+                    onClick={() => setGender((prev) => (prev === g ? "" : g))}
+                    className={`flex-1 py-3 rounded-xl border text-[13px] font-semibold transition-colors cursor-pointer ${
+                      gender === g
+                        ? "border-[#3B694C] bg-[#EEF6F1] text-[#3B694C]"
+                        : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                    }`}
+                  >
+                    {GENDER_LABEL[g]}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[13px] font-medium text-gray-700">Date of Birth</label>
+              <input type="date" value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} className={inputCls("dateOfBirth")} />
+              {dateOfBirth && computeAge(dateOfBirth) != null && (
+                <p className="text-[12px] text-gray-400">Age: {computeAge(dateOfBirth)}</p>
+              )}
+            </div>
+          </div>
+
+          {/* Nationality + Join date */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-[13px] font-medium text-gray-700">Nationality</label>
+              <input type="text" value={nationality} onChange={(e) => setNationality(e.target.value)} placeholder="e.g. Egyptian" className={inputCls("nationality")} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[13px] font-medium text-gray-700">Join Date</label>
+              <input type="date" value={joinDate} onChange={(e) => setJoinDate(e.target.value)} className={inputCls("joinDate")} />
+            </div>
+          </div>
+
+          {/* Departments (ordered — first = top department) */}
+          <div className="space-y-1.5">
+            <label className="text-[13px] font-medium text-gray-700">Departments <span className="text-gray-400 font-normal">— first is the top department</span></label>
+            <div className="border border-gray-200 rounded-xl px-3 py-2.5 bg-white focus-within:ring-2 focus-within:ring-[#3B694C]/20 focus-within:border-[#3B694C] transition-colors">
+              {departments.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {departments.map((dep, idx) => (
+                    <span key={dep} className={`inline-flex items-center gap-1 text-[12px] font-medium px-2 py-0.5 rounded-full ${idx === 0 ? "bg-[#3B694C] text-white" : "bg-gray-100 text-gray-600"}`}>
+                      {idx === 0 && <span className="text-[10px] opacity-80">TOP</span>}
+                      {dep}
+                      <button type="button" onClick={() => setDepartments((p) => p.filter((d) => d !== dep))} className="w-3.5 h-3.5 flex items-center justify-center rounded-full hover:bg-black/10 transition-colors cursor-pointer leading-none">×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <input
+                type="text"
+                value={deptInput}
+                onChange={(e) => setDeptInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    const d = deptInput.trim();
+                    if (!d) return;
+                    if (!departments.includes(d)) setDepartments((p) => [...p, d]);
+                    setDeptInput("");
+                  }
+                }}
+                placeholder="Type and press Enter (add in priority order)"
+                className="w-full text-[13px] text-gray-700 placeholder:text-gray-400 outline-none bg-transparent"
+              />
+            </div>
           </div>
 
           {/* Tags */}
@@ -816,7 +1301,7 @@ function NewCustomerDrawer({ open, onClose, onCreated }: NewDrawerProps) {
 
           <div className="flex gap-3 pt-1">
             <button type="button" onClick={onClose} className="flex-1 py-3 rounded-xl border border-gray-200 text-[13px] font-semibold text-gray-600 hover:bg-gray-50 transition-colors cursor-pointer">Cancel</button>
-            <button type="submit" disabled={submitting} className="flex-1 py-3 rounded-xl bg-[#3B694C] hover:bg-[#2f5840] disabled:opacity-60 disabled:cursor-not-allowed text-[13px] font-semibold text-white transition-colors cursor-pointer">{submitting ? "Creating…" : "Create Customer"}</button>
+            <button type="submit" disabled={submitting} className="flex-1 py-3 rounded-xl bg-[#3B694C] hover:bg-[#2f5840] disabled:opacity-60 disabled:cursor-not-allowed text-[13px] font-semibold text-white transition-colors cursor-pointer">{submitting ? "Creating…" : "Create Contact"}</button>
           </div>
         </form>
       </div>
@@ -899,7 +1384,7 @@ function SendTemplateDrawer({ customer, onClose, onSent }: SendTemplateDrawerPro
             <div className="min-w-0">
               <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Send Template</p>
               <p className="text-[16px] font-bold text-gray-900 truncate">
-                {customer?.name || customer?.phone || "Customer"}
+                {customer?.name || customer?.phone || "Contact"}
               </p>
             </div>
             <button
@@ -1036,6 +1521,7 @@ export default function CRMPage() {
   const [templateTarget, setTemplateTarget] = useState<Customer | null>(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [mappingData, setMappingData] = useState<MappingData | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1132,15 +1618,24 @@ export default function CRMPage() {
 
   // ─ Export CSV ─────────────────────────────────────────────────────────────
   function downloadCustomersCSV(list: Customer[], filenamePrefix: string) {
-    const header = ["id", "name", "phone", "email", "tags", "notes", "createdAt", "lastMessage", "waitingResponse", "assignedAgent"];
+    const header = ["id", "chartNumber", "name", "mobile", "email", "nationality", "gender", "dateOfBirth", "age", "joinDate", "departments", "topDepartment", "tags", "notes", "createdAt", "lastMessage", "waitingResponse", "assignedAgent"];
     const rows = list.map((c) => {
       const id = c._id ?? c.id ?? "";
       const conv = convMap.get(Number(id)) ?? convMap.get(String(id));
+      const age = computeAge(c.dateOfBirth);
       return [
         String(id),
+        c.chartNumber ?? "",
         c.name ?? "",
         c.phone,
         c.email ?? "",
+        c.nationality ?? "",
+        c.gender ? GENDER_LABEL[c.gender] : "",
+        c.dateOfBirth ? toDateInput(c.dateOfBirth) : "",
+        age != null ? String(age) : "",
+        c.joinDate ? toDateInput(c.joinDate) : "",
+        (c.departments ?? []).join(";"),
+        c.departments?.[0] ?? "",
         (c.tags ?? []).join(";"),
         c.notes ?? "",
         c.createdAt,
@@ -1160,7 +1655,7 @@ export default function CRMPage() {
   }
 
   function exportCSV() {
-    downloadCustomersCSV(customers, "customers");
+    downloadCustomersCSV(customers, "contacts");
   }
 
   // ─ Bulk selection helpers ──────────────────────────────────────────────────
@@ -1245,14 +1740,14 @@ export default function CRMPage() {
       clearSelection();
       await fetchPage1(searchRef.current);
     } catch (err) {
-      setBulkDeleteError(err instanceof Error ? err.message : "Failed to delete customers");
+      setBulkDeleteError(err instanceof Error ? err.message : "Failed to delete contacts");
     } finally {
       setBulkDeleting(false);
     }
   }
 
   function exportSelectedCSV() {
-    downloadCustomersCSV([...selectedMap.values()], "customers-selected");
+    downloadCustomersCSV([...selectedMap.values()], "contacts-selected");
   }
 
   // Hand the selected customers off to the campaign wizard as pre-seeded
@@ -1265,18 +1760,22 @@ export default function CRMPage() {
     router.push(`/campaigns/new?recipients=${ids.join(",")}`);
   }
 
-  // ─ Import CSV ─────────────────────────────────────────────────────────────
+  // ─ Import CSV: parse client-side, then open the column-mapping step ─────────
   async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = "";
     setImporting(true);
     try {
-      const res = await apiImportCustomers(file);
-      setImportResult(res.data);
-      fetchPage1(searchRef.current);
+      const text = await file.text();
+      const { headers, rows } = parseCSVRows(text);
+      if (headers.length === 0 || rows.length === 0) {
+        setImportResult({ total: 0, created: 0, skipped: 0, errors: [{ row: 0, reason: "The CSV is empty or has no data rows." }] });
+        return;
+      }
+      setMappingData({ headers, rows, fileName: file.name });
     } catch (err) {
-      setImportResult({ total: 0, created: 0, skipped: 0, errors: [{ row: 0, reason: err instanceof Error ? err.message : "Import failed" }] });
+      setImportResult({ total: 0, created: 0, skipped: 0, errors: [{ row: 0, reason: err instanceof Error ? err.message : "Couldn't read the file." }] });
     } finally {
       setImporting(false);
     }
@@ -1284,12 +1783,14 @@ export default function CRMPage() {
 
   // ─ Template download ───────────────────────────────────────────────────────
   function downloadTemplate() {
-    const csv = "name,phone,email,tags,notes\nJohn Doe,+201001234567,john@example.com,\"VIP;lead\",Follow up";
+    const csv =
+      "chart_number,name,phone,email,nationality,gender,date_of_birth,join_date,departments,tags,notes\n" +
+      "CH-00123,John Doe,+201001234567,john@example.com,Egyptian,Male,1990-05-14,2023-01-20,\"Facial;Laser\",\"VIP;lead\",Follow up";
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "customers_template.csv";
+    a.download = "contacts_template.csv";
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -1355,12 +1856,23 @@ export default function CRMPage() {
           onClose={() => setImportResult(null)}
         />
       )}
+      {mappingData && (
+        <ColumnMappingModal
+          data={mappingData}
+          onClose={() => setMappingData(null)}
+          onImported={(result) => {
+            setMappingData(null);
+            setImportResult(result);
+            fetchPage1(searchRef.current);
+          }}
+        />
+      )}
       <input ref={importRef} type="file" accept=".csv" className="hidden" onChange={handleImportFile} />
 
       {/* Header */}
       <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-gray-100 gap-4 flex-wrap">
         <div>
-          <h1 className="text-[22px] font-bold text-gray-900 tracking-tight">Customers</h1>
+          <h1 className="text-[22px] font-bold text-gray-900 tracking-tight">Contacts</h1>
           <p className="text-[13px] text-gray-400 mt-0.5">CRM — admin view</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -1400,7 +1912,7 @@ export default function CRMPage() {
             className="flex items-center gap-2 bg-[#3B694C] hover:bg-[#2f5840] active:bg-[#264a33] text-white text-[13px] font-semibold px-4 py-2 rounded-xl transition-colors cursor-pointer"
           >
             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
-            New Customer
+            New Contact
           </button>
         </div>
       </div>
@@ -1428,7 +1940,7 @@ export default function CRMPage() {
 
       {/* Table */}
       <div className="px-6 pb-10 overflow-x-auto">
-        <table className="w-full border-collapse min-w-[900px]">
+        <table className="w-full border-collapse min-w-[1100px]">
           <thead>
             <tr className="border-b border-gray-100">
               <th className="w-10 px-4 py-3">
@@ -1442,15 +1954,15 @@ export default function CRMPage() {
                   className="w-4 h-4 rounded border-gray-300 text-[#3B694C] accent-[#3B694C] cursor-pointer align-middle"
                 />
               </th>
-              {["Customer", "Email", "Tags", "Last Message", "Waiting", "Last Agent", ""].map((h) => (
-                <th key={h} className="text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider px-4 py-3">{h}</th>
+              {["Patient", "Gender", "Age", "Nationality", "Top Dept", "Join Date", "Email", "Activity", ""].map((h, hi) => (
+                <th key={hi} className="text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider px-4 py-3">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {!loading && allLoadedSelected && total > customers.length && (
               <tr className="bg-[#EEF6F1] border-b border-[#3B694C]/15">
-                <td colSpan={8} className="px-4 py-2.5 text-center">
+                <td colSpan={10} className="px-4 py-2.5 text-center">
                   {selectAllMatching ? (
                     matchCap ? (
                       <span className="text-[13px] text-amber-700">
@@ -1463,7 +1975,7 @@ export default function CRMPage() {
                       </span>
                     ) : (
                       <span className="text-[13px] text-gray-600">
-                        All <span className="font-semibold">{selectedMap.size}</span> matching customers are selected.
+                        All <span className="font-semibold">{selectedMap.size}</span> matching contacts are selected.
                         <button type="button" onClick={clearSelection} className="ml-2 font-semibold text-[#3B694C] hover:underline cursor-pointer">
                           Clear selection
                         </button>
@@ -1492,7 +2004,7 @@ export default function CRMPage() {
               Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} />)
             ) : customers.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-5 py-16 text-center">
+                <td colSpan={10} className="px-5 py-16 text-center">
                   <div className="flex flex-col items-center gap-3">
                     <div className="w-12 h-12 rounded-2xl bg-gray-100 flex items-center justify-center">
                       <svg className="w-6 h-6 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
@@ -1500,15 +2012,15 @@ export default function CRMPage() {
                       </svg>
                     </div>
                     <p className="text-[14px] font-semibold text-gray-700">
-                      {search ? "No customers found" : "No customers yet"}
+                      {search ? "No contacts found" : "No contacts yet"}
                     </p>
                     <p className="text-[13px] text-gray-400">
-                      {search ? "Try a different search term." : "Add your first customer to get started."}
+                      {search ? "Try a different search term." : "Add your first contact to get started."}
                     </p>
                     {!search && (
                       <button type="button" onClick={() => setShowNew(true)} className="mt-1 flex items-center gap-1.5 bg-[#3B694C] hover:bg-[#2f5840] text-white text-[13px] font-semibold px-4 py-2 rounded-xl transition-colors cursor-pointer">
                         <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
-                        New Customer
+                        New Contact
                       </button>
                     )}
                   </div>
@@ -1519,6 +2031,9 @@ export default function CRMPage() {
                 const id = customer._id ?? customer.id;
                 const conv = getConv(customer);
                 const isWaiting = conv?.lastSenderType === "CUSTOMER";
+                const age = computeAge(customer.dateOfBirth);
+                const topDept = customer.departments?.[0];
+                const extraDepts = (customer.departments?.length ?? 0) - 1;
 
                 return (
                   <tr
@@ -1537,19 +2052,72 @@ export default function CRMPage() {
                       />
                     </td>
 
-                    {/* Name + Phone */}
+                    {/* Patient: name + mobile + chart # */}
                     <td className="px-4 py-3.5">
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-full bg-[#DCF2E3] flex items-center justify-center text-[#3B694C] font-semibold text-[12px] shrink-0">
                           {getInitials(customer)}
                         </div>
                         <div className="min-w-0">
-                          <p className="text-[13px] font-semibold text-gray-900 truncate max-w-[160px]">
+                          <p className="text-[13px] font-semibold text-gray-900 truncate max-w-[180px]">
                             {customer.name || <span className="text-gray-400 font-normal">No name</span>}
                           </p>
-                          <p className="text-[12px] text-gray-400">{customer.phone}</p>
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-[12px] text-gray-400">{customer.phone}</p>
+                            {customer.chartNumber && (
+                              <span className="text-[10px] font-mono font-medium text-gray-400 bg-gray-100 px-1.5 rounded">#{customer.chartNumber}</span>
+                            )}
+                          </div>
                         </div>
                       </div>
+                    </td>
+
+                    {/* Gender */}
+                    <td className="px-4 py-3.5">
+                      {customer.gender ? (
+                        <span className="text-[13px] text-gray-600">{GENDER_LABEL[customer.gender]}</span>
+                      ) : (
+                        <span className="text-gray-300 text-[13px]">—</span>
+                      )}
+                    </td>
+
+                    {/* Age */}
+                    <td className="px-4 py-3.5">
+                      {age != null ? (
+                        <span className="text-[13px] text-gray-700">{age}</span>
+                      ) : (
+                        <span className="text-gray-300 text-[13px]">—</span>
+                      )}
+                    </td>
+
+                    {/* Nationality */}
+                    <td className="px-4 py-3.5">
+                      <span className="text-[13px] text-gray-600 truncate max-w-[120px] block">
+                        {customer.nationality || <span className="text-gray-300">—</span>}
+                      </span>
+                    </td>
+
+                    {/* Top Department */}
+                    <td className="px-4 py-3.5">
+                      {topDept ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-[#3B694C]/10 text-[#3B694C]">{topDept}</span>
+                          {extraDepts > 0 && (
+                            <span className="text-[11px] font-medium text-gray-400">+{extraDepts}</span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-gray-300 text-[13px]">—</span>
+                      )}
+                    </td>
+
+                    {/* Join Date */}
+                    <td className="px-4 py-3.5">
+                      {customer.joinDate ? (
+                        <span className="text-[13px] text-gray-600 whitespace-nowrap">{formatDate(customer.joinDate)}</span>
+                      ) : (
+                        <span className="text-gray-300 text-[13px]">—</span>
+                      )}
                     </td>
 
                     {/* Email */}
@@ -1559,52 +2127,20 @@ export default function CRMPage() {
                       </span>
                     </td>
 
-                    {/* Tags */}
+                    {/* Activity: last message time + waiting */}
                     <td className="px-4 py-3.5">
-                      {customer.tags && customer.tags.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                          {customer.tags.slice(0, 3).map((tag) => (
-                            <span key={tag} className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${tagColor(tag)}`}>{tag}</span>
-                          ))}
-                          {customer.tags.length > 3 && (
-                            <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">+{customer.tags.length - 3}</span>
+                      {conv?.lastMessage ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-[12px] text-gray-500 whitespace-nowrap">{formatRelativeTime(conv.lastMessageAt)}</span>
+                          {isWaiting && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-600 border border-amber-200">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                              Waiting
+                            </span>
                           )}
                         </div>
                       ) : (
                         <span className="text-gray-300 text-[13px]">—</span>
-                      )}
-                    </td>
-
-                    {/* Last Message */}
-                    <td className="px-4 py-3.5 max-w-[200px]">
-                      {conv?.lastMessage ? (
-                        <div>
-                          <p className="text-[13px] text-gray-700 truncate">{truncate(conv.lastMessage, 55)}</p>
-                          <p className="text-[11px] text-gray-400 mt-0.5">{formatRelativeTime(conv.lastMessageAt)}</p>
-                        </div>
-                      ) : (
-                        <span className="text-gray-300 text-[13px]">—</span>
-                      )}
-                    </td>
-
-                    {/* Waiting Response */}
-                    <td className="px-4 py-3.5">
-                      {isWaiting ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-amber-50 text-amber-600 border border-amber-200">
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                          Waiting
-                        </span>
-                      ) : (
-                        <span className="text-gray-300 text-[13px]">—</span>
-                      )}
-                    </td>
-
-                    {/* Last Agent */}
-                    <td className="px-4 py-3.5">
-                      {conv?.assignedAgent ? (
-                        <span className="text-[13px] text-gray-600">{conv.assignedAgent.username}</span>
-                      ) : (
-                        <span className="text-[12px] text-gray-300">Unassigned</span>
                       )}
                     </td>
 
@@ -1652,7 +2188,7 @@ export default function CRMPage() {
 
         {!loading && !loadingMore && !hasMore && customers.length > 0 && (
           <p className="text-center text-[12px] text-gray-300 py-6">
-            {customers.length} customer{customers.length !== 1 ? "s" : ""} total
+            {customers.length} contact{customers.length !== 1 ? "s" : ""} total
           </p>
         )}
       </div>
@@ -1710,7 +2246,7 @@ export default function CRMPage() {
               </div>
               <div>
                 <h3 className="text-[15px] font-bold text-gray-900">
-                  Delete {selectedMap.size.toLocaleString()} customer{selectedMap.size !== 1 ? "s" : ""}?
+                  Delete {selectedMap.size.toLocaleString()} contact{selectedMap.size !== 1 ? "s" : ""}?
                 </h3>
                 <p className="text-[12px] text-gray-400 mt-0.5">This cannot be undone.</p>
               </div>

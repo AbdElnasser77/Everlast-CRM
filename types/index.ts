@@ -4,12 +4,20 @@ export interface User {
   role: string;
 }
 
+export type Gender = "MALE" | "FEMALE";
+
 export interface Customer {
   _id?: string;
   id?: number;
+  chartNumber: string | null;
   name: string | null;
   phone: string;
   email: string | null;
+  nationality: string | null;
+  gender: Gender | null;
+  dateOfBirth: string | null;
+  joinDate: string | null;
+  departments: string[]; // ordered by rank: index 0 = top department
   tags: string[];
   notes: string | null;
   optedOut?: boolean;

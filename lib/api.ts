@@ -7,7 +7,18 @@ import type {
   CustomerListResponse,
   CustomerResponse,
   AuditLogResponse,
+  Gender,
 } from "@/types";
+
+// Optional patient/demographic fields shared by create & update.
+type CustomerPatientFields = {
+  chartNumber?: string | null;
+  nationality?: string | null;
+  gender?: Gender | null;
+  dateOfBirth?: string | null;
+  joinDate?: string | null;
+  departments?: string[];
+};
 
 const BASE = process.env.NEXT_PUBLIC_API_URL;
 
@@ -159,7 +170,7 @@ export function apiCreateCustomer(data: {
   email?: string;
   tags?: string[];
   notes?: string;
-}) {
+} & CustomerPatientFields) {
   return apiFetch<CustomerResponse>("/api/customers", {
     method: "POST",
     body: JSON.stringify(data),
@@ -168,7 +179,7 @@ export function apiCreateCustomer(data: {
 
 export function apiUpdateCustomer(
   id: string | number,
-  data: Partial<{ name: string; email: string; tags: string[]; notes: string; optedOut: boolean }>
+  data: Partial<{ name: string; email: string; tags: string[]; notes: string; optedOut: boolean } & CustomerPatientFields>
 ) {
   return apiFetch<CustomerResponse>(`/api/customers/${id}`, {
     method: "PUT",
