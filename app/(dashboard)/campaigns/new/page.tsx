@@ -723,7 +723,15 @@ function NewCampaignContent() {
 
   const [step, setStep] = useState(1);
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  // Recipients can be pre-seeded from the Customers page via ?recipients=1,2,3.
+  // The draft flow (?draft=ID) owns selection itself, so it takes precedence.
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(() => {
+    const raw = searchParams.get("recipients");
+    if (draftIdParam || !raw) return new Set();
+    return new Set(
+      raw.split(",").map((s) => parseInt(s, 10)).filter((n) => Number.isFinite(n))
+    );
+  });
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [convMap, setConvMap] = useState<Map<number, Conversation>>(new Map());
   const [loadingCustomers, setLoadingCustomers] = useState(true);
@@ -754,6 +762,16 @@ function NewCampaignContent() {
       .catch(() => {})
       .finally(() => setLoadingDraft(false));
   }, [draftCampaignId]);
+
+  // One-time confirmation that recipients were carried over from the Customers page.
+  const notifiedSeedRef = useRef(false);
+  useEffect(() => {
+    if (notifiedSeedRef.current || draftIdParam) return;
+    if (selectedIds.size > 0 && searchParams.get("recipients")) {
+      notifiedSeedRef.current = true;
+      toast.info(`${selectedIds.size} recipient${selectedIds.size !== 1 ? "s" : ""} carried over from Customers.`);
+    }
+  }, [draftIdParam, selectedIds, searchParams, toast]);
 
   useEffect(() => {
     let cancelled = false;

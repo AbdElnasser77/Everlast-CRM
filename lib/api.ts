@@ -126,6 +126,13 @@ export function apiDeleteCustomer(id: string | number) {
   return apiFetch<{ success: boolean; message: string }>(`/api/customers/${id}`, { method: "DELETE" });
 }
 
+export function apiBulkDeleteCustomers(ids: number[]) {
+  return apiFetch<{ success: boolean; message: string; data: { deleted: number } }>(
+    "/api/customers/bulk-delete",
+    { method: "POST", body: JSON.stringify({ ids }) }
+  );
+}
+
 export function apiImportCustomers(file: File) {
   const form = new FormData();
   form.append("file", file);

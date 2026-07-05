@@ -6,6 +6,7 @@ import {
   apiGetCustomers,
   apiImportCustomers,
   apiDeleteCustomer,
+  apiBulkDeleteCustomers,
   apiGetConversations,
   apiGetCustomer,
   apiCreateCustomer,
@@ -565,6 +566,7 @@ function CustomerDetailDrawer({ customer, conv, onClose, onSaved, onDeleted }: D
 function SkeletonRow() {
   return (
     <tr className="border-b border-gray-100 animate-pulse">
+      <td className="px-4 py-3.5"><div className="w-4 h-4 rounded bg-gray-200" /></td>
       <td className="px-4 py-3.5">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-full bg-gray-200 shrink-0" />
@@ -1016,6 +1018,7 @@ export default function CRMPage() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
+  const [total, setTotal] = useState(0);
   const [search, setSearch] = useState("");
 
   const pageRef = useRef(1);
@@ -1036,6 +1039,21 @@ export default function CRMPage() {
   const importRef = useRef<HTMLInputElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ─ Bulk selection state ─────────────────────────────────────────────────────
+  // Keyed by String(_id ?? id) — same identity scheme the page already uses for
+  // dedup. Holds the full record so Export/Create-campaign work across pages,
+  // not just the rows currently loaded into the table.
+  const [selectedMap, setSelectedMap] = useState<Map<string, Customer>>(new Map());
+  const [selectAllMatching, setSelectAllMatching] = useState(false);
+  const [selectingAll, setSelectingAll] = useState(false);
+  // Set when "select all matching" couldn't reach every row (search matches more
+  // than the client can page through at once). { reachable, total }.
+  const [matchCap, setMatchCap] = useState<{ reachable: number; total: number } | null>(null);
+  // Bulk delete
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkDeleteError, setBulkDeleteError] = useState<string | null>(null);
 
   // ─ Fetch conversations once (build lookup map) ─────────────────────────────
   useEffect(() => {
@@ -1058,11 +1076,13 @@ export default function CRMPage() {
     try {
       const res = await apiGetCustomers(1, PAGE_SIZE, q);
       setCustomers(res.data);
+      setTotal(res.pagination?.total ?? res.data.length);
       const more = res.data.length >= PAGE_SIZE;
       setHasMore(more);
       hasMoreRef.current = more;
     } catch {
       setCustomers([]);
+      setTotal(0);
       setHasMore(false);
       hasMoreRef.current = false;
     } finally {
@@ -1111,9 +1131,9 @@ export default function CRMPage() {
   }, [search, fetchPage1]);
 
   // ─ Export CSV ─────────────────────────────────────────────────────────────
-  function exportCSV() {
+  function downloadCustomersCSV(list: Customer[], filenamePrefix: string) {
     const header = ["id", "name", "phone", "email", "tags", "notes", "createdAt", "lastMessage", "waitingResponse", "assignedAgent"];
-    const rows = customers.map((c) => {
+    const rows = list.map((c) => {
       const id = c._id ?? c.id ?? "";
       const conv = convMap.get(Number(id)) ?? convMap.get(String(id));
       return [
@@ -1134,9 +1154,115 @@ export default function CRMPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `customers-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `${filenamePrefix}-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  function exportCSV() {
+    downloadCustomersCSV(customers, "customers");
+  }
+
+  // ─ Bulk selection helpers ──────────────────────────────────────────────────
+  const customerKey = (c: Customer) => String(c._id ?? c.id);
+  const isSelected = (c: Customer) => selectedMap.has(customerKey(c));
+  const allLoadedSelected = customers.length > 0 && customers.every(isSelected);
+  const someLoadedSelected = customers.some(isSelected);
+
+  function toggleCustomer(c: Customer) {
+    setSelectedMap((prev) => {
+      const next = new Map(prev);
+      const k = customerKey(c);
+      if (next.has(k)) next.delete(k);
+      else next.set(k, c);
+      return next;
+    });
+    setSelectAllMatching(false);
+    setMatchCap(null);
+  }
+
+  function toggleAllLoaded() {
+    setSelectedMap((prev) => {
+      const next = new Map(prev);
+      if (allLoadedSelected) customers.forEach((c) => next.delete(customerKey(c)));
+      else customers.forEach((c) => next.set(customerKey(c), c));
+      return next;
+    });
+    setSelectAllMatching(false);
+    setMatchCap(null);
+  }
+
+  function clearSelection() {
+    setSelectedMap(new Map());
+    setSelectAllMatching(false);
+    setMatchCap(null);
+  }
+
+  // Fetch every customer matching the current search (across all pages) and add
+  // them to the selection — the "select all N matching" tier. Mirrors the paging
+  // strategy the campaign wizard uses (backend caps page size at 100).
+  async function selectAllMatchingCustomers() {
+    setSelectingAll(true);
+    try {
+      const PAGE = 100;
+      const MAX_PAGES = 50; // safety cap → up to 5,000 rows reachable
+      const first = await apiGetCustomers(1, PAGE, searchRef.current);
+      const items = [...first.data];
+      const pages = Math.min(first.pagination?.totalPages ?? 1, MAX_PAGES);
+      if (pages > 1) {
+        const rest = await Promise.all(
+          Array.from({ length: pages - 1 }, (_, i) => apiGetCustomers(i + 2, PAGE, searchRef.current))
+        );
+        rest.forEach((r) => items.push(...r.data));
+      }
+      setSelectedMap((prev) => {
+        const next = new Map(prev);
+        items.forEach((c) => next.set(customerKey(c), c));
+        return next;
+      });
+      setSelectAllMatching(true);
+      // If the search matches more rows than we could page through, surface it —
+      // never silently under-select. Only these `reachable` rows are acted on.
+      const trueTotal = first.pagination?.total ?? items.length;
+      setMatchCap(items.length < trueTotal ? { reachable: items.length, total: trueTotal } : null);
+    } catch {
+      // leave the page-level selection intact on failure
+    } finally {
+      setSelectingAll(false);
+    }
+  }
+
+  async function bulkDeleteSelected() {
+    const ids = [...selectedMap.values()]
+      .map((c) => c.id)
+      .filter((n): n is number => typeof n === "number");
+    if (ids.length === 0) return;
+    setBulkDeleting(true);
+    setBulkDeleteError(null);
+    try {
+      await apiBulkDeleteCustomers(ids);
+      setConfirmBulkDelete(false);
+      clearSelection();
+      await fetchPage1(searchRef.current);
+    } catch (err) {
+      setBulkDeleteError(err instanceof Error ? err.message : "Failed to delete customers");
+    } finally {
+      setBulkDeleting(false);
+    }
+  }
+
+  function exportSelectedCSV() {
+    downloadCustomersCSV([...selectedMap.values()], "customers-selected");
+  }
+
+  // Hand the selected customers off to the campaign wizard as pre-seeded
+  // recipients. Only numeric ids are valid campaign recipient ids.
+  function createCampaignFromSelected() {
+    const ids = [...selectedMap.values()]
+      .map((c) => c.id)
+      .filter((n): n is number => typeof n === "number");
+    if (ids.length === 0) return;
+    router.push(`/campaigns/new?recipients=${ids.join(",")}`);
   }
 
   // ─ Import CSV ─────────────────────────────────────────────────────────────
@@ -1185,6 +1311,12 @@ export default function CRMPage() {
         onClose={() => setDetailCustomer(null)}
         onDeleted={(id) => {
           setCustomers((prev) => prev.filter((c) => String(c._id ?? c.id) !== String(id)));
+          setSelectedMap((prev) => {
+            if (!prev.has(String(id))) return prev;
+            const next = new Map(prev);
+            next.delete(String(id));
+            return next;
+          });
           setDetailCustomer(null);
         }}
         onSaved={(updated) => {
@@ -1299,17 +1431,68 @@ export default function CRMPage() {
         <table className="w-full border-collapse min-w-[900px]">
           <thead>
             <tr className="border-b border-gray-100">
+              <th className="w-10 px-4 py-3">
+                <input
+                  type="checkbox"
+                  aria-label="Select all on this page"
+                  checked={allLoadedSelected}
+                  ref={(el) => { if (el) el.indeterminate = someLoadedSelected && !allLoadedSelected; }}
+                  onChange={toggleAllLoaded}
+                  disabled={loading || customers.length === 0}
+                  className="w-4 h-4 rounded border-gray-300 text-[#3B694C] accent-[#3B694C] cursor-pointer align-middle"
+                />
+              </th>
               {["Customer", "Email", "Tags", "Last Message", "Waiting", "Last Agent", ""].map((h) => (
                 <th key={h} className="text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider px-4 py-3">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
+            {!loading && allLoadedSelected && total > customers.length && (
+              <tr className="bg-[#EEF6F1] border-b border-[#3B694C]/15">
+                <td colSpan={8} className="px-4 py-2.5 text-center">
+                  {selectAllMatching ? (
+                    matchCap ? (
+                      <span className="text-[13px] text-amber-700">
+                        Selected the first <span className="font-semibold">{matchCap.reachable.toLocaleString()}</span> of{" "}
+                        <span className="font-semibold">{matchCap.total.toLocaleString()}</span> matching — the maximum reachable at once.
+                        Actions apply to these {matchCap.reachable.toLocaleString()} only; narrow your search to reach the rest.
+                        <button type="button" onClick={clearSelection} className="ml-2 font-semibold text-[#3B694C] hover:underline cursor-pointer">
+                          Clear
+                        </button>
+                      </span>
+                    ) : (
+                      <span className="text-[13px] text-gray-600">
+                        All <span className="font-semibold">{selectedMap.size}</span> matching customers are selected.
+                        <button type="button" onClick={clearSelection} className="ml-2 font-semibold text-[#3B694C] hover:underline cursor-pointer">
+                          Clear selection
+                        </button>
+                      </span>
+                    )
+                  ) : (
+                    <span className="text-[13px] text-gray-600">
+                      All <span className="font-semibold">{customers.length}</span> on this page are selected.
+                      <button
+                        type="button"
+                        onClick={selectAllMatchingCustomers}
+                        disabled={selectingAll}
+                        className="ml-2 font-semibold text-[#3B694C] hover:underline disabled:opacity-60 cursor-pointer inline-flex items-center gap-1"
+                      >
+                        {selectingAll && (
+                          <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                        )}
+                        Select all {total} matching
+                      </button>
+                    </span>
+                  )}
+                </td>
+              </tr>
+            )}
             {loading ? (
               Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} />)
             ) : customers.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-5 py-16 text-center">
+                <td colSpan={8} className="px-5 py-16 text-center">
                   <div className="flex flex-col items-center gap-3">
                     <div className="w-12 h-12 rounded-2xl bg-gray-100 flex items-center justify-center">
                       <svg className="w-6 h-6 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
@@ -1341,8 +1524,19 @@ export default function CRMPage() {
                   <tr
                     key={id != null ? String(id) : i}
                     onClick={() => setDetailCustomer(customer)}
-                    className="border-b border-gray-100 hover:bg-[#EEF6F1] active:bg-[#DCF2E3] transition-colors duration-100 group cursor-pointer select-none"
+                    className={`border-b border-gray-100 hover:bg-[#EEF6F1] active:bg-[#DCF2E3] transition-colors duration-100 group cursor-pointer select-none ${isSelected(customer) ? "bg-[#EEF6F1]" : ""}`}
                   >
+                    {/* Select checkbox */}
+                    <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${customer.name || customer.phone}`}
+                        checked={isSelected(customer)}
+                        onChange={() => toggleCustomer(customer)}
+                        className="w-4 h-4 rounded border-gray-300 text-[#3B694C] accent-[#3B694C] cursor-pointer align-middle"
+                      />
+                    </td>
+
                     {/* Name + Phone */}
                     <td className="px-4 py-3.5">
                       <div className="flex items-center gap-3">
@@ -1462,6 +1656,96 @@ export default function CRMPage() {
           </p>
         )}
       </div>
+
+      {/* Bulk action bar */}
+      {selectedMap.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-2 bg-white border border-gray-200 shadow-2xl rounded-2xl px-3 py-2.5">
+          <span className="text-[13px] font-semibold text-gray-700 pl-2 pr-1">
+            {selectedMap.size} selected
+          </span>
+          <div className="w-px h-6 bg-gray-200" />
+          <button
+            type="button"
+            onClick={exportSelectedCSV}
+            className="flex items-center gap-1.5 text-[13px] font-semibold text-gray-600 hover:bg-gray-50 px-3 py-2 rounded-xl transition-colors cursor-pointer"
+          >
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export
+          </button>
+          <button
+            type="button"
+            onClick={createCampaignFromSelected}
+            className="flex items-center gap-1.5 text-[13px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5840] px-3.5 py-2 rounded-xl transition-colors cursor-pointer"
+          >
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2 11 13M22 2 15 22l-4-9-9-4 20-7z"/></svg>
+            Create campaign
+          </button>
+          <button
+            type="button"
+            onClick={() => { setBulkDeleteError(null); setConfirmBulkDelete(true); }}
+            className="flex items-center gap-1.5 text-[13px] font-semibold text-red-500 hover:bg-red-50 px-3 py-2 rounded-xl transition-colors cursor-pointer"
+          >
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+            Delete
+          </button>
+          <div className="w-px h-6 bg-gray-200" />
+          <button
+            type="button"
+            onClick={clearSelection}
+            aria-label="Clear selection"
+            className="w-8 h-8 flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-600 rounded-xl transition-colors cursor-pointer"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+      )}
+
+      {/* Bulk delete confirmation */}
+      {confirmBulkDelete && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-2xl shadow-2xl px-6 py-6 w-[360px] space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center shrink-0">
+                <svg className="w-5 h-5 text-red-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+              </div>
+              <div>
+                <h3 className="text-[15px] font-bold text-gray-900">
+                  Delete {selectedMap.size.toLocaleString()} customer{selectedMap.size !== 1 ? "s" : ""}?
+                </h3>
+                <p className="text-[12px] text-gray-400 mt-0.5">This cannot be undone.</p>
+              </div>
+            </div>
+
+            <p className="text-[13px] text-gray-600 leading-relaxed">
+              Their conversations, messages, and campaign recipient records will also be permanently removed.
+            </p>
+
+            {bulkDeleteError && <p className="text-[12px] text-red-500">{bulkDeleteError}</p>}
+
+            <div className="flex gap-3 pt-1">
+              <button
+                type="button"
+                onClick={() => { setConfirmBulkDelete(false); setBulkDeleteError(null); }}
+                disabled={bulkDeleting}
+                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-[13px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-60 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={bulkDeleteSelected}
+                disabled={bulkDeleting}
+                className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 disabled:opacity-60 disabled:cursor-not-allowed text-[13px] font-semibold text-white transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                {bulkDeleting && (
+                  <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                )}
+                {bulkDeleting ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
