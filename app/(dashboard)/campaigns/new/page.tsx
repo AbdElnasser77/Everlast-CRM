@@ -17,7 +17,30 @@ import { useToast } from "@/components/ui/toast";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const COST_PER_MSG = 0.018;
+// WhatsApp Cloud API per-message rates (USD) for UAE (+971), by Meta billing
+// category — Meta rate card effective July 1, 2025 (per-message pricing).
+// Meta revises these periodically: verify against WhatsApp Manager → Billing
+// (or Meta's rate-card CSV) and update the values here when they change.
+const UAE_RATES_USD = {
+  MARKETING: 0.0384,
+  UTILITY: 0.0157,
+  AUTHENTICATION: 0.0178,
+} as const;
+
+// Map this CRM's template categories onto Meta's billing categories.
+const META_BILLING_CATEGORY: Record<string, keyof typeof UAE_RATES_USD> = {
+  CAMPAIGN: "MARKETING",
+  RE_ENGAGEMENT: "MARKETING",
+  GENERAL: "UTILITY",
+};
+
+// Per-message cost for a template; unknown categories assume the priciest
+// (MARKETING) so the estimate errs high, never low.
+function costPerMsg(template?: Template | null): number {
+  return UAE_RATES_USD[META_BILLING_CATEGORY[template?.category ?? ""] ?? "MARKETING"];
+}
+
+// Matches the backend campaign sender's throttle (400ms sleep between sends).
 const SEND_RATE_S = 2.5;
 
 
@@ -272,6 +295,7 @@ function Step2({
   customers,
   convMap,
   loading,
+  template,
 }: {
   selectedIds: Set<number>;
   onToggle: (id: number) => void;
@@ -279,6 +303,7 @@ function Step2({
   customers: Customer[];
   convMap: Map<number, Conversation>;
   loading: boolean;
+  template: Template | null;
 }) {
   const [search, setSearch] = useState("");
   const [tagFilter, setTagFilter] = useState("All");
@@ -303,8 +328,9 @@ function Step2({
   const optedOut = customers.filter((c) => (c as Customer & { optedOut?: boolean }).optedOut).length;
   const allSelected = filteredIds.length > 0 && filteredIds.every((id) => selectedIds.has(id));
 
+  const rate = costPerMsg(template);
   const estimatedSeconds = selectedIds.size / SEND_RATE_S;
-  const estimatedCost = (selectedIds.size * COST_PER_MSG).toFixed(2);
+  const estimatedCost = (selectedIds.size * rate).toFixed(2);
 
   return (
     <div className="flex-1 flex overflow-hidden">
@@ -438,7 +464,7 @@ function Step2({
           </div>
           <div className="flex justify-between">
             <span className="text-gray-500">Per-message cost</span>
-            <span className="font-medium text-gray-800">${COST_PER_MSG.toFixed(3)}</span>
+            <span className="font-medium text-gray-800">${rate.toFixed(4)}</span>
           </div>
           <div className="flex justify-between border-t border-gray-100 pt-3">
             <span className="text-gray-500">Estimated total</span>
@@ -490,8 +516,9 @@ function Step3({
 
 
   const count = selectedIds.size;
+  const rate = costPerMsg(template);
   const estimatedSeconds = count / SEND_RATE_S;
-  const estimatedCost = (count * COST_PER_MSG).toFixed(2);
+  const estimatedCost = (count * rate).toFixed(2);
 
   const selectedCustomers = customers.filter((c) => selectedIds.has(c.id as number));
   const tagCounts: Record<string, number> = {};
@@ -657,7 +684,7 @@ function Step3({
             { label: "Estimated runtime", value: `≈ ${formatDuration(estimatedSeconds)}` },
             { label: "Start", value: startDisplay },
             { label: "ETA finish", value: etaFinish },
-            { label: "Per-message cost", value: `$${COST_PER_MSG.toFixed(3)}` },
+            { label: "Per-message cost", value: `$${rate.toFixed(4)}` },
             { label: "Estimated total", value: `$${estimatedCost}` },
           ].map(({ label, value }) => (
             <div key={label} className="flex justify-between items-start gap-2">
@@ -978,6 +1005,7 @@ function NewCampaignContent() {
                 customers={customers}
                 convMap={convMap}
                 loading={loadingCustomers}
+                template={selectedTemplate}
               />
             )}
             {step === 3 && selectedTemplate && (

@@ -144,12 +144,33 @@ export function apiBulkDeleteCustomers(ids: number[]) {
   );
 }
 
-export function apiImportCustomers(file: File) {
+type ImportIssue = { row: number; phone?: string; reason: string };
+
+export function apiValidateImport(file: File, dateFormat = "auto", defaultCountry = "") {
   const form = new FormData();
   form.append("file", file);
+  form.append("dateFormat", dateFormat);
+  form.append("defaultCountry", defaultCountry);
   return apiFetch<{
     success: boolean;
-    data: { total: number; created: number; skipped: number; errors: { row: number; reason: string }[] };
+    data: { total: number; valid: number; duplicates: ImportIssue[]; invalid: ImportIssue[] };
+  }>("/api/customers/import/validate", { method: "POST", body: form });
+}
+
+export function apiImportCustomers(file: File, dateFormat = "auto", defaultCountry = "") {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("dateFormat", dateFormat);
+  form.append("defaultCountry", defaultCountry);
+  return apiFetch<{
+    success: boolean;
+    data: {
+      total: number;
+      created: number;
+      skipped: number;
+      duplicates?: ImportIssue[];
+      errors: ImportIssue[];
+    };
   }>("/api/customers/import", { method: "POST", body: form });
 }
 

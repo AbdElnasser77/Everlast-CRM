@@ -4,7 +4,6 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   apiGetCustomers,
-  apiImportCustomers,
   apiDeleteCustomer,
   apiBulkDeleteCustomers,
   apiGetConversations,
@@ -91,83 +90,6 @@ function csvEscape(val: string): string {
   return val;
 }
 
-function parseCSVLine(line: string): string[] {
-  const vals: string[] = [];
-  let inQuote = false;
-  let cur = "";
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') {
-      if (inQuote && line[i + 1] === '"') { cur += '"'; i++; }
-      else inQuote = !inQuote;
-    } else if (ch === "," && !inQuote) {
-      vals.push(cur); cur = "";
-    } else {
-      cur += ch;
-    }
-  }
-  vals.push(cur);
-  return vals.map((v) => v.trim().replace(/^"|"$/g, ""));
-}
-
-// Parse CSV preserving original header casing/order for the column-mapping UI.
-function parseCSVRows(text: string): { headers: string[]; rows: string[][] } {
-  const lines = text.split(/\r?\n/).filter((l) => l.trim());
-  if (lines.length === 0) return { headers: [], rows: [] };
-  const headers = parseCSVLine(lines[0]);
-  const rows = lines.slice(1).map(parseCSVLine);
-  return { headers, rows };
-}
-
-// System fields the importer can map to. `csv` is the canonical column name the
-// backend importer expects; `aliases` drive header auto-detection.
-interface ImportField {
-  key: string;
-  label: string;
-  csv: string;
-  required?: boolean;
-  aliases: string[];
-}
-
-const IMPORT_FIELDS: ImportField[] = [
-  { key: "chart_number", label: "Chart Number", csv: "chart_number", aliases: ["chartnumber", "chart", "chartno", "chartid", "mrn", "medicalrecord", "recordnumber", "file", "fileno", "filenumber"] },
-  { key: "name", label: "Full Name", csv: "name", aliases: ["name", "fullname", "patientname", "customername", "patient", "client"] },
-  { key: "phone", label: "Mobile", csv: "phone", required: true, aliases: ["phone", "mobile", "mobilenumber", "phonenumber", "cell", "cellphone", "whatsapp", "contact", "tel", "telephone", "number"] },
-  { key: "email", label: "Email", csv: "email", aliases: ["email", "emailaddress", "mail", "e-mail"] },
-  { key: "nationality", label: "Nationality", csv: "nationality", aliases: ["nationality", "nation", "country", "citizenship"] },
-  { key: "gender", label: "Gender", csv: "gender", aliases: ["gender", "sex"] },
-  { key: "date_of_birth", label: "Date of Birth", csv: "date_of_birth", aliases: ["dateofbirth", "dob", "birthdate", "birthday", "birth"] },
-  { key: "join_date", label: "Join Date", csv: "join_date", aliases: ["joindate", "datejoined", "registrationdate", "membersince", "registered", "enrolled", "enrollmentdate"] },
-  { key: "departments", label: "Departments", csv: "departments", aliases: ["departments", "department", "dept", "depts", "service", "services", "treatment", "treatments"] },
-  { key: "tags", label: "Tags", csv: "tags", aliases: ["tags", "tag", "labels", "label", "segment"] },
-  { key: "notes", label: "Notes", csv: "notes", aliases: ["notes", "note", "comment", "comments", "remark", "remarks"] },
-];
-
-const normalizeHeader = (h: string) => h.toLowerCase().replace(/[^a-z0-9]/g, "");
-
-// Best-guess mapping: field key → header index (or -1 to skip).
-function autoMapHeaders(headers: string[]): Record<string, number> {
-  const norm = headers.map(normalizeHeader);
-  const mapping: Record<string, number> = {};
-  const used = new Set<number>();
-  for (const field of IMPORT_FIELDS) {
-    let idx = -1;
-    // 1) exact alias match, 2) header contains/contained-by an alias
-    idx = norm.findIndex((h, i) => !used.has(i) && field.aliases.includes(h));
-    if (idx === -1) idx = norm.findIndex((h, i) => !used.has(i) && field.aliases.some((a) => h.includes(a) || a.includes(h)));
-    mapping[field.key] = idx;
-    if (idx >= 0) used.add(idx);
-  }
-  return mapping;
-}
-
-// Re-serialize the mapped columns into a canonical CSV for the backend importer.
-function buildMappedCSV(headers: string[], rows: string[][], mapping: Record<string, number>): string {
-  const fields = IMPORT_FIELDS.filter((f) => mapping[f.key] >= 0);
-  const headerLine = fields.map((f) => f.csv).join(",");
-  const dataLines = rows.map((row) => fields.map((f) => csvEscape(row[mapping[f.key]] ?? "")).join(","));
-  return [headerLine, ...dataLines].join("\n");
-}
 
 function formatMemberSince(iso: string): string {
   return new Date(iso).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
@@ -812,219 +734,6 @@ function SkeletonRow() {
   );
 }
 
-// ─── Import Progress Modal ────────────────────────────────────────────────────
-
-interface ImportResult {
-  total: number;
-  created: number;
-  skipped: number;
-  errors: { row: number; reason: string }[];
-}
-
-function ImportResultModal({ result, onClose }: { result: ImportResult; onClose: () => void }) {
-  return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-2xl shadow-2xl px-6 py-6 w-[340px] space-y-4">
-        <h3 className="text-[15px] font-bold text-gray-900">Import complete</h3>
-
-        <div className="space-y-2">
-          <div className="flex items-center gap-3 p-3 bg-green-50 rounded-xl">
-            <svg className="w-4 h-4 text-green-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6 9 17l-5-5"/></svg>
-            <span className="text-[13px] font-semibold text-green-700">{result.created} imported</span>
-          </div>
-          {result.skipped > 0 && (
-            <div className="flex items-center gap-3 p-3 bg-amber-50 rounded-xl">
-              <svg className="w-4 h-4 text-amber-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
-              <span className="text-[13px] font-semibold text-amber-700">{result.skipped} skipped — duplicates</span>
-            </div>
-          )}
-          {result.errors.length > 0 && (
-            <details className="group">
-              <summary className="flex items-center gap-3 p-3 bg-red-50 rounded-xl cursor-pointer list-none">
-                <svg className="w-4 h-4 text-red-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg>
-                <span className="text-[13px] font-semibold text-red-600 flex-1">{result.errors.length} row{result.errors.length !== 1 ? "s" : ""} with errors</span>
-                <svg className="w-3.5 h-3.5 text-red-400 group-open:rotate-180 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="m6 9 6 6 6-6"/></svg>
-              </summary>
-              <div className="mt-1 max-h-36 overflow-y-auto space-y-1 px-1">
-                {result.errors.map((e, i) => (
-                  <p key={i} className="text-[11px] text-red-500 px-2 py-0.5">Row {e.row}: {e.reason}</p>
-                ))}
-              </div>
-            </details>
-          )}
-        </div>
-
-        <button
-          onClick={onClose}
-          className="w-full py-2.5 rounded-xl bg-[#3B694C] hover:bg-[#2f5840] text-white text-[13px] font-semibold transition-colors cursor-pointer"
-        >
-          Done
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ─── Column Mapping Modal (CSV import) ────────────────────────────────────────
-
-interface MappingData {
-  headers: string[];
-  rows: string[][];
-  fileName: string;
-}
-
-function ColumnMappingModal({
-  data,
-  onClose,
-  onImported,
-}: {
-  data: MappingData;
-  onClose: () => void;
-  onImported: (result: ImportResult) => void;
-}) {
-  const [mapping, setMapping] = useState<Record<string, number>>(() => autoMapHeaders(data.headers));
-  const [importing, setImporting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const phoneMapped = mapping["phone"] >= 0;
-  const mappedFields = IMPORT_FIELDS.filter((f) => mapping[f.key] >= 0);
-  const preview = data.rows.slice(0, 5);
-
-  function setField(key: string, idx: number) {
-    setMapping((m) => ({ ...m, [key]: idx }));
-    setError(null);
-  }
-
-  async function handleImport() {
-    if (!phoneMapped) { setError("Map the Mobile column — it's required."); return; }
-    setImporting(true); setError(null);
-    try {
-      const csv = buildMappedCSV(data.headers, data.rows, mapping);
-      const file = new File([csv], "mapped-import.csv", { type: "text/csv" });
-      const res = await apiImportCustomers(file);
-      onImported(res.data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Import failed");
-    } finally {
-      setImporting(false);
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 px-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[880px] max-h-[88vh] flex flex-col">
-        {/* Header */}
-        <div className="shrink-0 flex items-start justify-between px-6 pt-5 pb-4 border-b border-gray-100">
-          <div className="min-w-0">
-            <h3 className="text-[16px] font-bold text-gray-900">Map your columns</h3>
-            <p className="text-[12px] text-gray-400 mt-0.5 truncate">
-              {data.fileName} · {data.rows.length} row{data.rows.length !== 1 ? "s" : ""} · {data.headers.length} column{data.headers.length !== 1 ? "s" : ""} detected
-            </p>
-          </div>
-          <button type="button" onClick={onClose} className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors cursor-pointer shrink-0">
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-          </button>
-        </div>
-
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb]:rounded-full">
-          {/* Field mapping */}
-          <div>
-            <p className="text-[12px] font-bold text-gray-900 uppercase tracking-wider mb-3">Match fields to your columns</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
-              {IMPORT_FIELDS.map((f) => {
-                const missing = f.required && mapping[f.key] < 0;
-                return (
-                  <div key={f.key} className="flex items-center gap-3">
-                    <label className="text-[13px] font-medium text-gray-700 w-28 shrink-0">
-                      {f.label}{f.required && <span className="text-red-500"> *</span>}
-                    </label>
-                    <div className="relative flex-1">
-                      <select
-                        value={mapping[f.key]}
-                        onChange={(e) => setField(f.key, Number(e.target.value))}
-                        className={`w-full text-[13px] rounded-lg border px-2.5 py-2 pr-7 outline-none cursor-pointer bg-white appearance-none transition-colors ${
-                          missing ? "border-red-300 bg-red-50" : "border-gray-200"
-                        } focus:ring-2 focus:ring-[#3B694C]/20 focus:border-[#3B694C]`}
-                      >
-                        <option value={-1}>— Skip —</option>
-                        {data.headers.map((h, i) => (
-                          <option key={i} value={i}>{h || `Column ${i + 1}`}</option>
-                        ))}
-                      </select>
-                      <svg className="w-3.5 h-3.5 text-gray-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="m6 9 6 6 6-6"/></svg>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Live preview */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-[12px] font-bold text-gray-900 uppercase tracking-wider">Live preview</p>
-              <p className="text-[11px] text-gray-400">First {preview.length} of {data.rows.length} row{data.rows.length !== 1 ? "s" : ""}</p>
-            </div>
-            {mappedFields.length === 0 ? (
-              <p className="text-[13px] text-gray-400 py-6 text-center border border-dashed border-gray-200 rounded-xl">Map at least one field to preview your data.</p>
-            ) : (
-              <div className="overflow-x-auto border border-gray-100 rounded-xl [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb]:rounded-full">
-                <table className="w-full border-collapse text-left">
-                  <thead>
-                    <tr className="bg-gray-50 border-b border-gray-100">
-                      {mappedFields.map((f) => (
-                        <th key={f.key} className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider px-3 py-2 whitespace-nowrap">
-                          {f.label}{f.required && <span className="text-red-400"> *</span>}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {preview.map((row, ri) => (
-                      <tr key={ri} className="border-b border-gray-50 last:border-0">
-                        {mappedFields.map((f) => (
-                          <td key={f.key} className="px-3 py-2">
-                            <span className="block text-[12px] text-gray-700 max-w-[200px] truncate">
-                              {row[mapping[f.key]] || <span className="text-gray-300">—</span>}
-                            </span>
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="shrink-0 border-t border-gray-100 px-6 py-4 flex items-center justify-between gap-3">
-          <p className="text-[12px] text-red-500 min-h-[16px]">
-            {error || (!phoneMapped ? "Map the Mobile column — it's required." : "")}
-          </p>
-          <div className="flex gap-3 shrink-0">
-            <button type="button" onClick={onClose} disabled={importing} className="py-2.5 px-4 rounded-xl border border-gray-200 text-[13px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-60 transition-colors cursor-pointer">
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleImport}
-              disabled={importing || !phoneMapped}
-              className="py-2.5 px-4 rounded-xl bg-[#3B694C] hover:bg-[#2f5840] disabled:opacity-50 disabled:cursor-not-allowed text-[13px] font-semibold text-white transition-colors cursor-pointer flex items-center justify-center gap-2 whitespace-nowrap"
-            >
-              {importing && (
-                <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-              )}
-              {importing ? "Importing…" : `Import ${data.rows.length} row${data.rows.length !== 1 ? "s" : ""}`}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ─── New Contact Drawer ──────────────────────────────────────────────────────
 
@@ -1503,7 +1212,6 @@ export default function CRMPage() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
-  const [total, setTotal] = useState(0);
   const [search, setSearch] = useState("");
 
   const pageRef = useRef(1);
@@ -1519,11 +1227,8 @@ export default function CRMPage() {
   const [showNew, setShowNew] = useState(false);
   const [detailCustomer, setDetailCustomer] = useState<Customer | null>(null);
   const [templateTarget, setTemplateTarget] = useState<Customer | null>(null);
-  const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<ImportResult | null>(null);
-  const [mappingData, setMappingData] = useState<MappingData | null>(null);
-  const importRef = useRef<HTMLInputElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ─ Bulk selection state ─────────────────────────────────────────────────────
@@ -1533,6 +1238,7 @@ export default function CRMPage() {
   const [selectedMap, setSelectedMap] = useState<Map<string, Customer>>(new Map());
   const [selectAllMatching, setSelectAllMatching] = useState(false);
   const [selectingAll, setSelectingAll] = useState(false);
+  const [showBackToTop, setShowBackToTop] = useState(false);
   // Set when "select all matching" couldn't reach every row (search matches more
   // than the client can page through at once). { reachable, total }.
   const [matchCap, setMatchCap] = useState<{ reachable: number; total: number } | null>(null);
@@ -1562,13 +1268,11 @@ export default function CRMPage() {
     try {
       const res = await apiGetCustomers(1, PAGE_SIZE, q);
       setCustomers(res.data);
-      setTotal(res.pagination?.total ?? res.data.length);
       const more = res.data.length >= PAGE_SIZE;
       setHasMore(more);
       hasMoreRef.current = more;
     } catch {
       setCustomers([]);
-      setTotal(0);
       setHasMore(false);
       hasMoreRef.current = false;
     } finally {
@@ -1584,7 +1288,12 @@ export default function CRMPage() {
     const nextPage = pageRef.current + 1;
     try {
       const res = await apiGetCustomers(nextPage, PAGE_SIZE, searchRef.current);
-      setCustomers((prev) => [...prev, ...res.data]);
+      setCustomers((prev) => {
+        // Guard against overlapping pages returning a row we already have.
+        const seen = new Set(prev.map((c) => String(c._id ?? c.id)));
+        const fresh = res.data.filter((c) => !seen.has(String(c._id ?? c.id)));
+        return [...prev, ...fresh];
+      });
       const more = res.data.length >= PAGE_SIZE;
       setHasMore(more);
       hasMoreRef.current = more;
@@ -1598,12 +1307,14 @@ export default function CRMPage() {
   }, []);
 
   // ─ IntersectionObserver for infinite scroll ────────────────────────────────
+  // Root is the page's own scroll container (the dashboard shell is fixed-height
+  // and clips overflow, so the window never scrolls — see the render below).
   useEffect(() => {
     const sentinel = sentinelRef.current;
     if (!sentinel) return;
     const observer = new IntersectionObserver(
       (entries) => { if (entries[0].isIntersecting) loadMore(); },
-      { rootMargin: "200px" }
+      { root: scrollRef.current, rootMargin: "300px" }
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
@@ -1661,7 +1372,6 @@ export default function CRMPage() {
   // ─ Bulk selection helpers ──────────────────────────────────────────────────
   const customerKey = (c: Customer) => String(c._id ?? c.id);
   const isSelected = (c: Customer) => selectedMap.has(customerKey(c));
-  const allLoadedSelected = customers.length > 0 && customers.every(isSelected);
   const someLoadedSelected = customers.some(isSelected);
 
   function toggleCustomer(c: Customer) {
@@ -1676,15 +1386,11 @@ export default function CRMPage() {
     setMatchCap(null);
   }
 
-  function toggleAllLoaded() {
-    setSelectedMap((prev) => {
-      const next = new Map(prev);
-      if (allLoadedSelected) customers.forEach((c) => next.delete(customerKey(c)));
-      else customers.forEach((c) => next.set(customerKey(c), c));
-      return next;
-    });
-    setSelectAllMatching(false);
-    setMatchCap(null);
+  // Header checkbox: "check all" selects EVERY matching contact (across all
+  // pages), or clears the selection if everything is already selected.
+  function toggleSelectAll() {
+    if (selectAllMatching) clearSelection();
+    else selectAllMatchingCustomers();
   }
 
   function clearSelection() {
@@ -1760,27 +1466,6 @@ export default function CRMPage() {
     router.push(`/campaigns/new?recipients=${ids.join(",")}`);
   }
 
-  // ─ Import CSV: parse client-side, then open the column-mapping step ─────────
-  async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    e.target.value = "";
-    setImporting(true);
-    try {
-      const text = await file.text();
-      const { headers, rows } = parseCSVRows(text);
-      if (headers.length === 0 || rows.length === 0) {
-        setImportResult({ total: 0, created: 0, skipped: 0, errors: [{ row: 0, reason: "The CSV is empty or has no data rows." }] });
-        return;
-      }
-      setMappingData({ headers, rows, fileName: file.name });
-    } catch (err) {
-      setImportResult({ total: 0, created: 0, skipped: 0, errors: [{ row: 0, reason: err instanceof Error ? err.message : "Couldn't read the file." }] });
-    } finally {
-      setImporting(false);
-    }
-  }
-
   // ─ Template download ───────────────────────────────────────────────────────
   function downloadTemplate() {
     const csv =
@@ -1804,7 +1489,7 @@ export default function CRMPage() {
 
   // ─ Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-full bg-white font-[family-name:var(--font-geist-sans)]">
+    <div className="h-full flex flex-col min-h-0 bg-white font-[family-name:var(--font-geist-sans)]">
       {/* Drawers & modals */}
       <CustomerDetailDrawer
         customer={detailCustomer}
@@ -1850,27 +1535,9 @@ export default function CRMPage() {
           }
         }}
       />
-      {importResult && (
-        <ImportResultModal
-          result={importResult}
-          onClose={() => setImportResult(null)}
-        />
-      )}
-      {mappingData && (
-        <ColumnMappingModal
-          data={mappingData}
-          onClose={() => setMappingData(null)}
-          onImported={(result) => {
-            setMappingData(null);
-            setImportResult(result);
-            fetchPage1(searchRef.current);
-          }}
-        />
-      )}
-      <input ref={importRef} type="file" accept=".csv" className="hidden" onChange={handleImportFile} />
 
       {/* Header */}
-      <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-gray-100 gap-4 flex-wrap">
+      <div className="shrink-0 flex items-center justify-between px-6 pt-6 pb-4 border-b border-gray-100 gap-4 flex-wrap">
         <div>
           <h1 className="text-[22px] font-bold text-gray-900 tracking-tight">Contacts</h1>
           <p className="text-[13px] text-gray-400 mt-0.5">CRM — admin view</p>
@@ -1886,16 +1553,11 @@ export default function CRMPage() {
           </button>
           <button
             type="button"
-            onClick={() => !importing && importRef.current?.click()}
-            disabled={importing}
-            className="flex items-center gap-1.5 border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed text-[13px] font-semibold px-3.5 py-2 rounded-xl transition-colors cursor-pointer"
+            onClick={() => router.push("/customers/import")}
+            className="flex items-center gap-1.5 border border-gray-200 text-gray-600 hover:bg-gray-50 text-[13px] font-semibold px-3.5 py-2 rounded-xl transition-colors cursor-pointer"
           >
-            {importing ? (
-              <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-            ) : (
-              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            )}
-            {importing ? "Importing…" : "Import CSV"}
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Import CSV
           </button>
           <button
             type="button"
@@ -1918,7 +1580,7 @@ export default function CRMPage() {
       </div>
 
       {/* Search */}
-      <div className="px-6 py-4">
+      <div className="shrink-0 px-6 py-4">
         <div className="flex items-center gap-2.5 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 max-w-sm focus-within:ring-2 focus-within:ring-[#3B694C]/20 focus-within:border-[#3B694C] transition-colors">
           <svg className="w-4 h-4 text-gray-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
@@ -1938,65 +1600,53 @@ export default function CRMPage() {
         </div>
       </div>
 
-      {/* Table */}
-      <div className="px-6 pb-10 overflow-x-auto">
+      {/* Table (this is the page's scroll container — both axes) */}
+      <div
+        ref={scrollRef}
+        onScroll={(e) => setShowBackToTop(e.currentTarget.scrollTop > 400)}
+        className="flex-1 min-h-0 overflow-auto px-6 pb-10 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb]:rounded-full"
+      >
         <table className="w-full border-collapse min-w-[1100px]">
           <thead>
-            <tr className="border-b border-gray-100">
-              <th className="w-10 px-4 py-3">
+            <tr>
+              <th className="sticky top-0 z-10 bg-white shadow-[0_1px_0_#e5e7eb] w-10 px-4 py-3">
                 <input
                   type="checkbox"
-                  aria-label="Select all on this page"
-                  checked={allLoadedSelected}
-                  ref={(el) => { if (el) el.indeterminate = someLoadedSelected && !allLoadedSelected; }}
-                  onChange={toggleAllLoaded}
-                  disabled={loading || customers.length === 0}
+                  aria-label="Select all matching contacts"
+                  checked={selectAllMatching}
+                  ref={(el) => { if (el) el.indeterminate = !selectAllMatching && someLoadedSelected; }}
+                  onChange={toggleSelectAll}
+                  disabled={loading || selectingAll || customers.length === 0}
                   className="w-4 h-4 rounded border-gray-300 text-[#3B694C] accent-[#3B694C] cursor-pointer align-middle"
                 />
               </th>
               {["Patient", "Gender", "Age", "Nationality", "Top Dept", "Join Date", "Email", "Activity", ""].map((h, hi) => (
-                <th key={hi} className="text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider px-4 py-3">{h}</th>
+                <th key={hi} className="sticky top-0 z-10 bg-white shadow-[0_1px_0_#e5e7eb] text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider px-4 py-3 whitespace-nowrap">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {!loading && allLoadedSelected && total > customers.length && (
-              <tr className="bg-[#EEF6F1] border-b border-[#3B694C]/15">
+            {!loading && selectingAll && (
+              <tr>
+                <td colSpan={10} className="px-4 py-2 text-center">
+                  <span className="inline-flex items-center gap-1.5 text-[12px] text-gray-500">
+                    <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                    Selecting all matching contacts…
+                  </span>
+                </td>
+              </tr>
+            )}
+            {!loading && selectAllMatching && matchCap && (
+              <tr className="bg-amber-50 border-b border-amber-200/60">
                 <td colSpan={10} className="px-4 py-2.5 text-center">
-                  {selectAllMatching ? (
-                    matchCap ? (
-                      <span className="text-[13px] text-amber-700">
-                        Selected the first <span className="font-semibold">{matchCap.reachable.toLocaleString()}</span> of{" "}
-                        <span className="font-semibold">{matchCap.total.toLocaleString()}</span> matching — the maximum reachable at once.
-                        Actions apply to these {matchCap.reachable.toLocaleString()} only; narrow your search to reach the rest.
-                        <button type="button" onClick={clearSelection} className="ml-2 font-semibold text-[#3B694C] hover:underline cursor-pointer">
-                          Clear
-                        </button>
-                      </span>
-                    ) : (
-                      <span className="text-[13px] text-gray-600">
-                        All <span className="font-semibold">{selectedMap.size}</span> matching contacts are selected.
-                        <button type="button" onClick={clearSelection} className="ml-2 font-semibold text-[#3B694C] hover:underline cursor-pointer">
-                          Clear selection
-                        </button>
-                      </span>
-                    )
-                  ) : (
-                    <span className="text-[13px] text-gray-600">
-                      All <span className="font-semibold">{customers.length}</span> on this page are selected.
-                      <button
-                        type="button"
-                        onClick={selectAllMatchingCustomers}
-                        disabled={selectingAll}
-                        className="ml-2 font-semibold text-[#3B694C] hover:underline disabled:opacity-60 cursor-pointer inline-flex items-center gap-1"
-                      >
-                        {selectingAll && (
-                          <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-                        )}
-                        Select all {total} matching
-                      </button>
-                    </span>
-                  )}
+                  <span className="text-[13px] text-amber-700">
+                    Selected the first <span className="font-semibold">{matchCap.reachable.toLocaleString()}</span> of{" "}
+                    <span className="font-semibold">{matchCap.total.toLocaleString()}</span> matching — the maximum at once.
+                    Actions apply to these; narrow your search to reach the rest.
+                    <button type="button" onClick={clearSelection} className="ml-2 font-semibold text-[#3B694C] hover:underline cursor-pointer">
+                      Clear
+                    </button>
+                  </span>
                 </td>
               </tr>
             )}
@@ -2192,6 +1842,18 @@ export default function CRMPage() {
           </p>
         )}
       </div>
+
+      {/* Back to top */}
+      {showBackToTop && (
+        <button
+          type="button"
+          onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" })}
+          aria-label="Back to top"
+          className="fixed bottom-6 right-6 z-[55] w-11 h-11 flex items-center justify-center rounded-full bg-white border border-gray-200 shadow-lg text-gray-500 hover:text-[#3B694C] hover:border-[#3B694C]/40 transition-colors cursor-pointer"
+        >
+          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+        </button>
+      )}
 
       {/* Bulk action bar */}
       {selectedMap.size > 0 && (

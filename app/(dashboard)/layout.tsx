@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, useEffect, startTransition } from "react";
+import { useState, useEffect, useRef, startTransition } from "react";
 import type { ReactNode } from "react";
 import {
   MessageSquare,
@@ -15,6 +15,7 @@ import {
   LayoutTemplate,
   ChevronsRight,
   ChevronsLeft,
+  ChevronDown,
   Menu,
   X,
   LogOut,
@@ -35,6 +36,32 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const [expanded, setExpanded] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [contactsOpen, setContactsOpen] = useState(pathname.startsWith("/customers"));
+
+  // Keep the Contacts sub-menu expanded whenever the user is on one of its pages.
+  useEffect(() => {
+    if (pathname.startsWith("/customers")) setContactsOpen(true);
+  }, [pathname]);
+
+  // Hover-to-expand: opens on hover and collapses again on mouse-leave.
+  // A manual toggle "pins" it (won't auto-close).
+  const hoverExpandedRef = useRef(false);
+
+  function handleSidebarEnter() {
+    if (expanded) return;
+    hoverExpandedRef.current = true;
+    setExpanded(true);
+  }
+  function handleSidebarLeave() {
+    if (hoverExpandedRef.current) {
+      hoverExpandedRef.current = false;
+      setExpanded(false);
+    }
+  }
+  function toggleExpanded() {
+    hoverExpandedRef.current = false; // manual pin — don't auto-collapse on leave
+    setExpanded((v) => !v);
+  }
 
   async function handleLogout() {
     document.cookie = "logged_in=; path=/; max-age=0";
@@ -82,11 +109,15 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     return pathname === href || pathname.startsWith(href + "/");
   }
 
-  const mainNav = [
+  const navBeforeContacts = [
     { href: "/chats",            icon: MessageSquare,   label: "Inbox",        enabled: true,  badge: unreadCount > 0 ? unreadCount : undefined },
-    { href: "/customers",        icon: Contact,         label: "Contacts",     enabled: true  },
+  ];
+  const navAfterContacts = [
     { href: "/campaigns",        icon: Megaphone,       label: "Campaigns",    enabled: true  },
   ];
+  const contactsActive = isActive("/customers");
+  const listsActive = isActive("/customers/lists");
+  const contactsChildActive = contactsActive && !listsActive;
   const adminNav = [
     { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard"     },
     { href: "/team",      icon: UsersRound,      label: "Team & Access" },
@@ -193,6 +224,109 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     );
   };
 
+  /* ── desktop Contacts item: expands into a Contacts / Lists sub-menu ── */
+  const DesktopContactsNav = () => (
+    <div>
+      <button
+        type="button"
+        onClick={() => {
+          if (!expanded) {
+            hoverExpandedRef.current = false;
+            setExpanded(true);
+          }
+          setContactsOpen((v) => !v);
+        }}
+        title={!expanded ? "Contacts" : undefined}
+        className={`relative flex items-center h-10 w-full rounded-xl transition-colors overflow-hidden ${
+          expanded ? "gap-3 px-3" : "justify-center"
+        } ${contactsActive ? "bg-[#EEF6F1] text-[#3B694C]" : "text-gray-400 hover:bg-gray-50 hover:text-gray-600"}`}
+      >
+        {contactsActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-[#3B694C] rounded-r-full" />}
+        <span className="relative shrink-0 flex items-center justify-center">
+          <Contact className="w-[18px] h-[18px]" />
+        </span>
+        <span
+          className={`flex-1 text-left text-[13.5px] font-medium whitespace-nowrap transition-[opacity,max-width] duration-200 delay-75 ${
+            expanded ? "opacity-100 max-w-[200px]" : "opacity-0 max-w-0 pointer-events-none"
+          }`}
+        >
+          Contacts
+        </span>
+        {expanded && (
+          <ChevronDown className={`w-3.5 h-3.5 shrink-0 text-gray-400 transition-transform duration-200 ${contactsOpen ? "rotate-180" : ""}`} />
+        )}
+      </button>
+
+      {expanded && contactsOpen && (
+        <div className="mt-0.5 ml-[29px] pl-2.5 border-l border-gray-100 space-y-0.5">
+          <Link
+            href="/customers"
+            className={`relative flex items-center h-8 px-2.5 rounded-lg text-[13px] transition-colors ${
+              contactsChildActive ? "bg-[#EEF6F1] text-[#3B694C] font-medium" : "text-gray-400 hover:bg-gray-50 hover:text-gray-600"
+            }`}
+          >
+            Contacts
+          </Link>
+          <Link
+            href="/customers/lists"
+            className={`relative flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-[13px] transition-colors ${
+              listsActive ? "bg-[#EEF6F1] text-[#3B694C] font-medium" : "text-gray-400 hover:bg-gray-50 hover:text-gray-600"
+            }`}
+          >
+            Lists
+            <span className="text-[9px] uppercase tracking-wide font-semibold text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded-full leading-none">
+              Soon
+            </span>
+          </Link>
+        </div>
+      )}
+    </div>
+  );
+
+  /* ── mobile Contacts item: same accordion, always-visible text ── */
+  const MobileContactsNav = () => (
+    <div>
+      <button
+        type="button"
+        onClick={() => setContactsOpen((v) => !v)}
+        className={`relative flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-[13.5px] transition-colors ${
+          contactsActive ? "bg-[#EEF6F1] text-[#3B694C] font-medium" : "text-gray-600 hover:bg-gray-50"
+        }`}
+      >
+        {contactsActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-[#3B694C] rounded-r-full" />}
+        <Contact className="w-[17px] h-[17px] shrink-0" />
+        <span className="flex-1 text-left">Contacts</span>
+        <ChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform duration-200 ${contactsOpen ? "rotate-180" : ""}`} />
+      </button>
+
+      {contactsOpen && (
+        <div className="mt-0.5 mb-0.5 ml-[22px] pl-2.5 border-l border-gray-100 space-y-0.5">
+          <Link
+            href="/customers"
+            onClick={() => setMobileOpen(false)}
+            className={`relative flex items-center px-3 py-2 rounded-lg text-[13px] transition-colors ${
+              contactsChildActive ? "bg-[#EEF6F1] text-[#3B694C] font-medium" : "text-gray-500 hover:bg-gray-50"
+            }`}
+          >
+            Contacts
+          </Link>
+          <Link
+            href="/customers/lists"
+            onClick={() => setMobileOpen(false)}
+            className={`relative flex items-center gap-1.5 px-3 py-2 rounded-lg text-[13px] transition-colors ${
+              listsActive ? "bg-[#EEF6F1] text-[#3B694C] font-medium" : "text-gray-500 hover:bg-gray-50"
+            }`}
+          >
+            Lists
+            <span className="text-[9px] uppercase tracking-wide font-semibold text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded-full leading-none">
+              Soon
+            </span>
+          </Link>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <TooltipProvider>
     <ToastProvider>
@@ -230,7 +364,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           </button>
         </div>
         <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
-          {mainNav.map((item) => <MobileItem key={item.label} {...item} />)}
+          {navBeforeContacts.map((item) => <MobileItem key={item.label} {...item} />)}
+          <MobileContactsNav />
+          {navAfterContacts.map((item) => <MobileItem key={item.label} {...item} />)}
           {isAdmin && (
             <>
               <p className="px-3 pt-5 pb-1.5 text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Admin</p>
@@ -261,6 +397,8 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
       {/* icon rail → full drawer */}
       <div
+        onMouseEnter={handleSidebarEnter}
+        onMouseLeave={handleSidebarLeave}
         className={`hidden lg:flex fixed top-0 left-0 h-full flex-col bg-white border-r border-gray-100 z-40 overflow-hidden transition-[width] duration-300 ease-in-out ${expanded ? EXPANDED_W : COLLAPSED_W}`}
       >
         {/* Logo row */}
@@ -275,7 +413,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
-          {mainNav.map((item) => <DesktopItem key={item.label} {...item} />)}
+          {navBeforeContacts.map((item) => <DesktopItem key={item.label} {...item} />)}
+          <DesktopContactsNav />
+          {navAfterContacts.map((item) => <DesktopItem key={item.label} {...item} />)}
           {isAdmin && (
             <>
               <div className="border-t border-gray-100 my-2 mx-1" />
@@ -290,7 +430,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         {/* Expand / collapse toggle */}
         <div className="shrink-0 border-t border-gray-100 p-2">
           <button
-            onClick={() => setExpanded((v) => !v)}
+            onClick={toggleExpanded}
             title={expanded ? "Collapse" : "Expand"}
             className={`flex items-center h-10 w-full rounded-xl text-gray-400 hover:bg-gray-50 hover:text-gray-600 transition-colors overflow-hidden ${expanded ? "gap-3 px-3" : "justify-center"}`}
           >
