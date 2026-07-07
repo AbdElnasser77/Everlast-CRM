@@ -125,6 +125,36 @@ export interface CustomerResponse {
   data: Customer;
 }
 
+export interface ContactList {
+  id: number;
+  name: string;
+  description: string | null;
+  memberCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ContactListListResponse {
+  success: boolean;
+  data: ContactList[];
+}
+
+export interface ContactListResponse {
+  success: boolean;
+  data: ContactList;
+}
+
+export interface ContactListDetailResponse {
+  success: boolean;
+  data: ContactList & { members: (Customer & { addedAt: string })[] };
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+}
+
 export interface AuditLogResponse {
   success: boolean;
   data: AuditLog[];
@@ -189,10 +219,15 @@ export interface StatsAgentsResponse {
 
 export type TemplateStatus = "DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED";
 export type TemplateCategory = "GENERAL" | "RE_ENGAGEMENT" | "CAMPAIGN";
+export type TemplateHeaderType = "NONE" | "TEXT" | "IMAGE" | "VIDEO" | "DOCUMENT";
+export type TemplateButtonType = "QUICK_REPLY" | "URL" | "PHONE_NUMBER";
 
 export interface TemplateButton {
   id: string;
+  type: TemplateButtonType;
   title: string;
+  url?: string;
+  phoneNumber?: string;
 }
 
 export interface Template {
@@ -204,7 +239,9 @@ export interface Template {
   approvalStatus: TemplateStatus;
   rejectionReason: string | null;
   language: string;
+  headerType: TemplateHeaderType;
   header: string | null;
+  headerMediaUrl: string | null;
   body: string;
   footer: string | null;
   buttons: TemplateButton[] | null;
@@ -221,6 +258,32 @@ export interface TemplateListResponse {
 export interface TemplateResponse {
   success: boolean;
   data: Template;
+}
+
+export type MediaAssetType = "IMAGE" | "VIDEO" | "AUDIO" | "DOCUMENT";
+
+export interface MediaAsset {
+  id: number;
+  url: string;
+  publicId: string;
+  mediaType: MediaAssetType;
+  format: string;
+  bytes: number;
+  width: number | null;
+  height: number | null;
+  filename: string | null;
+  createdAt: string;
+  usageCount: number;
+}
+
+export interface MediaAssetListResponse {
+  success: boolean;
+  data: MediaAsset[];
+}
+
+export interface MediaAssetResponse {
+  success: boolean;
+  data: MediaAsset;
 }
 
 export interface AgentUser {
@@ -246,7 +309,7 @@ export interface UserResponse {
   data: AgentUser;
 }
 
-export type CampaignStatus = "DRAFT" | "SCHEDULED" | "RUNNING" | "COMPLETED" | "CANCELLED";
+export type CampaignStatus = "DRAFT" | "SCHEDULED" | "RUNNING" | "PAUSED" | "COMPLETED" | "CANCELLED";
 export type CampaignRecipientStatus = "PENDING" | "SENT" | "FAILED" | "SKIPPED";
 
 export interface Campaign {

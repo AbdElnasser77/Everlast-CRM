@@ -60,10 +60,12 @@ function isWindowClosed(lastCustomerMessageAt: string | null | undefined): boole
 }
 
 function parseTemplateContent(content: string): {
+  headerType?: "NONE" | "TEXT" | "IMAGE" | "VIDEO" | "DOCUMENT";
   header?: string;
+  headerMediaUrl?: string;
   body: string;
   footer?: string;
-  buttons?: { id: string; title: string }[];
+  buttons?: { id: string; type?: "QUICK_REPLY" | "URL" | "PHONE_NUMBER"; title: string; url?: string; phoneNumber?: string }[];
 } | null {
   try {
     const p = JSON.parse(content);
@@ -1387,8 +1389,22 @@ export default function ConversationPage() {
                         )}
                         {/* Bubble — header / body / footer / timestamp */}
                         <div className={`msg-bubble bg-[#3B694C] rounded-2xl rounded-tr-sm px-4 pt-2.5 pb-2 shadow-sm transition-opacity ${isSending ? "opacity-75" : "opacity-100"} ${tpl.buttons?.length ? "rounded-b-none" : ""}`}>
-                          {tpl.header && (
+                          {tpl.headerType === "TEXT" && tpl.header && (
                             <p className="text-[14px] font-bold text-white mb-1 leading-snug">{tpl.header}</p>
+                          )}
+                          {tpl.headerType === "IMAGE" && tpl.headerMediaUrl && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={tpl.headerMediaUrl} alt="" className="w-full max-h-48 object-cover rounded-lg mb-1.5" />
+                          )}
+                          {tpl.headerType === "VIDEO" && tpl.headerMediaUrl && (
+                            <div className="flex items-center gap-2 bg-black/20 rounded-lg px-2.5 py-3 mb-1.5">
+                              <span className="text-[13px] text-white/80">▶ Video attachment</span>
+                            </div>
+                          )}
+                          {tpl.headerType === "DOCUMENT" && tpl.headerMediaUrl && (
+                            <a href={tpl.headerMediaUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 bg-black/20 rounded-lg px-2.5 py-3 mb-1.5 hover:bg-black/30 transition-colors">
+                              <span className="text-[13px] text-white/80 truncate">📄 {tpl.headerMediaUrl.split("/").pop() || "Document"}</span>
+                            </a>
                           )}
                           <p className="text-[14px] text-white leading-relaxed whitespace-pre-wrap break-words">{tpl.body}</p>
                           {tpl.footer && (
@@ -1402,12 +1418,16 @@ export default function ConversationPage() {
                         {/* CTA buttons — below bubble, outside green area */}
                         {tpl.buttons && tpl.buttons.length > 0 && (
                           <div className="space-y-1 mt-1">
-                            {tpl.buttons.map((btn) => (
-                              <div key={btn.id}
-                                className="flex items-center justify-center py-2 bg-white border border-gray-200 rounded-xl text-[13px] font-medium text-[#3B694C] shadow-sm">
-                                {btn.title}
-                              </div>
-                            ))}
+                            {tpl.buttons.map((btn) => {
+                              const cls = "flex items-center justify-center gap-1.5 py-2 bg-white border border-gray-200 rounded-xl text-[13px] font-medium text-[#3B694C] shadow-sm";
+                              if (btn.type === "URL" && btn.url) {
+                                return <a key={btn.id} href={btn.url} target="_blank" rel="noreferrer" className={cls}>🔗 {btn.title}</a>;
+                              }
+                              if (btn.type === "PHONE_NUMBER" && btn.phoneNumber) {
+                                return <a key={btn.id} href={`tel:${btn.phoneNumber}`} className={cls}>📞 {btn.title}</a>;
+                              }
+                              return <div key={btn.id} className={cls}>{btn.title}</div>;
+                            })}
                           </div>
                         )}
                         {msg.reactions && Object.keys(msg.reactions).length > 0 && (

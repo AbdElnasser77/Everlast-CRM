@@ -9,13 +9,20 @@ import {
   XCircle,
   Upload,
   TrendingDown,
+  Pause,
+  Play,
+  Loader2,
 } from "lucide-react";
 import type { Campaign } from "@/types";
 import {
   apiGetCampaigns,
+  apiGetActiveCampaignProgress,
   apiCancelCampaign,
+  apiPauseCampaign,
+  apiResumeCampaign,
 } from "@/lib/api";
 import { getSocket } from "@/lib/socket";
+import { useToast } from "@/components/ui/toast";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -48,6 +55,7 @@ function initials(name: string | null): string {
 const STAT_COLORS: Record<string, string> = {
   COMPLETED: "bg-green-50 text-green-700",
   RUNNING: "bg-blue-50 text-blue-700",
+  PAUSED: "bg-orange-50 text-orange-600",
   SCHEDULED: "bg-amber-50 text-amber-700",
   CANCELLED: "bg-gray-100 text-gray-500",
   DRAFT: "bg-gray-100 text-gray-500",
@@ -58,14 +66,21 @@ const STAT_COLORS: Record<string, string> = {
 function RunningCard({
   campaign,
   onCancel,
+  onPause,
+  pausing,
 }: {
   campaign: Campaign;
   onCancel: (id: number) => void;
+  onPause: (id: number) => void;
+  pausing: boolean;
 }) {
   const { sentCount, failedCount, totalRecipients, startedAt, name } = campaign;
   const done = sentCount + failedCount;
   const pct = totalRecipients > 0 ? Math.round((done / totalRecipients) * 100) : 0;
-  const remaining = totalRecipients > 0 ? ((totalRecipients - done) * 0.4) : 0;
+  // Matches the backend's 5-way send concurrency — effective per-recipient
+  // wall time, not a per-message throttle. Keep in sync with the estimate in
+  // campaigns/new/page.tsx if that concurrency setting ever changes.
+  const remaining = totalRecipients > 0 ? ((totalRecipients - done) * 0.3) : 0;
 
   return (
     <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
@@ -81,12 +96,22 @@ function RunningCard({
             <span className="text-[12px] text-gray-400">Started {timeAgo(startedAt)}</span>
           )}
         </div>
-        <button
-          onClick={() => onCancel(campaign.id)}
-          className="text-[12px] font-medium text-red-500 hover:text-red-600 border border-red-200 hover:border-red-300 px-3 py-1 rounded-lg transition-colors cursor-pointer"
-        >
-          Cancel
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => onPause(campaign.id)}
+            disabled={pausing}
+            className="flex items-center gap-1 text-[12px] font-medium text-gray-500 hover:text-gray-700 border border-gray-200 hover:border-gray-300 px-3 py-1 rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {pausing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Pause className="w-3 h-3" />}
+            Pause
+          </button>
+          <button
+            onClick={() => onCancel(campaign.id)}
+            className="text-[12px] font-medium text-red-500 hover:text-red-600 border border-red-200 hover:border-red-300 px-3 py-1 rounded-lg transition-colors cursor-pointer"
+          >
+            Cancel
+          </button>
+        </div>
       </div>
 
       <div className="relative h-2 bg-gray-100 rounded-full overflow-hidden mb-2">
@@ -113,6 +138,62 @@ function RunningCard({
             <span className="text-[11px] text-gray-400 mt-0.5">{label}</span>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Paused Card ────────────────────────────────────────────────────────────
+
+function PausedCard({
+  campaign,
+  onCancel,
+  onResume,
+  resuming,
+}: {
+  campaign: Campaign;
+  onCancel: (id: number) => void;
+  onResume: (id: number) => void;
+  resuming: boolean;
+}) {
+  const { sentCount, failedCount, totalRecipients, name } = campaign;
+  const done = sentCount + failedCount;
+  const pct = totalRecipients > 0 ? Math.round((done / totalRecipients) * 100) : 0;
+
+  return (
+    <div className="bg-white border border-orange-200 rounded-2xl p-5 shadow-sm">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2.5">
+          <Pause className="w-3.5 h-3.5 text-orange-500" />
+          <span className="text-[11px] font-bold tracking-wider text-orange-600 uppercase">Paused</span>
+          <span className="text-[13px] font-semibold text-gray-800">{name}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => onResume(campaign.id)}
+            disabled={resuming}
+            className="flex items-center gap-1 text-[12px] font-semibold text-[#3B694C] hover:text-[#2f5540] border border-[#3B694C]/30 hover:border-[#3B694C]/50 px-3 py-1 rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {resuming ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+            Resume
+          </button>
+          <button
+            onClick={() => onCancel(campaign.id)}
+            className="text-[12px] font-medium text-red-500 hover:text-red-600 border border-red-200 hover:border-red-300 px-3 py-1 rounded-lg transition-colors cursor-pointer"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+
+      <div className="relative h-2 bg-gray-100 rounded-full overflow-hidden mb-2">
+        <div
+          className="absolute left-0 top-0 h-full bg-orange-300 rounded-full transition-[width] duration-500"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <div className="text-[12px] text-gray-500">
+        {done} / {totalRecipients} sent — paused before completing.
       </div>
     </div>
   );
@@ -146,8 +227,11 @@ function ScheduledCard({ campaign, onCancel }: { campaign: Campaign; onCancel: (
 
 export default function CampaignsPage() {
   const router = useRouter();
+  const toast = useToast();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
+  const [pausingIds, setPausingIds] = useState<Set<number>>(new Set());
+  const [resumingIds, setResumingIds] = useState<Set<number>>(new Set());
 
   const load = useCallback(() => {
     apiGetCampaigns()
@@ -156,36 +240,56 @@ export default function CampaignsPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Poll-safe load: never roll back progress on a RUNNING campaign
+  // Lightweight poll target — only queries active (RUNNING/PAUSED) campaigns'
+  // counters, not the full history + delivered/read/replied joins that
+  // apiGetCampaigns does. Never rolls progress backward on a RUNNING campaign.
   const pollLoad = useCallback(() => {
-    apiGetCampaigns()
+    apiGetActiveCampaignProgress()
       .then((res) => {
+        const activeMap = new Map(res.data.map((c) => [c.id, c]));
+        let missingTerminal = false;
         setCampaigns((prev) =>
-          res.data.map((fresh) => {
-            const existing = prev.find((c) => c.id === fresh.id);
-            if (existing?.status === "RUNNING" && fresh.status === "RUNNING") {
-              return {
-                ...fresh,
-                sentCount: Math.max(existing.sentCount, fresh.sentCount),
-                failedCount: Math.max(existing.failedCount, fresh.failedCount),
-              };
+          prev.map((c) => {
+            if (c.status !== "RUNNING" && c.status !== "PAUSED") return c;
+            const fresh = activeMap.get(c.id);
+            if (!fresh) {
+              // No longer active — it finished/was cancelled between polls.
+              // The lightweight endpoint doesn't carry final delivered/read/
+              // replied numbers, so fall back to a full reload for this tick.
+              missingTerminal = true;
+              return c;
             }
-            return fresh;
+            return {
+              ...c,
+              status: fresh.status,
+              sentCount: Math.max(c.sentCount, fresh.sentCount),
+              failedCount: Math.max(c.failedCount, fresh.failedCount),
+              totalRecipients: fresh.totalRecipients,
+            };
           })
         );
+        if (missingTerminal) load();
       })
       .catch(() => {});
-  }, []);
+  }, [load]);
 
   useEffect(() => {
     load();
     const socket = getSocket();
     const refresh = () => load();
     const onProgress = (data: { campaignId: number; sentCount: number; failedCount: number; totalRecipients: number }) => {
+      // The backend now sends up to 5 recipients concurrently, so their
+      // progress events can arrive out of commit-order — never let a
+      // late-but-stale event visibly walk the counters backward.
       setCampaigns((prev) =>
         prev.map((c) =>
           c.id === data.campaignId
-            ? { ...c, sentCount: data.sentCount, failedCount: data.failedCount, totalRecipients: data.totalRecipients }
+            ? {
+                ...c,
+                sentCount: Math.max(c.sentCount, data.sentCount),
+                failedCount: Math.max(c.failedCount, data.failedCount),
+                totalRecipients: data.totalRecipients,
+              }
             : c
         )
       );
@@ -194,19 +298,23 @@ export default function CampaignsPage() {
     socket.on("campaign.progress", onProgress);
     socket.on("campaign.completed", refresh);
     socket.on("campaign.cancelled", refresh);
+    socket.on("campaign.paused", refresh);
     return () => {
       socket.off("campaign.started", refresh);
       socket.off("campaign.progress", onProgress);
       socket.off("campaign.completed", refresh);
       socket.off("campaign.cancelled", refresh);
+      socket.off("campaign.paused", refresh);
     };
   }, [load]);
 
-  // Poll every 3s while any campaign is running — catches missed socket events
+  // Poll while any campaign is running — catches missed socket events. 1.5s
+  // instead of the old 3s since sends now complete several times faster with
+  // the backend's concurrent-send batching, so a 3s gap felt laggy/stale.
   const hasRunning = campaigns.some((c) => c.status === "RUNNING");
   useEffect(() => {
     if (!hasRunning) return;
-    const interval = setInterval(pollLoad, 3000);
+    const interval = setInterval(pollLoad, 1500);
     return () => clearInterval(interval);
   }, [hasRunning, pollLoad]);
 
@@ -214,7 +322,41 @@ export default function CampaignsPage() {
     try {
       await apiCancelCampaign(id);
       load();
-    } catch {}
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't cancel campaign.");
+    }
+  };
+
+  const handlePause = async (id: number) => {
+    setPausingIds((prev) => new Set(prev).add(id));
+    try {
+      await apiPauseCampaign(id);
+      load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't pause campaign.");
+    } finally {
+      setPausingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  };
+
+  const handleResume = async (id: number) => {
+    setResumingIds((prev) => new Set(prev).add(id));
+    try {
+      await apiResumeCampaign(id);
+      load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't resume campaign.");
+    } finally {
+      setResumingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
   };
 
   const handleExport = () => {
@@ -245,6 +387,7 @@ export default function CampaignsPage() {
   };
 
   const running = campaigns.filter((c) => c.status === "RUNNING");
+  const paused = campaigns.filter((c) => c.status === "PAUSED");
   const scheduled = campaigns.filter((c) => c.status === "SCHEDULED");
   const drafts = campaigns.filter((c) => c.status === "DRAFT");
   const sent = campaigns.filter((c) => c.status === "COMPLETED" || c.status === "CANCELLED");
@@ -269,6 +412,7 @@ export default function CampaignsPage() {
             <h1 className="text-[22px] font-bold text-gray-900">Campaigns</h1>
             <p className="text-[13px] text-gray-400 mt-0.5">
               {sent.filter(c => c.status === "COMPLETED").length} sent
+              {paused.length > 0 && ` · ${paused.length} paused`}
               {scheduled.length > 0 && ` · ${scheduled.length} scheduled`}
               {drafts.length > 0 && ` · ${drafts.length} draft${drafts.length > 1 ? "s" : ""}`}
             </p>
@@ -295,7 +439,16 @@ export default function CampaignsPage() {
         {running.length > 0 && (
           <div className="space-y-3">
             {running.map((c) => (
-              <RunningCard key={c.id} campaign={c} onCancel={handleCancel} />
+              <RunningCard key={c.id} campaign={c} onCancel={handleCancel} onPause={handlePause} pausing={pausingIds.has(c.id)} />
+            ))}
+          </div>
+        )}
+
+        {/* Paused */}
+        {paused.length > 0 && (
+          <div className="space-y-3">
+            {paused.map((c) => (
+              <PausedCard key={c.id} campaign={c} onCancel={handleCancel} onResume={handleResume} resuming={resumingIds.has(c.id)} />
             ))}
           </div>
         )}

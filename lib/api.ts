@@ -8,6 +8,9 @@ import type {
   CustomerResponse,
   AuditLogResponse,
   Gender,
+  ContactListListResponse,
+  ContactListResponse,
+  ContactListDetailResponse,
 } from "@/types";
 
 // Optional patient/demographic fields shared by create & update.
@@ -108,6 +111,31 @@ export function apiUploadMedia(file: File) {
     format: string;
     bytes: number;
   }>("/api/media/upload", { method: "POST", body: form });
+}
+
+// Media Library
+export function apiGetMediaLibrary(type?: import("@/types").MediaAssetType) {
+  return apiFetch<import("@/types").MediaAssetListResponse>(
+    `/api/media-library${type ? `?type=${type}` : ""}`
+  );
+}
+
+export function apiUploadToMediaLibrary(file: File, name?: string) {
+  const form = new FormData();
+  form.append("file", file);
+  if (name) form.append("name", name);
+  return apiFetch<import("@/types").MediaAssetResponse>("/api/media-library", { method: "POST", body: form });
+}
+
+export function apiUpdateMediaAsset(id: number, data: { filename: string }) {
+  return apiFetch<import("@/types").MediaAssetResponse>(`/api/media-library/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export function apiDeleteMediaAsset(id: number) {
+  return apiFetch<{ success: boolean; message: string }>(`/api/media-library/${id}`, { method: "DELETE" });
 }
 
 export function apiAssignConversation(conversationId: string, agentId: number | null) {
@@ -321,7 +349,9 @@ export function apiCreateTemplate(data: {
   name: string;
   category: import("@/types").TemplateCategory;
   language?: string;
+  headerType?: import("@/types").TemplateHeaderType;
   header?: string;
+  headerMediaUrl?: string;
   body: string;
   footer?: string;
   buttons?: import("@/types").TemplateButton[];
@@ -338,7 +368,9 @@ export function apiUpdateTemplate(
     name: string;
     category: import("@/types").TemplateCategory;
     language: string;
+    headerType: import("@/types").TemplateHeaderType;
     header: string;
+    headerMediaUrl: string;
     body: string;
     footer: string;
     buttons: import("@/types").TemplateButton[];
@@ -376,6 +408,18 @@ export function apiGetCampaign(id: number) {
   return apiFetch<import("@/types").CampaignResponse>(`/api/campaigns/${id}`);
 }
 
+export interface ActiveCampaignProgress {
+  id: number;
+  status: "RUNNING" | "PAUSED";
+  sentCount: number;
+  failedCount: number;
+  totalRecipients: number;
+}
+
+export function apiGetActiveCampaignProgress() {
+  return apiFetch<{ success: boolean; data: ActiveCampaignProgress[] }>("/api/campaigns/active-progress");
+}
+
 export function apiCreateCampaign(data: {
   name: string;
   templateId: number;
@@ -410,6 +454,14 @@ export function apiCancelCampaign(id: number) {
   return apiFetch<{ success: boolean }>(`/api/campaigns/${id}/cancel`, { method: "POST" });
 }
 
+export function apiPauseCampaign(id: number) {
+  return apiFetch<{ success: boolean }>(`/api/campaigns/${id}/pause`, { method: "POST" });
+}
+
+export function apiResumeCampaign(id: number) {
+  return apiFetch<{ success: boolean }>(`/api/campaigns/${id}/resume`, { method: "POST" });
+}
+
 export function apiCreateConversation(customerId: number) {
   return apiFetch<{ success: boolean; data: import("@/types").Conversation; created: boolean }>(
     "/api/conversations",
@@ -422,4 +474,74 @@ export function apiSendTemplate(conversationId: string, templateId: number) {
     `/api/templates/conversations/${conversationId}/send-template`,
     { method: "POST", body: JSON.stringify({ templateId }) }
   );
+}
+
+// Lists
+export function apiGetLists() {
+  return apiFetch<ContactListListResponse>("/api/lists");
+}
+
+export function apiCreateList(data: { name: string; description?: string }) {
+  return apiFetch<ContactListResponse>("/api/lists", { method: "POST", body: JSON.stringify(data) });
+}
+
+export function apiGetList(id: string | number, page = 1, limit = 30, search = "") {
+  const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (search) params.append("search", search);
+  return apiFetch<ContactListDetailResponse>(`/api/lists/${id}?${params.toString()}`);
+}
+
+export function apiUpdateList(id: string | number, data: Partial<{ name: string; description: string }>) {
+  return apiFetch<ContactListResponse>(`/api/lists/${id}`, { method: "PUT", body: JSON.stringify(data) });
+}
+
+export function apiDeleteList(id: string | number) {
+  return apiFetch<{ success: boolean; message: string }>(`/api/lists/${id}`, { method: "DELETE" });
+}
+
+export function apiAddListMembers(id: string | number, customerIds: number[]) {
+  return apiFetch<{ success: boolean; message: string; data: { added: number; alreadyInList: number } }>(
+    `/api/lists/${id}/members`,
+    { method: "POST", body: JSON.stringify({ customerIds }) }
+  );
+}
+
+export function apiRemoveListMember(id: string | number, customerId: number) {
+  return apiFetch<{ success: boolean; message: string }>(`/api/lists/${id}/members/${customerId}`, { method: "DELETE" });
+}
+
+export function apiGetListMemberIds(id: string | number) {
+  return apiFetch<{ success: boolean; data: { listId: number; name: string; customerIds: number[] } }>(
+    `/api/lists/${id}/members/ids`
+  );
+}
+
+export function apiValidateListImport(id: string | number, file: File, dateFormat = "auto", defaultCountry = "") {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("dateFormat", dateFormat);
+  form.append("defaultCountry", defaultCountry);
+  return apiFetch<{
+    success: boolean;
+    data: { total: number; valid: number; duplicates: ImportIssue[]; invalid: ImportIssue[] };
+  }>(`/api/lists/${id}/import/validate`, { method: "POST", body: form });
+}
+
+export function apiImportListMembers(id: string | number, file: File, dateFormat = "auto", defaultCountry = "") {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("dateFormat", dateFormat);
+  form.append("defaultCountry", defaultCountry);
+  return apiFetch<{
+    success: boolean;
+    data: {
+      total: number;
+      created: number;
+      matchedExisting: number;
+      linked: number;
+      alreadyInList: number;
+      duplicatesInFile: number;
+      errors: ImportIssue[];
+    };
+  }>(`/api/lists/${id}/import`, { method: "POST", body: form });
 }

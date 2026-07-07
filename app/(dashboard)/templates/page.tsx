@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import {
   Plus,
   RefreshCw,
@@ -9,19 +10,16 @@ import {
   Trash2,
   Send,
   AlertCircle,
-  X,
 } from "lucide-react";
 import {
   apiGetTemplates,
-  apiCreateTemplate,
-  apiUpdateTemplate,
   apiDeleteTemplate,
   apiSubmitTemplate,
   apiSyncTemplates,
 } from "@/lib/api";
+import { HeaderPreview, ButtonRow } from "@/components/templates/shared";
 import type {
   Template,
-  TemplateButton,
   TemplateCategory,
   TemplateStatus,
 } from "@/types";
@@ -73,25 +71,6 @@ const CATEGORY_CONFIG: Record<
   CAMPAIGN: { label: "Campaign", bg: "bg-purple-50", text: "text-purple-700" },
 };
 
-const LIMITS = { name: 512, header: 60, body: 1024, footer: 60, button: 25 };
-
-function renderPreview(text: string): string {
-  return text
-    .replace(/\{\{customer_name\}\}/g, "Customer")
-    .replace(/\{\{agent_name\}\}/g, "Agent");
-}
-
-function CharCount({ val, max }: { val: string; max: number }) {
-  const over = val.length > max;
-  return (
-    <span
-      className={`text-[11px] tabular-nums ${over ? "text-red-500 font-semibold" : "text-gray-400"}`}
-    >
-      {val.length}/{max}
-    </span>
-  );
-}
-
 function TemplateStatusBadge({ status }: { status: TemplateStatus }) {
   const cfg = STATUS_CONFIG[status];
   return (
@@ -111,415 +90,6 @@ function CategoryBadge({ category }: { category: TemplateCategory }) {
     >
       {cfg.label}
     </span>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// TemplateFormModal
-// ---------------------------------------------------------------------------
-
-function TemplateFormModal({
-  template,
-  onClose,
-  onSaved,
-}: {
-  template?: Template | null;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const isEditing = !!template;
-  const [name, setName] = useState(template?.name ?? "");
-  const [category, setCategory] = useState<TemplateCategory>(
-    template?.category ?? "GENERAL",
-  );
-  const [language, setLanguage] = useState(template?.language ?? "en_US");
-  const [header, setHeader] = useState(template?.header ?? "");
-  const [body, setBody] = useState(template?.body ?? "");
-  const [footer, setFooter] = useState(template?.footer ?? "");
-  const [buttons, setButtons] = useState<TemplateButton[]>(
-    template?.buttons ?? [],
-  );
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  function insertPlaceholder(ph: string) {
-    setBody((prev) => prev + ph);
-  }
-  function addButton() {
-    if (buttons.length >= 3) return;
-    setButtons((prev) => [...prev, { id: `btn_${Date.now()}`, title: "" }]);
-  }
-  function updateButtonTitle(i: number, title: string) {
-    setButtons((prev) => {
-      const n = [...prev];
-      n[i] = { ...n[i], title };
-      return n;
-    });
-  }
-  function removeButton(i: number) {
-    setButtons((prev) => prev.filter((_, idx) => idx !== i));
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!name.trim() || !body.trim()) {
-      setError("Name and body are required.");
-      return;
-    }
-    if (header.length > LIMITS.header) {
-      setError(`Header must be ≤ ${LIMITS.header} characters.`);
-      return;
-    }
-    if (body.length > LIMITS.body) {
-      setError(`Body must be ≤ ${LIMITS.body} characters.`);
-      return;
-    }
-    if (footer.length > LIMITS.footer) {
-      setError(`Footer must be ≤ ${LIMITS.footer} characters.`);
-      return;
-    }
-    if (
-      buttons.some((b) => !b.title.trim() || b.title.length > LIMITS.button)
-    ) {
-      setError(
-        `All button titles are required and must be ≤ ${LIMITS.button} characters.`,
-      );
-      return;
-    }
-    setError(null);
-    setSaving(true);
-    try {
-      const payload = {
-        name: name.trim(),
-        category,
-        language,
-        header: header.trim() || undefined,
-        body: body.trim(),
-        footer: footer.trim() || undefined,
-        buttons: buttons.length > 0 ? buttons : undefined,
-      };
-      if (isEditing && template) {
-        await apiUpdateTemplate(template.id, payload);
-      } else {
-        await apiCreateTemplate(payload);
-      }
-      onSaved();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save template");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  const visibleButtons = buttons.filter((b) => b.title.trim());
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[92vh] flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100 shrink-0">
-          <h2 className="text-[16px] font-bold text-gray-900">
-            {isEditing ? "Edit Template" : "Create Template"}
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-400 cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* Two-panel body */}
-        <div className="flex flex-1 min-h-0">
-          {/* Left — form */}
-          <div className="flex-1 overflow-y-auto px-6 py-5 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb]:rounded-full">
-            <form id="tpl-form" onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-[12px] font-semibold text-gray-600">
-                    Template Name *
-                  </label>
-                  <CharCount val={name} max={LIMITS.name} />
-                </div>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  maxLength={LIMITS.name}
-                  placeholder="e.g. Wellness Check"
-                  required
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-[14px] text-gray-800 outline-none focus:border-[#3B694C] focus:ring-1 focus:ring-[#3B694C]/20"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[12px] font-semibold text-gray-600 mb-1.5">
-                    Category
-                  </label>
-                  <select
-                    value={category}
-                    onChange={(e) =>
-                      setCategory(e.target.value as TemplateCategory)
-                    }
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-[14px] text-gray-800 outline-none focus:border-[#3B694C] bg-white"
-                  >
-                    <option value="GENERAL">General</option>
-                    <option value="RE_ENGAGEMENT">Re-engagement</option>
-                    <option value="CAMPAIGN">Campaign</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-[12px] font-semibold text-gray-600 mb-1.5">
-                    Language
-                  </label>
-                  <select
-                    value={language}
-                    onChange={(e) => setLanguage(e.target.value)}
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-[14px] text-gray-800 outline-none focus:border-[#3B694C] bg-white"
-                  >
-                    <option value="en_US">English (en_US)</option>
-                    <option value="ar">Arabic (ar)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-[12px] font-semibold text-gray-600">
-                    Header{" "}
-                    <span className="font-normal text-gray-400">
-                      (optional)
-                    </span>
-                  </label>
-                  <CharCount val={header} max={LIMITS.header} />
-                </div>
-                <input
-                  type="text"
-                  value={header}
-                  onChange={(e) => setHeader(e.target.value)}
-                  maxLength={LIMITS.header}
-                  placeholder="e.g. Everlast Wellness"
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-[14px] text-gray-800 outline-none focus:border-[#3B694C] focus:ring-1 focus:ring-[#3B694C]/20"
-                />
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-[12px] font-semibold text-gray-600">
-                    Message Body *
-                  </label>
-                  <CharCount val={body} max={LIMITS.body} />
-                </div>
-                <textarea
-                  value={body}
-                  onChange={(e) => setBody(e.target.value)}
-                  maxLength={LIMITS.body}
-                  placeholder={`Hi {{customer_name}}, we'd love to reconnect.`}
-                  rows={4}
-                  required
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-[14px] text-gray-800 outline-none focus:border-[#3B694C] focus:ring-1 focus:ring-[#3B694C]/20 resize-none"
-                />
-                <div className="flex gap-2 mt-2">
-                  <span className="text-[11px] text-gray-400 self-center">
-                    Insert:
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => insertPlaceholder("{{customer_name}}")}
-                    className="text-[11px] font-medium text-[#3B694C] bg-[#EEF6F1] border border-[#3B694C]/20 px-2 py-0.5 rounded-md hover:bg-[#DCF2E3] transition-colors cursor-pointer"
-                  >
-                    {"{{customer_name}}"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => insertPlaceholder("{{agent_name}}")}
-                    className="text-[11px] font-medium text-[#3B694C] bg-[#EEF6F1] border border-[#3B694C]/20 px-2 py-0.5 rounded-md hover:bg-[#DCF2E3] transition-colors cursor-pointer"
-                  >
-                    {"{{agent_name}}"}
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-[12px] font-semibold text-gray-600">
-                    Footer{" "}
-                    <span className="font-normal text-gray-400">
-                      (optional)
-                    </span>
-                  </label>
-                  <CharCount val={footer} max={LIMITS.footer} />
-                </div>
-                <input
-                  type="text"
-                  value={footer}
-                  onChange={(e) => setFooter(e.target.value)}
-                  maxLength={LIMITS.footer}
-                  placeholder="e.g. Reply STOP to opt out"
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-[14px] text-gray-800 outline-none focus:border-[#3B694C] focus:ring-1 focus:ring-[#3B694C]/20"
-                />
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-[12px] font-semibold text-gray-600">
-                    Buttons{" "}
-                    <span className="font-normal text-gray-400">
-                      (optional, max 3)
-                    </span>
-                  </label>
-                  {buttons.length < 3 && (
-                    <button
-                      type="button"
-                      onClick={addButton}
-                      className="text-[11px] font-medium text-[#3B694C] hover:underline cursor-pointer flex items-center gap-1"
-                    >
-                      <Plus className="w-3 h-3" /> Add button
-                    </button>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  {buttons.map((btn, i) => (
-                    <div key={btn.id} className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={btn.title}
-                        onChange={(e) => updateButtonTitle(i, e.target.value)}
-                        placeholder={`Button ${i + 1} label`}
-                        maxLength={LIMITS.button}
-                        className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-[13px] text-gray-800 outline-none focus:border-[#3B694C]"
-                      />
-                      <CharCount val={btn.title} max={LIMITS.button} />
-                      <button
-                        type="button"
-                        onClick={() => removeButton(i)}
-                        className="w-7 h-7 rounded-full hover:bg-red-50 flex items-center justify-center text-gray-400 hover:text-red-500 transition-colors cursor-pointer shrink-0"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {error && (
-                <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5">
-                  <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-                  <p className="text-[13px] text-red-600">{error}</p>
-                </div>
-              )}
-            </form>
-          </div>
-
-          {/* Right — live preview */}
-          <div className="w-[420px] shrink-0 border-l border-gray-100 bg-gray-50/60 px-6 py-5 flex flex-col overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb]:rounded-full">
-            <p className="text-[10px] font-bold text-gray-400 tracking-widest uppercase mb-4">
-              Live Preview
-            </p>
-
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-              {/* Simulated chat header */}
-              <div className="flex items-center gap-2.5 px-4 py-3 border-b border-gray-100 bg-gray-50/80">
-                <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 font-semibold text-[11px] shrink-0">
-                  C
-                </div>
-                <div>
-                  <p className="text-[12px] font-semibold text-gray-800 leading-tight">
-                    Customer
-                  </p>
-                  <p className="text-[10px] text-gray-400 leading-tight">
-                    +971 50 000 0000
-                  </p>
-                </div>
-              </div>
-
-              {/* Chat body */}
-              <div className="px-3 py-4 bg-[#f0ece4]/40">
-                <div className="flex justify-end">
-                  <div className="bg-[#3B694C] rounded-2xl rounded-br-sm px-3.5 py-3 max-w-[95%] shadow-sm">
-                    {header.trim() && (
-                      <p className="text-[13px] font-bold text-white mb-1.5 leading-snug">
-                        {renderPreview(header)}
-                      </p>
-                    )}
-                    <p className="text-[13px] text-white leading-relaxed whitespace-pre-wrap">
-                      {body.trim() ? (
-                        renderPreview(body)
-                      ) : (
-                        <span className="text-white/40 italic text-[12px]">
-                          Your message will appear here…
-                        </span>
-                      )}
-                    </p>
-                    {footer.trim() && (
-                      <p className="text-[11px] text-white/55 mt-2 italic leading-snug">
-                        {renderPreview(footer)}
-                      </p>
-                    )}
-                    <div className="flex justify-end mt-1.5">
-                      <span className="text-[10px] text-white/50">
-                        15:32 ✓✓
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Buttons preview */}
-                {visibleButtons.length > 0 && (
-                  <div className="mt-2 space-y-1.5">
-                    {visibleButtons.map((btn) => (
-                      <div
-                        key={btn.id}
-                        className="bg-white rounded-xl border border-gray-200 text-center py-2 text-[13px] font-medium text-[#3B694C] shadow-sm"
-                      >
-                        {btn.title}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Footer info */}
-            <div className="flex justify-between items-center mt-3 px-0.5">
-              <span className="text-[11px] text-gray-400">
-                Renders for: Customer
-              </span>
-              <span
-                className={`text-[11px] font-medium tabular-nums ${body.length > LIMITS.body ? "text-red-500" : "text-gray-400"}`}
-              >
-                {body.length}/{LIMITS.body}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Footer buttons */}
-        <div className="flex gap-3 px-6 py-4 border-t border-gray-100 shrink-0">
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex-1 py-2.5 rounded-xl border border-gray-200 text-[14px] font-semibold text-gray-600 hover:bg-gray-50 cursor-pointer transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            form="tpl-form"
-            disabled={saving}
-            className="flex-1 py-2.5 rounded-xl bg-[#3B694C] hover:bg-[#2f5840] disabled:opacity-60 text-[14px] font-semibold text-white cursor-pointer transition-colors"
-          >
-            {saving
-              ? "Saving…"
-              : isEditing
-                ? "Save Changes"
-                : "Create Template"}
-          </button>
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -545,8 +115,8 @@ function SubmitConfirmModal({
     try {
       await apiSubmitTemplate(template.id);
       onConfirm();
-    } catch {
-      setError("Failed to reach Meta. Please try again.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to reach Meta. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -720,11 +290,7 @@ function TemplateCard({
       <div className="mx-3 mb-3 flex-1 overflow-y-auto max-h-80 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-[#2f5840]/30 [&::-webkit-scrollbar-thumb]:rounded-full">
         {/* Dark green WhatsApp bubble */}
         <div className="bg-[#3B694C] rounded-2xl rounded-br-sm px-3.5 py-3 shadow-sm">
-          {template.header && (
-            <p className="text-[12px] font-bold text-white mb-1.5 leading-snug">
-              {template.header}
-            </p>
-          )}
+          <HeaderPreview headerType={template.headerType} header={template.header} headerMediaUrl={template.headerMediaUrl} />
           <p className="text-[13px] text-white leading-relaxed whitespace-pre-wrap">
             {template.body}
           </p>
@@ -742,12 +308,7 @@ function TemplateCard({
         {template.buttons && template.buttons.length > 0 && (
           <div className="mt-1.5 space-y-1.5">
             {template.buttons.map((btn) => (
-              <div
-                key={btn.id}
-                className="flex items-center justify-center py-2 rounded-xl border border-gray-200 bg-white text-[12px] font-medium text-[#3B694C]"
-              >
-                {btn.title}
-              </div>
+              <ButtonRow key={btn.id} btn={btn} />
             ))}
           </div>
         )}
@@ -802,6 +363,7 @@ const STATUS_FILTERS: (TemplateStatus | "ALL")[] = [
 ];
 
 export default function TemplatesPage() {
+  const router = useRouter();
   const [user, setUser] = useState<{ role: string } | null>(null);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
@@ -811,10 +373,6 @@ export default function TemplatesPage() {
     "ALL",
   );
 
-  const [formModal, setFormModal] = useState<{
-    open: boolean;
-    template: Template | null;
-  }>({ open: false, template: null });
   const [submitModal, setSubmitModal] = useState<Template | null>(null);
   const [deleteModal, setDeleteModal] = useState<Template | null>(null);
 
@@ -877,16 +435,6 @@ export default function TemplatesPage() {
   return (
     <div className="p-6 lg:p-8 bg-gray-50 min-h-screen overflow-y-auto">
       {/* Modals */}
-      {formModal.open && (
-        <TemplateFormModal
-          template={formModal.template}
-          onClose={() => setFormModal({ open: false, template: null })}
-          onSaved={() => {
-            setFormModal({ open: false, template: null });
-            fetchTemplates();
-          }}
-        />
-      )}
       {submitModal && (
         <SubmitConfirmModal
           template={submitModal}
@@ -935,7 +483,7 @@ export default function TemplatesPage() {
           </button>
           <button
             type="button"
-            onClick={() => setFormModal({ open: true, template: null })}
+            onClick={() => router.push("/templates/new")}
             className="flex items-center gap-2 bg-[#3B694C] hover:bg-[#2f5840] text-white rounded-xl px-4 py-2 text-[13px] font-semibold cursor-pointer transition-colors"
           >
             <Plus className="w-3.5 h-3.5" /> New Template
@@ -994,7 +542,7 @@ export default function TemplatesPage() {
           {statusFilter === "ALL" && (
             <button
               type="button"
-              onClick={() => setFormModal({ open: true, template: null })}
+              onClick={() => router.push("/templates/new")}
               className="flex items-center gap-2 bg-[#3B694C] hover:bg-[#2f5840] text-white rounded-xl px-5 py-2.5 text-[13px] font-semibold cursor-pointer transition-colors"
             >
               <Plus className="w-4 h-4" /> New Template
@@ -1007,7 +555,7 @@ export default function TemplatesPage() {
             <TemplateCard
               key={tpl.id}
               template={tpl}
-              onEdit={() => setFormModal({ open: true, template: tpl })}
+              onEdit={() => router.push(`/templates/${tpl.id}/edit`)}
               onSubmit={() => setSubmitModal(tpl)}
               onDelete={() => setDeleteModal(tpl)}
             />

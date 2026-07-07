@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import {
   parseCSVRows,
   autoMapHeaders,
@@ -19,10 +19,19 @@ import {
   type DateFormat,
   type PhoneCountry,
   type ValidateResult,
-  type ImportResult,
   type ImportIssue,
 } from "@/lib/customerImport";
-import { apiValidateImport, apiImportCustomers } from "@/lib/api";
+import { apiValidateListImport, apiImportListMembers, apiGetList } from "@/lib/api";
+
+interface ListImportResult {
+  total: number;
+  created: number;
+  matchedExisting: number;
+  linked: number;
+  alreadyInList: number;
+  duplicatesInFile: number;
+  errors: ImportIssue[];
+}
 
 const STEPS = [
   { n: 1, label: "Upload" },
@@ -31,7 +40,7 @@ const STEPS = [
   { n: 4, label: "Import" },
 ];
 
-// Small collapsible list of issues (duplicates / invalid rows).
+// Small collapsible list of issues (invalid rows).
 function IssueList({ issues, tone }: { issues: ImportIssue[]; tone: "amber" | "red" }) {
   const textColor = tone === "amber" ? "text-amber-600" : "text-red-600";
   return (
@@ -45,8 +54,12 @@ function IssueList({ issues, tone }: { issues: ImportIssue[]; tone: "amber" | "r
   );
 }
 
-export default function ImportContactsPage() {
+export default function ImportListMembersPage() {
+  const params = useParams();
   const router = useRouter();
+  const listId = params.id as string;
+
+  const [listName, setListName] = useState<string | null>(null);
 
   const [step, setStep] = useState(1);
   const [data, setData] = useState<MappingData | null>(null);
@@ -61,7 +74,7 @@ export default function ImportContactsPage() {
   const [validating, setValidating] = useState(false);
   const [validateResult, setValidateResult] = useState<ValidateResult | null>(null);
   const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [importResult, setImportResult] = useState<ListImportResult | null>(null);
 
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -69,6 +82,10 @@ export default function ImportContactsPage() {
   // newer one and silently overwriting it with outdated numbers.
   const validateSeqRef = useRef(0);
   const importSeqRef = useRef(0);
+
+  useEffect(() => {
+    apiGetList(listId, 1, 1).then((res) => setListName(res.data.name)).catch(() => {});
+  }, [listId]);
 
   const phoneMapped = (mapping["phone"] ?? -1) >= 0;
   const mappedFields = data ? IMPORT_FIELDS.filter((f) => mapping[f.key] >= 0) : [];
@@ -94,23 +111,26 @@ export default function ImportContactsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [genderCol]);
 
-  // Split every row into valid / duplicate / invalid using the row numbers the
-  // backend returned (row = index + 2, since row 1 is the header).
+  // Split every row into new / already-in-contacts / invalid using the row
+  // numbers the backend returned (row = index + 2, since row 1 is the header).
   const categories = useMemo(() => {
     if (!data || !validateResult) return null;
-    const dupBy = new Map(validateResult.duplicates.map((d) => [d.row, d.reason]));
+    const existingBy = new Map(validateResult.duplicates.map((d) => [d.row, d.reason]));
     const invBy = new Map(validateResult.invalid.map((e) => [e.row, e.reason]));
-    const valid: { i: number }[] = [];
-    const duplicate: { i: number; reason: string }[] = [];
+    const fresh: { i: number }[] = [];
+    const existing: { i: number; reason: string }[] = [];
     const invalid: { i: number; reason: string }[] = [];
     data.rows.forEach((_, i) => {
       const rowNum = i + 2;
       if (invBy.has(rowNum)) invalid.push({ i, reason: invBy.get(rowNum)! });
-      else if (dupBy.has(rowNum)) duplicate.push({ i, reason: dupBy.get(rowNum)! });
-      else valid.push({ i });
+      else if (existingBy.has(rowNum)) existing.push({ i, reason: existingBy.get(rowNum)! });
+      else fresh.push({ i });
     });
-    return { valid, duplicate, invalid };
+    return { fresh, existing, invalid };
   }, [data, validateResult]);
+
+  // How many rows will actually end up linked to the list (new + already existing).
+  const willLink = validateResult ? validateResult.valid + validateResult.duplicates.length : 0;
 
   async function handleFile(file: File | undefined) {
     if (!file) return;
@@ -229,7 +249,7 @@ export default function ImportContactsPage() {
     try {
       const csv = buildMappedCSV(data.headers, data.rows, mapping, valueMaps);
       const file = new File([csv], "import.csv", { type: "text/csv" });
-      const res = await apiValidateImport(file, dateFormat, defaultCountry);
+      const res = await apiValidateListImport(listId, file, dateFormat, defaultCountry);
       if (seq !== validateSeqRef.current) return; // a newer validate superseded this one
       setValidateResult(res.data);
     } catch (err) {
@@ -250,7 +270,7 @@ export default function ImportContactsPage() {
     try {
       const csv = buildMappedCSV(data.headers, data.rows, mapping, valueMaps);
       const file = new File([csv], "import.csv", { type: "text/csv" });
-      const res = await apiImportCustomers(file, dateFormat, defaultCountry);
+      const res = await apiImportListMembers(listId, file, dateFormat, defaultCountry);
       if (seq !== importSeqRef.current) return; // a newer import superseded this one
       setImportResult(res.data);
     } catch (err) {
@@ -267,12 +287,16 @@ export default function ImportContactsPage() {
       <div className="shrink-0 px-6 pt-6 pb-4 border-b border-gray-100">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-[20px] font-bold text-gray-900 tracking-tight">Import contacts</h1>
-            <p className="text-[13px] text-gray-400 mt-0.5">Upload a spreadsheet, map the columns, validate, then import.</p>
+            <h1 className="text-[20px] font-bold text-gray-900 tracking-tight">
+              Import contacts into {listName ? <span className="text-[#3B694C]">&quot;{listName}&quot;</span> : "list"}
+            </h1>
+            <p className="text-[13px] text-gray-400 mt-0.5">
+              Upload a spreadsheet, map the columns, validate, then import. Contacts that already exist won&apos;t be duplicated — they&apos;ll just be linked to this list.
+            </p>
           </div>
           <button
             type="button"
-            onClick={() => router.push("/customers")}
+            onClick={() => router.push(`/customers/lists/${listId}`)}
             className="flex items-center gap-1.5 text-[13px] font-semibold text-gray-500 hover:text-gray-700 px-3 py-2 rounded-xl hover:bg-gray-100 transition-colors cursor-pointer"
           >
             <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
@@ -487,7 +511,7 @@ export default function ImportContactsPage() {
                 <div className="flex flex-col items-center justify-center gap-3 py-16 text-gray-500">
                   <svg className="w-7 h-7 animate-spin text-[#3B694C]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
                   <p className="text-[14px] font-semibold text-gray-700">Checking {data?.rows.length.toLocaleString()} rows…</p>
-                  <p className="text-[12px] text-gray-400">Detecting duplicates and invalid values</p>
+                  <p className="text-[12px] text-gray-400">Matching against your existing contacts</p>
                 </div>
               ) : validateResult ? (
                 <>
@@ -495,11 +519,11 @@ export default function ImportContactsPage() {
                   <div className="grid grid-cols-3 gap-3">
                     <div className="p-4 rounded-xl bg-green-50 border border-green-100 text-center">
                       <p className="text-[24px] font-bold text-green-700">{validateResult.valid.toLocaleString()}</p>
-                      <p className="text-[12px] font-semibold text-green-600 mt-0.5">Ready to import</p>
+                      <p className="text-[12px] font-semibold text-green-600 mt-0.5">New contacts</p>
                     </div>
                     <div className="p-4 rounded-xl bg-amber-50 border border-amber-100 text-center">
                       <p className="text-[24px] font-bold text-amber-700">{validateResult.duplicates.length.toLocaleString()}</p>
-                      <p className="text-[12px] font-semibold text-amber-600 mt-0.5">Duplicates</p>
+                      <p className="text-[12px] font-semibold text-amber-600 mt-0.5">Already in Contacts</p>
                     </div>
                     <div className="p-4 rounded-xl bg-red-50 border border-red-100 text-center">
                       <p className="text-[24px] font-bold text-red-700">{validateResult.invalid.length.toLocaleString()}</p>
@@ -507,14 +531,14 @@ export default function ImportContactsPage() {
                     </div>
                   </div>
                   <p className="text-[12px] text-gray-400 text-center">
-                    {validateResult.total.toLocaleString()} rows checked. Only the {validateResult.valid.toLocaleString()} valid rows will be imported.
+                    {validateResult.total.toLocaleString()} rows checked. {willLink.toLocaleString()} contact{willLink !== 1 ? "s" : ""} will be linked to this list — new ones are created, existing ones are reused (never duplicated).
                   </p>
 
                   {/* Full field tables per category */}
                   {categories && (
                     <div className="space-y-3">
-                      {categoryTable({ label: "ready to import", tone: "green", entries: categories.valid, open: true })}
-                      {categoryTable({ label: "duplicates (already exist or repeated in file)", tone: "amber", entries: categories.duplicate, showReason: true, open: true })}
+                      {categoryTable({ label: "new contacts", tone: "green", entries: categories.fresh, open: true })}
+                      {categoryTable({ label: "already in Contacts — will be linked, not duplicated", tone: "amber", entries: categories.existing, showReason: true, open: true })}
                       {categoryTable({ label: "invalid — will be skipped", tone: "red", entries: categories.invalid, showReason: true, open: true })}
                     </div>
                   )}
@@ -544,18 +568,13 @@ export default function ImportContactsPage() {
                     <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center">
                       <svg className="w-6 h-6 text-green-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
                     </div>
-                    <p className="text-[16px] font-bold text-gray-900">{importResult.created.toLocaleString()} contacts imported</p>
-                    <p className="text-[12px] text-gray-400">of {importResult.total.toLocaleString()} rows · {importResult.skipped.toLocaleString()} skipped · {importResult.errors.length.toLocaleString()} invalid</p>
+                    <p className="text-[16px] font-bold text-gray-900">{importResult.linked.toLocaleString()} contacts added to the list</p>
+                    <p className="text-[12px] text-gray-400">
+                      {importResult.created.toLocaleString()} new · {importResult.matchedExisting.toLocaleString()} already in Contacts
+                      {importResult.alreadyInList > 0 ? ` · ${importResult.alreadyInList.toLocaleString()} already in this list` : ""}
+                      {importResult.errors.length > 0 ? ` · ${importResult.errors.length.toLocaleString()} invalid` : ""}
+                    </p>
                   </div>
-                  {importResult.skipped > 0 && (
-                    <details className="group border border-amber-100 rounded-xl overflow-hidden">
-                      <summary className="flex items-center gap-3 p-3 bg-amber-50 cursor-pointer list-none">
-                        <span className="text-[13px] font-semibold text-amber-700 flex-1">{importResult.skipped.toLocaleString()} skipped — duplicates</span>
-                        <svg className="w-3.5 h-3.5 text-amber-400 group-open:rotate-180 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="m6 9 6 6 6-6"/></svg>
-                      </summary>
-                      <IssueList issues={importResult.duplicates ?? []} tone="amber" />
-                    </details>
-                  )}
                   {importResult.errors.length > 0 && (
                     <details className="group border border-red-100 rounded-xl overflow-hidden">
                       <summary className="flex items-center gap-3 p-3 bg-red-50 cursor-pointer list-none">
@@ -582,7 +601,7 @@ export default function ImportContactsPage() {
         <div className="flex gap-3 shrink-0">
           {step === 1 && (
             <>
-              <button type="button" onClick={() => router.push("/customers")} className="py-2.5 px-4 rounded-xl border border-gray-200 text-[13px] font-semibold text-gray-600 hover:bg-gray-50 transition-colors cursor-pointer">Cancel</button>
+              <button type="button" onClick={() => router.push(`/customers/lists/${listId}`)} className="py-2.5 px-4 rounded-xl border border-gray-200 text-[13px] font-semibold text-gray-600 hover:bg-gray-50 transition-colors cursor-pointer">Cancel</button>
               <button type="button" onClick={() => setStep(2)} disabled={!data || parsing} className="py-2.5 px-4 rounded-xl bg-[#3B694C] hover:bg-[#2f5840] disabled:opacity-50 disabled:cursor-not-allowed text-[13px] font-semibold text-white transition-colors cursor-pointer">Next: Map columns →</button>
             </>
           )}
@@ -595,15 +614,20 @@ export default function ImportContactsPage() {
           {step === 3 && (
             <>
               <button type="button" onClick={() => { setStep(2); setValidateResult(null); setError(null); }} disabled={validating} className="py-2.5 px-4 rounded-xl border border-gray-200 text-[13px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-60 transition-colors cursor-pointer">← Back</button>
-              <button type="button" onClick={runImport} disabled={validating || !validateResult || validateResult.valid === 0} className="py-2.5 px-4 rounded-xl bg-[#3B694C] hover:bg-[#2f5840] disabled:opacity-50 disabled:cursor-not-allowed text-[13px] font-semibold text-white transition-colors cursor-pointer">
-                Import {validateResult ? validateResult.valid.toLocaleString() : ""} contact{validateResult && validateResult.valid !== 1 ? "s" : ""}
+              <button type="button" onClick={runImport} disabled={validating || !validateResult || willLink === 0} className="py-2.5 px-4 rounded-xl bg-[#3B694C] hover:bg-[#2f5840] disabled:opacity-50 disabled:cursor-not-allowed text-[13px] font-semibold text-white transition-colors cursor-pointer">
+                Add {willLink.toLocaleString()} contact{willLink !== 1 ? "s" : ""} to list
               </button>
             </>
           )}
-          {step === 4 && (
-            <button type="button" onClick={() => router.push("/customers")} disabled={importing} className="py-2.5 px-5 rounded-xl bg-[#3B694C] hover:bg-[#2f5840] disabled:opacity-60 text-[13px] font-semibold text-white transition-colors cursor-pointer">
-              {importResult ? "Done" : "Importing…"}
-            </button>
+          {step === 4 && importResult && (
+            <>
+              <button type="button" onClick={() => router.push("/customers/lists")} className="py-2.5 px-4 rounded-xl border border-gray-200 text-[13px] font-semibold text-gray-600 hover:bg-gray-50 transition-colors cursor-pointer">
+                Back to Lists
+              </button>
+              <button type="button" onClick={() => router.push(`/customers/lists/${listId}`)} className="py-2.5 px-5 rounded-xl bg-[#3B694C] hover:bg-[#2f5840] text-[13px] font-semibold text-white transition-colors cursor-pointer">
+                View list
+              </button>
+            </>
           )}
         </div>
       </div>

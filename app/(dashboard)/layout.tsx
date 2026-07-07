@@ -13,6 +13,7 @@ import {
   Settings,
   ClipboardList,
   LayoutTemplate,
+  Images,
   ChevronsRight,
   ChevronsLeft,
   ChevronDown,
@@ -122,6 +123,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard"     },
     { href: "/team",      icon: UsersRound,      label: "Team & Access" },
     { href: "/templates", icon: LayoutTemplate,  label: "Templates"     },
+    { href: "/media-library", icon: Images,      label: "Media Library" },
     { href: "/audit",     icon: ClipboardList,   label: "Audit Log"     },
     { href: "/settings",  icon: Settings,        label: "Settings"      },
   ];

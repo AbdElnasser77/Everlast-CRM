@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState, useRef, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Check, ArrowLeft, Loader2, Search, ChevronRight, ChevronLeft } from "lucide-react";
-import type { Template, Customer, Conversation } from "@/types";
+import type { Template, Customer, Conversation, ContactList } from "@/types";
 import {
   apiGetTemplates,
   apiGetCampaign,
@@ -12,6 +12,8 @@ import {
   apiCreateCampaign,
   apiUpdateCampaign,
   apiSendCampaignNow,
+  apiGetLists,
+  apiGetListMemberIds,
 } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
 
@@ -40,8 +42,14 @@ function costPerMsg(template?: Template | null): number {
   return UAE_RATES_USD[META_BILLING_CATEGORY[template?.category ?? ""] ?? "MARKETING"];
 }
 
-// Matches the backend campaign sender's throttle (400ms sleep between sends).
-const SEND_RATE_S = 2.5;
+// The backend sends up to CAMPAIGN_SEND_CONCURRENCY (5) recipients in
+// parallel rather than one at a time, so the effective per-recipient wall
+// time is roughly a single send's DB-round-trips + WhatsApp API latency,
+// divided across the batch. We don't have hard production timing data for
+// that, so we estimate a range instead of a single number that would look
+// more precise than it is.
+const SEND_SEC_PER_MSG_MIN = 0.15; // optimistic: fast DB + fast Meta response
+const SEND_SEC_PER_MSG_MAX = 0.5; // pessimistic: slower DB/API latency
 
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -305,8 +313,57 @@ function Step2({
   loading: boolean;
   template: Template | null;
 }) {
+  const [mode, setMode] = useState<"contacts" | "lists">("contacts");
   const [search, setSearch] = useState("");
   const [tagFilter, setTagFilter] = useState("All");
+  const [lists, setLists] = useState<ContactList[]>([]);
+  const [loadingLists, setLoadingLists] = useState(true);
+  const [listMembersCache, setListMembersCache] = useState<Record<number, number[]>>({});
+  const [loadingListId, setLoadingListId] = useState<number | null>(null);
+  // Which lists the user explicitly turned on — tracked separately from
+  // selectedIds so two lists sharing contacts don't fight over each other's
+  // toggle state (turning list B "on" just because list A already selected
+  // the same people, or turning both off when only one is unchecked).
+  const [selectedListIds, setSelectedListIds] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    apiGetLists().then((res) => setLists(res.data)).catch(() => {}).finally(() => setLoadingLists(false));
+  }, []);
+
+  async function toggleList(list: ContactList) {
+    if (list.memberCount === 0 || loadingListId !== null) return;
+    let ids = listMembersCache[list.id];
+    if (!ids) {
+      setLoadingListId(list.id);
+      try {
+        const res = await apiGetListMemberIds(list.id);
+        ids = res.data.customerIds;
+        setListMembersCache((prev) => ({ ...prev, [list.id]: ids! }));
+      } catch {
+        setLoadingListId(null);
+        return;
+      }
+      setLoadingListId(null);
+    }
+
+    if (selectedListIds.has(list.id)) {
+      // Turning off: only drop ids not also covered by another still-active list.
+      const stillCovered = new Set<number>();
+      selectedListIds.forEach((otherId) => {
+        if (otherId === list.id) return;
+        (listMembersCache[otherId] ?? []).forEach((id) => stillCovered.add(id));
+      });
+      onToggleAll(ids.filter((id) => !stillCovered.has(id)), false);
+      setSelectedListIds((prev) => {
+        const next = new Set(prev);
+        next.delete(list.id);
+        return next;
+      });
+    } else {
+      onToggleAll(ids, true);
+      setSelectedListIds((prev) => new Set(prev).add(list.id));
+    }
+  }
 
   const allTags = [...new Set(customers.flatMap((c) => c.tags))].sort();
 
@@ -329,7 +386,8 @@ function Step2({
   const allSelected = filteredIds.length > 0 && filteredIds.every((id) => selectedIds.has(id));
 
   const rate = costPerMsg(template);
-  const estimatedSeconds = selectedIds.size / SEND_RATE_S;
+  const estimatedSecondsMin = selectedIds.size * SEND_SEC_PER_MSG_MIN;
+  const estimatedSecondsMax = selectedIds.size * SEND_SEC_PER_MSG_MAX;
   const estimatedCost = (selectedIds.size * rate).toFixed(2);
 
   return (
@@ -337,112 +395,180 @@ function Step2({
       {/* Main */}
       <div className="flex-1 overflow-y-auto p-6">
         <h2 className="text-[18px] font-bold text-gray-900 mb-1">Select recipients</h2>
-        <p className="text-[13px] text-gray-500 mb-5">
-          {selectedIds.size} of {customers.length} contacts selected.
+        <p className="text-[13px] text-gray-500 mb-4">
+          {selectedIds.size} recipient{selectedIds.size !== 1 ? "s" : ""} selected.
         </p>
 
-        {/* Search */}
-        <div className="relative mb-3">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name or phone…"
-            className="w-full pl-9 pr-4 py-2.5 text-[13px] border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3B694C]/20 focus:border-[#3B694C]"
-          />
+        {/* Contacts / Lists toggle */}
+        <div className="inline-flex items-center bg-gray-100 rounded-xl p-1 mb-5">
+          <button
+            type="button"
+            onClick={() => setMode("contacts")}
+            className={`text-[13px] font-semibold px-4 py-1.5 rounded-lg transition-colors cursor-pointer ${
+              mode === "contacts" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            Contacts
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("lists")}
+            className={`text-[13px] font-semibold px-4 py-1.5 rounded-lg transition-colors cursor-pointer ${
+              mode === "lists" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            Lists
+          </button>
         </div>
 
-        {/* Tag filters */}
-        <div className="flex flex-wrap gap-2 mb-4">
-          {["All", ...allTags, "Lapsed 60d+"].map((tag) => (
-            <button
-              key={tag}
-              type="button"
-              onClick={() => setTagFilter(tag)}
-              className={`text-[12px] font-medium px-3 py-1.5 rounded-full border transition-colors cursor-pointer ${
-                tagFilter === tag
-                  ? "bg-[#3B694C] text-white border-[#3B694C]"
-                  : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
-              }`}
-            >
-              {tag}
-            </button>
-          ))}
-        </div>
+        {mode === "contacts" ? (
+          <>
+            {/* Search */}
+            <div className="relative mb-3">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by name or phone…"
+                className="w-full pl-9 pr-4 py-2.5 text-[13px] border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3B694C]/20 focus:border-[#3B694C]"
+              />
+            </div>
 
-        {loading ? (
+            {/* Tag filters */}
+            <div className="flex flex-wrap gap-2 mb-4">
+              {["All", ...allTags, "Lapsed 60d+"].map((tag) => (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => setTagFilter(tag)}
+                  className={`text-[12px] font-medium px-3 py-1.5 rounded-full border transition-colors cursor-pointer ${
+                    tagFilter === tag
+                      ? "bg-[#3B694C] text-white border-[#3B694C]"
+                      : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
+                  }`}
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
+
+            {loading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-5 h-5 text-gray-300 animate-spin" />
+              </div>
+            ) : (
+              <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                <table className="w-full text-[13px]">
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-gray-50">
+                      <th className="w-10 px-4 py-3">
+                        <input
+                          type="checkbox"
+                          checked={allSelected}
+                          onChange={(e) => onToggleAll(filteredIds, e.target.checked)}
+                          className="rounded border-gray-300 accent-[#3B694C]"
+                        />
+                      </th>
+                      <th className="text-left px-3 py-3 font-semibold text-gray-500 text-[11px] uppercase tracking-wider">Name</th>
+                      <th className="text-left px-3 py-3 font-semibold text-gray-500 text-[11px] uppercase tracking-wider">Phone</th>
+                      <th className="text-left px-3 py-3 font-semibold text-gray-500 text-[11px] uppercase tracking-wider">Tag</th>
+                      <th className="text-left px-3 py-3 font-semibold text-gray-500 text-[11px] uppercase tracking-wider">Last Activity</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {filtered.map((c) => {
+                      const isOptedOut = (c as Customer & { optedOut?: boolean }).optedOut;
+                      const id = c.id as number;
+                      const conv = convMap.get(id);
+                      return (
+                        <tr
+                          key={id}
+                          onClick={() => !isOptedOut && onToggle(id)}
+                          className={`transition-colors ${isOptedOut ? "opacity-40 cursor-default" : "cursor-pointer hover:bg-gray-50"}`}
+                        >
+                          <td className="px-4 py-3">
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.has(id)}
+                              disabled={isOptedOut}
+                              onChange={() => onToggle(id)}
+                              onClick={(e) => e.stopPropagation()}
+                              className="rounded border-gray-300 accent-[#3B694C]"
+                            />
+                          </td>
+                          <td className="px-3 py-3">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-7 h-7 rounded-full bg-[#EEF6F1] flex items-center justify-center shrink-0">
+                                <span className="text-[10px] font-bold text-[#3B694C]">{initials(c.name)}</span>
+                              </div>
+                              <div>
+                                <p className="font-medium text-gray-800 leading-tight">{c.name || "—"}</p>
+                                {isOptedOut && <p className="text-[10px] text-red-400">opted out</p>}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-3 py-3 text-gray-500 font-mono text-[12px]">{c.phone}</td>
+                          <td className="px-3 py-3">
+                            <div className="flex flex-wrap gap-1">
+                              {c.tags.slice(0, 2).map((tag) => (
+                                <span key={tag} className="text-[10px] font-medium bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-md">{tag}</span>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="px-3 py-3 text-gray-400 text-[12px]">
+                            {conv?.lastMessage ? (
+                              <span>{conv.lastMessage.slice(0, 35)}{conv.lastMessage.length > 35 ? "…" : ""} · {relativeDate(conv.lastMessageAt)}</span>
+                            ) : "—"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        ) : loadingLists ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="w-5 h-5 text-gray-300 animate-spin" />
           </div>
+        ) : lists.length === 0 ? (
+          <div className="text-center py-12 text-[13px] text-gray-400">
+            No lists yet. Create one from Contacts → Lists.
+          </div>
         ) : (
-          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-            <table className="w-full text-[13px]">
-              <thead>
-                <tr className="border-b border-gray-100 bg-gray-50">
-                  <th className="w-10 px-4 py-3">
-                    <input
-                      type="checkbox"
-                      checked={allSelected}
-                      onChange={(e) => onToggleAll(filteredIds, e.target.checked)}
-                      className="rounded border-gray-300 accent-[#3B694C]"
-                    />
-                  </th>
-                  <th className="text-left px-3 py-3 font-semibold text-gray-500 text-[11px] uppercase tracking-wider">Name</th>
-                  <th className="text-left px-3 py-3 font-semibold text-gray-500 text-[11px] uppercase tracking-wider">Phone</th>
-                  <th className="text-left px-3 py-3 font-semibold text-gray-500 text-[11px] uppercase tracking-wider">Tag</th>
-                  <th className="text-left px-3 py-3 font-semibold text-gray-500 text-[11px] uppercase tracking-wider">Last Activity</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {filtered.map((c) => {
-                  const isOptedOut = (c as Customer & { optedOut?: boolean }).optedOut;
-                  const id = c.id as number;
-                  const conv = convMap.get(id);
-                  return (
-                    <tr
-                      key={id}
-                      onClick={() => !isOptedOut && onToggle(id)}
-                      className={`transition-colors ${isOptedOut ? "opacity-40 cursor-default" : "cursor-pointer hover:bg-gray-50"}`}
-                    >
-                      <td className="px-4 py-3">
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.has(id)}
-                          disabled={isOptedOut}
-                          onChange={() => onToggle(id)}
-                          onClick={(e) => e.stopPropagation()}
-                          className="rounded border-gray-300 accent-[#3B694C]"
-                        />
-                      </td>
-                      <td className="px-3 py-3">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-7 h-7 rounded-full bg-[#EEF6F1] flex items-center justify-center shrink-0">
-                            <span className="text-[10px] font-bold text-[#3B694C]">{initials(c.name)}</span>
-                          </div>
-                          <div>
-                            <p className="font-medium text-gray-800 leading-tight">{c.name || "—"}</p>
-                            {isOptedOut && <p className="text-[10px] text-red-400">opted out</p>}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-3 py-3 text-gray-500 font-mono text-[12px]">{c.phone}</td>
-                      <td className="px-3 py-3">
-                        <div className="flex flex-wrap gap-1">
-                          {c.tags.slice(0, 2).map((tag) => (
-                            <span key={tag} className="text-[10px] font-medium bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-md">{tag}</span>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="px-3 py-3 text-gray-400 text-[12px]">
-                        {conv?.lastMessage ? (
-                          <span>{conv.lastMessage.slice(0, 35)}{conv.lastMessage.length > 35 ? "…" : ""} · {relativeDate(conv.lastMessageAt)}</span>
-                        ) : "—"}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div className="grid grid-cols-2 gap-3">
+            {lists.map((l) => {
+              const ids = listMembersCache[l.id];
+              const selectedCount = ids ? ids.filter((id) => selectedIds.has(id)).length : 0;
+              const isOn = selectedListIds.has(l.id);
+              const isLoadingThis = loadingListId === l.id;
+              return (
+                <button
+                  key={l.id}
+                  type="button"
+                  onClick={() => toggleList(l)}
+                  disabled={l.memberCount === 0 || (loadingListId !== null && !isLoadingThis)}
+                  className={`text-left rounded-xl border p-4 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                    isOn ? "border-[#3B694C] bg-[#EEF6F1] ring-1 ring-[#3B694C]" : "border-gray-200 bg-white hover:border-gray-300"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${isOn ? "border-[#3B694C] bg-[#3B694C]" : "border-gray-300"}`}>
+                        {isOn && <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />}
+                      </div>
+                      <span className="text-[14px] font-semibold text-gray-800 truncate">{l.name}</span>
+                    </div>
+                    {isLoadingThis && <Loader2 className="w-3.5 h-3.5 text-gray-300 animate-spin shrink-0" />}
+                  </div>
+                  <p className="text-[12px] text-gray-500 line-clamp-2 ml-6 mb-2">{l.description || "No description"}</p>
+                  <p className="text-[11px] text-gray-400 ml-6">
+                    {ids ? `${selectedCount} of ${ids.length} selected` : `${l.memberCount.toLocaleString()} contact${l.memberCount !== 1 ? "s" : ""}`}
+                  </p>
+                </button>
+              );
+            })}
           </div>
         )}
       </div>
@@ -456,11 +582,11 @@ function Step2({
         <div className="space-y-3 text-[13px]">
           <div className="flex justify-between">
             <span className="text-gray-500">Estimated send time</span>
-            <span className="font-medium text-gray-800">≈ {formatDuration(estimatedSeconds)}</span>
+            <span className="font-medium text-gray-800">≈ {formatDuration(estimatedSecondsMin)}–{formatDuration(estimatedSecondsMax)}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-gray-500">Send rate</span>
-            <span className="font-medium text-gray-800">{SEND_RATE_S} msg/s</span>
+            <span className="font-medium text-gray-800">~{SEND_SEC_PER_MSG_MIN.toFixed(1)}–{SEND_SEC_PER_MSG_MAX.toFixed(1)}s/msg</span>
           </div>
           <div className="flex justify-between">
             <span className="text-gray-500">Per-message cost</span>
@@ -517,7 +643,8 @@ function Step3({
 
   const count = selectedIds.size;
   const rate = costPerMsg(template);
-  const estimatedSeconds = count / SEND_RATE_S;
+  const estimatedSecondsMin = count * SEND_SEC_PER_MSG_MIN;
+  const estimatedSecondsMax = count * SEND_SEC_PER_MSG_MAX;
   const estimatedCost = (count * rate).toFixed(2);
 
   const selectedCustomers = customers.filter((c) => selectedIds.has(c.id as number));
@@ -550,7 +677,8 @@ function Step3({
     : "—";
 
   const etaMs = sendMode === "now" ? Date.now() : scheduledAt ? new Date(scheduledAt).getTime() : Date.now();
-  const etaFinish = new Date(etaMs + estimatedSeconds * 1000).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  const etaFinishMin = new Date(etaMs + estimatedSecondsMin * 1000).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  const etaFinishMax = new Date(etaMs + estimatedSecondsMax * 1000).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
   return (
     <div className="flex-1 flex overflow-hidden">
@@ -681,9 +809,9 @@ function Step3({
           {[
             { label: "Recipients", value: String(count) },
             { label: "Template", value: template.name },
-            { label: "Estimated runtime", value: `≈ ${formatDuration(estimatedSeconds)}` },
+            { label: "Estimated runtime", value: `≈ ${formatDuration(estimatedSecondsMin)}–${formatDuration(estimatedSecondsMax)}` },
             { label: "Start", value: startDisplay },
-            { label: "ETA finish", value: etaFinish },
+            { label: "ETA finish", value: etaFinishMin === etaFinishMax ? etaFinishMin : `${etaFinishMin} – ${etaFinishMax}` },
             { label: "Per-message cost", value: `$${rate.toFixed(4)}` },
             { label: "Estimated total", value: `$${estimatedCost}` },
           ].map(({ label, value }) => (
@@ -696,7 +824,7 @@ function Step3({
 
         <div className="bg-[#EEF6F1] rounded-xl p-3">
           <p className="text-[12px] text-[#3B694C]">
-            <span className="font-semibold">Rate-limited:</span> messages send at {SEND_RATE_S}/s to keep your number trusted.
+            <span className="font-semibold">Rate-limited:</span> messages send in small batches (~{SEND_SEC_PER_MSG_MIN.toFixed(1)}–{SEND_SEC_PER_MSG_MAX.toFixed(1)}s/msg effective) to keep your number trusted.
           </p>
         </div>
 
@@ -799,6 +927,21 @@ function NewCampaignContent() {
       toast.info(`${selectedIds.size} recipient${selectedIds.size !== 1 ? "s" : ""} carried over from Customers.`);
     }
   }, [draftIdParam, selectedIds, searchParams, toast]);
+
+  // Seed recipients from an entire list via ?listId=ID (e.g. the "Create
+  // Campaign" button on a Lists page). The draft flow owns selection, so skip.
+  const seededListRef = useRef(false);
+  useEffect(() => {
+    const listIdParam = searchParams.get("listId");
+    if (seededListRef.current || draftIdParam || !listIdParam) return;
+    seededListRef.current = true;
+    apiGetListMemberIds(listIdParam)
+      .then((res) => {
+        setSelectedIds((prev) => new Set([...prev, ...res.data.customerIds]));
+        toast.info(`${res.data.customerIds.length} recipient${res.data.customerIds.length !== 1 ? "s" : ""} carried over from "${res.data.name}".`);
+      })
+      .catch(() => toast.error("Couldn't load that list's contacts."));
+  }, [draftIdParam, searchParams, toast]);
 
   useEffect(() => {
     let cancelled = false;
@@ -903,7 +1046,7 @@ function NewCampaignContent() {
   };
 
   const handleSubmit = async (scheduledAt?: string) => {
-    if (!selectedTemplate) return;
+    if (!selectedTemplate || submitting) return;
     setSubmitting(true);
     try {
       const payload = {
