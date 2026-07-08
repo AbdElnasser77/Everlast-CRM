@@ -15,6 +15,8 @@ import {
   Clock,
   CornerUpLeft,
   ChevronDown,
+  Trash2,
+  Loader2,
 } from "lucide-react";
 import {
   useMessages,
@@ -28,7 +30,9 @@ import {
   apiGetUser,
   apiGetTemplates,
   apiSendTemplate,
+  apiDeleteMessage,
 } from "@/lib/api";
+import { useToast } from "@/components/ui/toast";
 import type { Message, QuotedMessage, Template } from "@/types";
 import {
   MediaPlayer,
@@ -392,6 +396,15 @@ function DocumentMessage({ directSrc, fetchUrl, isAgent }: { directSrc: string |
 }
 
 function MessageContent({ msg, isAgent }: { msg: Message; isAgent: boolean }) {
+  if (msg.deletedAt) {
+    return (
+      <p className={`text-[13px] italic flex items-center gap-1.5 ${isAgent ? "text-white/60" : "text-gray-400"}`}>
+        <Trash2 className="w-3.5 h-3.5" />
+        This message was deleted
+      </p>
+    );
+  }
+
   // Agent media:    URL lives in content (mediaUrl is always null for agent-sent)
   // Customer media: URL lives in mediaUrl (Cloudinary, set after background upload)
   //                 Never fall back to the proxy — WhatsApp media URLs expire in minutes
@@ -797,6 +810,7 @@ function TemplatePickerModal({
 export default function ConversationPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const toast = useToast();
   const { conversations, markRead } = useConversationsContext();
   const conversation = conversations.find((c) => String(c.id ?? c._id) === id);
   const customer = conversation?.customer ?? null;
@@ -827,6 +841,21 @@ export default function ConversationPage() {
     id: string | number;
     username: string;
   } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: number } | null>(null);
+  const [deletingMsg, setDeletingMsg] = useState(false);
+
+  async function handleConfirmDeleteMessage() {
+    if (!deleteTarget) return;
+    setDeletingMsg(true);
+    try {
+      await apiDeleteMessage(deleteTarget.id);
+      setDeleteTarget(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't delete message.");
+    } finally {
+      setDeletingMsg(false);
+    }
+  }
 
   useEffect(() => {
     try {
@@ -1310,13 +1339,15 @@ export default function ConversationPage() {
                     <div className="msg-bubble bg-white border border-gray-100 rounded-2xl rounded-tl-sm px-4 pt-2.5 pb-2 shadow-sm">
                       {msg.quotedMessage && (() => {
                         const qm = msg.quotedMessage;
-                        const qImg = qm.messageType === "IMAGE" ? (qm.mediaUrl ?? qm.content) : null;
+                        const qImg = !qm.deletedAt && qm.messageType === "IMAGE" ? (qm.mediaUrl ?? qm.content) : null;
                         return (
                           <div onClick={() => scrollToMessage(qm.id)} className="border-l-2 border-[#3B694C]/60 pl-2 mb-2 py-0.5 pr-1 bg-[#3B694C]/5 rounded-r-sm cursor-pointer hover:bg-[#3B694C]/10 transition-colors">
                             <p className="text-[10px] font-semibold text-[#3B694C] leading-tight">
                               {qm.senderType === "AGENT" ? "You" : customer?.name || "Contact"}
                             </p>
-                            {qImg ? (
+                            {qm.deletedAt ? (
+                              <p className="text-[12px] text-gray-400 italic truncate leading-tight">This message was deleted</p>
+                            ) : qImg ? (
                               <div className="flex items-center gap-1.5 mt-0.5">
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img src={qImg} alt="" className="w-8 h-8 rounded object-cover shrink-0" />
@@ -1383,6 +1414,16 @@ export default function ConversationPage() {
                       >
                         <CornerUpLeft className="w-3.5 h-3.5" />
                       </button>
+                      {!isSending && !msg.deletedAt && String(msg.senderId) === String(user?.id) && (
+                        <button
+                          type="button"
+                          title="Delete"
+                          onClick={() => setDeleteTarget({ id: Number(msg.id ?? msg._id) })}
+                          className="opacity-0 group-hover/msg:opacity-100 self-center shrink-0 w-7 h-7 rounded-full bg-white border border-gray-200 shadow-sm hover:bg-red-50 hover:border-red-200 flex items-center justify-center text-gray-400 hover:text-red-500 transition-all cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                       <div className="max-w-[65%] min-w-0">
                         {senderChanged && (
                           <p className="text-[11px] text-gray-400 text-right mb-1">{agent.name}</p>
@@ -1462,6 +1503,16 @@ export default function ConversationPage() {
                     >
                       <CornerUpLeft className="w-3.5 h-3.5" />
                     </button>
+                    {!isSending && !msg.deletedAt && String(msg.senderId) === String(user?.id) && (
+                      <button
+                        type="button"
+                        title="Delete"
+                        onClick={() => setDeleteTarget({ id: Number(msg.id ?? msg._id) })}
+                        className="opacity-0 group-hover/msg:opacity-100 self-center shrink-0 w-7 h-7 rounded-full bg-white border border-gray-200 shadow-sm hover:bg-red-50 hover:border-red-200 flex items-center justify-center text-gray-400 hover:text-red-500 transition-all cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                     <div className={isMediaMsg ? "" : "max-w-[65%] min-w-0"}>
                       {senderChanged && (
                         <p className="text-[11px] text-gray-400 text-right mb-1">
@@ -1485,13 +1536,15 @@ export default function ConversationPage() {
                           >
                             {msg.quotedMessage && (() => {
                               const qm = msg.quotedMessage;
-                              const qImg = qm.messageType === "IMAGE" ? (qm.mediaUrl ?? qm.content) : null;
+                              const qImg = !qm.deletedAt && qm.messageType === "IMAGE" ? (qm.mediaUrl ?? qm.content) : null;
                               return (
                                 <div onClick={() => scrollToMessage(qm.id)} className="border-l-2 border-white/50 pl-2 mb-2 py-0.5 pr-1 bg-white/10 rounded-r-sm cursor-pointer hover:bg-white/20 transition-colors">
                                   <p className="text-[10px] font-semibold text-white/90 leading-tight">
                                     {qm.senderType === "AGENT" ? "You" : customer?.name || "Contact"}
                                   </p>
-                                  {qImg ? (
+                                  {qm.deletedAt ? (
+                                    <p className="text-[12px] text-white/60 italic truncate leading-tight">This message was deleted</p>
+                                  ) : qImg ? (
                                     <div className="flex items-center gap-1.5 mt-0.5">
                                       {/* eslint-disable-next-line @next/next/no-img-element */}
                                       <img src={qImg} alt="" className="w-8 h-8 rounded object-cover shrink-0" />
@@ -1755,6 +1808,36 @@ export default function ConversationPage() {
           onClose={() => setReengagementOpen(false)}
           onSent={() => setReengagementOpen(false)}
         />
+      )}
+      {deleteTarget && createPortal(
+        <div className="fixed inset-0 z-[9999] bg-black/40 flex items-center justify-center px-4" onClick={() => !deletingMsg && setDeleteTarget(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-[380px] max-w-full p-6" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-[15px] font-bold text-gray-900 mb-1.5">Delete this message?</h3>
+            <p className="text-[13px] text-gray-500 mb-5">
+              This removes it from the chat here, but it can't be recalled from WhatsApp itself — the customer's copy stays as-is.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                disabled={deletingMsg}
+                className="px-4 py-2 rounded-xl text-[13px] font-medium text-gray-600 hover:bg-gray-50 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteMessage}
+                disabled={deletingMsg}
+                className="px-4 py-2 rounded-xl text-[13px] font-semibold text-white bg-red-500 hover:bg-red-600 transition-colors cursor-pointer disabled:opacity-60 flex items-center gap-1.5"
+              >
+                {deletingMsg && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );

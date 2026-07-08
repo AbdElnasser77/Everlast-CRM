@@ -127,10 +127,9 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
   const [activeFilter, setActiveFilter] = useState("All");
   const [aiStates, setAiStates] = useState<Record<string, boolean>>({});
   const [user, setUser] = useState<User | null>(null);
-  const [search, setSearch] = useState("");
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
-  const { conversations, loading, markRead } = useConversations();
+  const { conversations, loading, loadingMore, hasMore, loadMore, markRead, search, setSearch } = useConversations();
 
   useEffect(() => {
     const raw = localStorage.getItem("user");
@@ -174,20 +173,18 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
     0
   );
 
-  const filtered = conversations.filter((c) => {
+  // Search itself is server-side (see useConversations) since the sidebar
+  // only ever holds a page of conversations at a time — filtering a name/phone
+  // match here would miss anyone outside the currently-loaded page. These tabs
+  // just narrow whatever page(s) are already loaded. Ordering (unread pinned
+  // above read, newest-first within each group) is guaranteed by the hook
+  // itself at every point the list is built, so filtering here preserves it.
+  const searched = conversations.filter((c) => {
     if (activeFilter === "Unread") return c.unreadCount > 0;
     if (activeFilter === "Window closed") return isWindowClosed(c.lastCustomerMessageAt);
     if (activeFilter === "AI handling") return aiStates[getId(c)];
     return true;
   });
-
-  const searched = search.trim()
-    ? filtered.filter(
-        (c) =>
-          getCustomer(c)?.name?.toLowerCase().includes(search.toLowerCase()) ||
-          getCustomer(c)?.phone?.includes(search)
-      )
-    : filtered;
 
   // On mobile: show sidebar when no conversation is open, show main otherwise
   const sidebarVisible = !activeId;
@@ -268,7 +265,13 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
           </div>
 
           {/* Conversations */}
-          <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-[#3B694C]/25 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[#3B694C]/50">
+          <div
+            onScroll={(e) => {
+              const el = e.currentTarget;
+              if (el.scrollHeight - el.scrollTop - el.clientHeight < 150) loadMore();
+            }}
+            className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-[#3B694C]/25 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[#3B694C]/50"
+          >
             {loading ? (
               Array.from({ length: 6 }).map((_, i) => (
                 <div key={i} className="flex gap-3 px-4 py-3 border-b border-gray-100 animate-pulse">
@@ -352,6 +355,16 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
                   </Link>
                 );
               })
+            )}
+            {loadingMore && (
+              <div className="flex items-center justify-center py-3 text-[12px] text-gray-400">
+                Loading more…
+              </div>
+            )}
+            {!loading && !loadingMore && !hasMore && conversations.length > 0 && (
+              <div className="flex items-center justify-center py-3 text-[11px] text-gray-300">
+                No more conversations
+              </div>
             )}
           </div>
 

@@ -14,6 +14,7 @@ import {
   ClipboardList,
   LayoutTemplate,
   Images,
+  ShieldCheck,
   ChevronsRight,
   ChevronsLeft,
   ChevronDown,
@@ -124,6 +125,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     { href: "/team",      icon: UsersRound,      label: "Team & Access" },
     { href: "/templates", icon: LayoutTemplate,  label: "Templates"     },
     { href: "/media-library", icon: Images,      label: "Media Library" },
+    { href: "/number-health", icon: ShieldCheck, label: "Number Health" },
     { href: "/audit",     icon: ClipboardList,   label: "Audit Log"     },
     { href: "/settings",  icon: Settings,        label: "Settings"      },
   ];
@@ -259,27 +261,30 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         )}
       </button>
 
-      {expanded && contactsOpen && (
-        <div className="mt-0.5 ml-[29px] pl-2.5 border-l border-gray-100 space-y-0.5">
-          <Link
-            href="/customers"
-            className={`relative flex items-center h-8 px-2.5 rounded-lg text-[13px] transition-colors ${
-              contactsChildActive ? "bg-[#EEF6F1] text-[#3B694C] font-medium" : "text-gray-400 hover:bg-gray-50 hover:text-gray-600"
-            }`}
-          >
-            Contacts
-          </Link>
-          <Link
-            href="/customers/lists"
-            className={`relative flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-[13px] transition-colors ${
-              listsActive ? "bg-[#EEF6F1] text-[#3B694C] font-medium" : "text-gray-400 hover:bg-gray-50 hover:text-gray-600"
-            }`}
-          >
-            Lists
-            <span className="text-[9px] uppercase tracking-wide font-semibold text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded-full leading-none">
-              Soon
-            </span>
-          </Link>
+      {expanded && (
+        <div
+          className={`overflow-hidden transition-[max-height,opacity] duration-200 ease-out ${
+            contactsOpen ? "max-h-24 opacity-100" : "max-h-0 opacity-0"
+          }`}
+        >
+          <div className="mt-0.5 ml-[29px] pl-2.5 border-l border-gray-100 space-y-0.5">
+            <Link
+              href="/customers"
+              className={`relative flex items-center h-8 px-2.5 rounded-lg text-[13px] transition-colors ${
+                contactsChildActive ? "bg-[#EEF6F1] text-[#3B694C] font-medium" : "text-gray-400 hover:bg-gray-50 hover:text-gray-600"
+              }`}
+            >
+              Contacts
+            </Link>
+            <Link
+              href="/customers/lists"
+              className={`relative flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-[13px] transition-colors ${
+                listsActive ? "bg-[#EEF6F1] text-[#3B694C] font-medium" : "text-gray-400 hover:bg-gray-50 hover:text-gray-600"
+              }`}
+            >
+              Lists
+            </Link>
+          </div>
         </div>
       )}
     </div>
@@ -301,7 +306,11 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         <ChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform duration-200 ${contactsOpen ? "rotate-180" : ""}`} />
       </button>
 
-      {contactsOpen && (
+      <div
+        className={`overflow-hidden transition-[max-height,opacity] duration-200 ease-out ${
+          contactsOpen ? "max-h-28 opacity-100" : "max-h-0 opacity-0"
+        }`}
+      >
         <div className="mt-0.5 mb-0.5 ml-[22px] pl-2.5 border-l border-gray-100 space-y-0.5">
           <Link
             href="/customers"
@@ -320,12 +329,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             }`}
           >
             Lists
-            <span className="text-[9px] uppercase tracking-wide font-semibold text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded-full leading-none">
-              Soon
-            </span>
           </Link>
         </div>
-      )}
+      </div>
     </div>
   );
 

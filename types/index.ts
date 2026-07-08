@@ -45,6 +45,7 @@ export interface QuotedMessage {
   messageType: "TEXT" | "IMAGE" | "VIDEO" | "AUDIO" | "DOCUMENT" | "TEMPLATE" | "INTERACTIVE" | "STICKER";
   senderType: "CUSTOMER" | "AGENT";
   mediaUrl?: string | null;
+  deletedAt?: string | null;
 }
 
 export interface Message {
@@ -61,6 +62,7 @@ export interface Message {
   reactions?: Record<string, number> | null;
   quotedMessageId?: number | null;
   quotedMessage?: QuotedMessage | null;
+  deletedAt?: string | null;
   createdAt: string;
   updatedAt?: string;
 }
@@ -352,4 +354,42 @@ export interface CampaignListResponse {
 export interface CampaignResponse {
   success: boolean;
   data: Campaign;
+}
+
+export type WhatsAppQualityRating = "GREEN" | "YELLOW" | "RED" | "NA" | "UNKNOWN";
+export type WhatsAppPhoneNumberStatus = "CONNECTED" | "FLAGGED" | "RESTRICTED" | "BANNED" | "UNKNOWN" | string;
+
+export interface WhatsAppPhoneStatus {
+  verifiedName: string | null;
+  displayPhoneNumber: string | null;
+  qualityRating: WhatsAppQualityRating;
+  status: WhatsAppPhoneNumberStatus;
+  nameStatus: string | null;
+  codeVerificationStatus: string | null;
+  throughputLevel: string | null;
+  messagingLimitTier: string | null;
+  fetchedAt: string;
+}
+
+export interface WhatsAppPhoneStatusResponse {
+  success: boolean;
+  data: WhatsAppPhoneStatus;
+}
+
+export interface WhatsAppPhoneNumberSummary {
+  id: string;
+  verifiedName: string | null;
+  displayPhoneNumber: string | null;
+  qualityRating: WhatsAppQualityRating;
+  status: WhatsAppPhoneNumberStatus;
+  nameStatus: string | null;
+  codeVerificationStatus: string | null;
+  throughputLevel: string | null;
+  isPrimary: boolean;
+}
+
+export interface WhatsAppNumbersListResponse {
+  success: boolean;
+  data: WhatsAppPhoneNumberSummary[];
+  fetchedAt: string;
 }

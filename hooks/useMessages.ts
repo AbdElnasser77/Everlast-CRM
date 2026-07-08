@@ -197,6 +197,22 @@ export function useMessages(conversationId: string): UseMessagesReturn {
       });
     };
 
+    const handleDeleted = ({
+      messageId,
+    }: {
+      messageId: number | string;
+      conversationId: unknown;
+    }) => {
+      const targetId = String(messageId);
+      setMessages((prev) => {
+        const idx = prev.findIndex((m) => getLocalId(m) === targetId);
+        if (idx === -1) return prev;
+        const next = [...prev];
+        next[idx] = { ...next[idx], deletedAt: new Date().toISOString(), content: "", mediaUrl: null };
+        return next;
+      });
+    };
+
     const handleReaction = ({
       messageId,
       reactions,
@@ -214,18 +230,42 @@ export function useMessages(conversationId: string): UseMessagesReturn {
       });
     };
 
+    // Socket.IO doesn't replay events broadcast while disconnected (e.g. a
+    // backend restart) — on reconnect, pull the latest page and merge in
+    // anything missed instead of leaving the open conversation silently
+    // stale until the agent manually refreshes.
+    const handleReconnect = () => {
+      apiGetMessages(conversationId, 1, PAGE_SIZE)
+        .then((res) => {
+          const latest = [...res.data].reverse();
+          setMessages((prev) => {
+            const existingIds = new Set(prev.map(getLocalId).filter(Boolean));
+            const missing = latest.filter((m) => !existingIds.has(getLocalId(m)));
+            if (missing.length === 0) return prev;
+            return [...prev, ...missing].sort(
+              (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+            );
+          });
+        })
+        .catch(() => {});
+    };
+
     socket.on("message.created", handleMessageCreated);
+    socket.on("connect", handleReconnect);
     socket.on("message.status_updated", handleStatusUpdated);
     socket.on("message.media_ready", handleMediaReady);
     socket.on("message.reaction", handleReaction);
+    socket.on("message.deleted", handleDeleted);
     socket.on("typing.start", handleTypingStart);
     socket.on("typing.stop", handleTypingStop);
 
     return () => {
       socket.off("message.created", handleMessageCreated);
+      socket.off("connect", handleReconnect);
       socket.off("message.status_updated", handleStatusUpdated);
       socket.off("message.media_ready", handleMediaReady);
       socket.off("message.reaction", handleReaction);
+      socket.off("message.deleted", handleDeleted);
       socket.off("typing.start", handleTypingStart);
       socket.off("typing.stop", handleTypingStop);
     };

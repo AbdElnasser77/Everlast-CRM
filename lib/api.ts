@@ -58,9 +58,10 @@ export function apiLogin(username: string, password: string) {
   });
 }
 
-export function apiGetConversations(page = 1, limit = 50, lastSenderType?: string) {
+export function apiGetConversations(page = 1, limit = 50, lastSenderType?: string, search?: string) {
   const params = new URLSearchParams({ page: String(page), limit: String(limit) });
   if (lastSenderType) params.append("lastSenderType", lastSenderType);
+  if (search) params.append("search", search);
   return apiFetch<ConversationListResponse>(`/api/conversations?${params}`);
 }
 
@@ -75,6 +76,10 @@ export function apiMarkRead(conversationId: string) {
     `/api/conversations/${conversationId}/read`,
     { method: "POST" }
   );
+}
+
+export function apiDeleteMessage(messageId: string | number) {
+  return apiFetch<{ success: boolean }>(`/api/messages/${messageId}`, { method: "DELETE" });
 }
 
 export function apiGetCustomer(id: string) {
@@ -460,6 +465,15 @@ export function apiPauseCampaign(id: number) {
 
 export function apiResumeCampaign(id: number) {
   return apiFetch<{ success: boolean }>(`/api/campaigns/${id}/resume`, { method: "POST" });
+}
+
+// WhatsApp number health
+export function apiGetWhatsAppStatus() {
+  return apiFetch<import("@/types").WhatsAppPhoneStatusResponse>("/api/whatsapp/status");
+}
+
+export function apiGetWhatsAppNumbers() {
+  return apiFetch<import("@/types").WhatsAppNumbersListResponse>("/api/whatsapp/numbers");
 }
 
 export function apiCreateConversation(customerId: number) {
