@@ -25,6 +25,18 @@ type CustomerPatientFields = {
 
 const BASE = process.env.NEXT_PUBLIC_API_URL;
 
+// Carries the HTTP status alongside the message so callers can distinguish
+// "forbidden" (403) from "upstream service failed" (502) from any other
+// error, instead of only having a message string to guess from.
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const isFormData = options.body instanceof FormData;
   const headers: Record<string, string> = {
@@ -45,7 +57,7 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
   const data = await res.json();
 
   if (!res.ok || !data.success) {
-    throw new Error(data?.message ?? `HTTP ${res.status}`);
+    throw new ApiError(data?.message ?? `HTTP ${res.status}`, res.status);
   }
 
   return data as T;
