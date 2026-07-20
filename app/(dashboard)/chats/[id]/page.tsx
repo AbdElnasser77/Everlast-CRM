@@ -406,12 +406,17 @@ function MessageContent({ msg, isAgent }: { msg: Message; isAgent: boolean }) {
   }
 
   // Agent media:    URL lives in content (mediaUrl is always null for agent-sent)
-  // Customer media: URL lives in mediaUrl (Cloudinary, set after background upload)
-  //                 Never fall back to the proxy — WhatsApp media URLs expire in minutes
-  //                 so the proxy returns 502 for any message older than ~5 min.
+  // Customer media: URL lives in mediaUrl (permanent storage, set after upload)
   const resolvedUrl = msg.mediaUrl ?? null;
   const directSrc = resolvedUrl ?? (isAgent ? (msg.content || null) : null);
-  const fetchUrl  = null; // proxy disabled — old WhatsApp URLs always 502
+  // Fallback for customer media whose background upload failed/hasn't finished:
+  // the proxy re-requests a FRESH download URL from the stored mediaId and
+  // permanently self-heals the message, so it works for as long as Meta retains
+  // the file (days) — not just the ~5 min the temporary URL itself lasts.
+  const msgDbId = msg.id != null && !Number.isNaN(Number(msg.id)) ? Number(msg.id) : null;
+  const fetchUrl = !directSrc && !isAgent && msgDbId
+    ? `${process.env.NEXT_PUBLIC_API_URL}/api/messages/${msgDbId}/media`
+    : null;
 
   if (msg.messageType === "IMAGE") return <ImageMessage directSrc={directSrc} fetchUrl={fetchUrl} />;
   // VIDEO: never proxy-fetch (large file — stalls/fails as blob). Use Cloudinary URL

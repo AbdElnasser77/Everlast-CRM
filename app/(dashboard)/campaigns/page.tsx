@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
   Plus,
@@ -12,6 +13,7 @@ import {
   Pause,
   Play,
   Loader2,
+  Trash2,
 } from "lucide-react";
 import type { Campaign } from "@/types";
 import {
@@ -20,6 +22,7 @@ import {
   apiCancelCampaign,
   apiPauseCampaign,
   apiResumeCampaign,
+  apiBulkDeleteCampaigns,
 } from "@/lib/api";
 import { getSocket } from "@/lib/socket";
 import { useToast } from "@/components/ui/toast";
@@ -232,6 +235,11 @@ export default function CampaignsPage() {
   const [loading, setLoading] = useState(true);
   const [pausingIds, setPausingIds] = useState<Set<number>>(new Set());
   const [resumingIds, setResumingIds] = useState<Set<number>>(new Set());
+  // Multi-select for bulk delete — spans the Drafts and Sent (completed/
+  // cancelled) sections, the only deletable states.
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(() => {
     apiGetCampaigns()
@@ -359,6 +367,24 @@ export default function CampaignsPage() {
     }
   };
 
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectMany = (ids: number[], select: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      ids.forEach((id) => (select ? next.add(id) : next.delete(id)));
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
+
   const handleExport = () => {
     const completed = campaigns.filter((c) => c.status === "COMPLETED");
     const rows = [
@@ -391,6 +417,41 @@ export default function CampaignsPage() {
   const scheduled = campaigns.filter((c) => c.status === "SCHEDULED");
   const drafts = campaigns.filter((c) => c.status === "DRAFT");
   const sent = campaigns.filter((c) => c.status === "COMPLETED" || c.status === "CANCELLED");
+
+  // Only deletable campaigns can be selected; prune the selection to what's
+  // actually on screen so the counter never counts rows that reloaded away.
+  const deletableIds = useMemo(
+    () => new Set([...drafts, ...sent].map((c) => c.id)),
+    [drafts, sent]
+  );
+  const selectedValidIds = useMemo(
+    () => [...selectedIds].filter((id) => deletableIds.has(id)),
+    [selectedIds, deletableIds]
+  );
+  const selectedCount = selectedValidIds.length;
+  const sentIds = sent.map((c) => c.id);
+  const draftIds = drafts.map((c) => c.id);
+  const allSentSelected = sentIds.length > 0 && sentIds.every((id) => selectedIds.has(id));
+  const allDraftsSelected = draftIds.length > 0 && draftIds.every((id) => selectedIds.has(id));
+
+  const handleBulkDelete = async () => {
+    if (selectedCount === 0) return;
+    setDeleting(true);
+    try {
+      const res = await apiBulkDeleteCampaigns(selectedValidIds);
+      setCampaigns((prev) => prev.filter((c) => !selectedValidIds.includes(c.id)));
+      clearSelection();
+      setConfirmOpen(false);
+      toast.success(res.message ?? `Deleted ${res.deletedCount} campaign${res.deletedCount !== 1 ? "s" : ""}.`);
+      if (res.skippedCount > 0) {
+        toast.info(`${res.skippedCount} couldn't be deleted (active or scheduled — cancel them first).`);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't delete campaigns.");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -465,10 +526,32 @@ export default function CampaignsPage() {
         {/* Drafts */}
         {drafts.length > 0 && (
           <div>
-            <p className="text-[11px] font-bold tracking-wider text-gray-400 uppercase mb-3">Drafts</p>
+            <div className="flex items-center gap-2 mb-3">
+              <input
+                type="checkbox"
+                checked={allDraftsSelected}
+                onChange={(e) => toggleSelectMany(draftIds, e.target.checked)}
+                className="rounded border-gray-300 accent-[#3B694C] cursor-pointer"
+                title="Select all drafts"
+              />
+              <p className="text-[11px] font-bold tracking-wider text-gray-400 uppercase">Drafts</p>
+            </div>
             <div className="space-y-2">
-              {drafts.map((c) => (
-                <div key={c.id} className="bg-white border border-dashed border-gray-200 rounded-2xl p-4 flex items-center gap-4">
+              {drafts.map((c) => {
+                const isSel = selectedIds.has(c.id);
+                return (
+                <div
+                  key={c.id}
+                  className={`bg-white border rounded-2xl p-4 flex items-center gap-4 transition-colors ${
+                    isSel ? "border-[#3B694C] ring-1 ring-[#3B694C] bg-[#F5FAF7]" : "border-dashed border-gray-200"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isSel}
+                    onChange={() => toggleSelect(c.id)}
+                    className="rounded border-gray-300 accent-[#3B694C] cursor-pointer shrink-0"
+                  />
                   <div className="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center shrink-0">
                     <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -487,7 +570,8 @@ export default function CampaignsPage() {
                     Continue editing
                   </button>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -520,6 +604,15 @@ export default function CampaignsPage() {
               <table className="w-full text-[13px]">
                 <thead>
                   <tr className="border-b border-gray-100">
+                    <th className="w-10 px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={allSentSelected}
+                        onChange={(e) => toggleSelectMany(sentIds, e.target.checked)}
+                        className="rounded border-gray-300 accent-[#3B694C] cursor-pointer align-middle"
+                        title="Select all"
+                      />
+                    </th>
                     <th className="text-left px-5 py-3 font-semibold text-gray-500 text-[11px] uppercase tracking-wider">Campaign</th>
                     <th className="text-left px-4 py-3 font-semibold text-gray-500 text-[11px] uppercase tracking-wider">Sent</th>
                     <th className="text-right px-4 py-3 font-semibold text-gray-500 text-[11px] uppercase tracking-wider">Recipients</th>
@@ -534,8 +627,17 @@ export default function CampaignsPage() {
                   {sent.map((c) => {
                     const replyRate = c.sentCount > 0 ? (c.repliedCount ?? 0) / c.sentCount : 0;
                     const lowEngagement = c.status === "COMPLETED" && replyRate < 0.1 && c.sentCount > 5;
+                    const isSel = selectedIds.has(c.id);
                     return (
-                      <tr key={c.id} className="hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => router.push(`/campaigns/${c.id}`)}>
+                      <tr key={c.id} className={`transition-colors cursor-pointer ${isSel ? "bg-[#F5FAF7]" : "hover:bg-gray-50"}`} onClick={() => router.push(`/campaigns/${c.id}`)}>
+                        <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={isSel}
+                            onChange={() => toggleSelect(c.id)}
+                            className="rounded border-gray-300 accent-[#3B694C] cursor-pointer align-middle"
+                          />
+                        </td>
                         <td className="px-5 py-3.5">
                           <p className="font-medium text-gray-800">{c.name}</p>
                           {c.template && (
@@ -605,6 +707,73 @@ export default function CampaignsPage() {
           </div>
         )}
       </div>
+
+      {/* Floating bulk-action bar */}
+      {selectedCount > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 bg-gray-900 text-white rounded-2xl shadow-xl pl-5 pr-3 py-2.5">
+          <span className="text-[13px] font-medium">
+            {selectedCount} selected
+          </span>
+          <button
+            onClick={clearSelection}
+            className="text-[12px] font-medium text-gray-300 hover:text-white px-2 py-1 rounded-lg transition-colors cursor-pointer"
+          >
+            Clear
+          </button>
+          <button
+            onClick={() => setConfirmOpen(true)}
+            className="flex items-center gap-1.5 text-[13px] font-semibold bg-red-500 hover:bg-red-600 text-white px-4 py-1.5 rounded-xl transition-colors cursor-pointer"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            Delete
+          </button>
+        </div>
+      )}
+
+      {/* Delete confirmation */}
+      {confirmOpen && createPortal(
+        <div
+          className="fixed inset-0 z-[9999] bg-black/50 flex items-center justify-center p-4"
+          onClick={() => !deleting && setConfirmOpen(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5 text-red-500" />
+              </div>
+              <div>
+                <h3 className="text-[15px] font-bold text-gray-900">
+                  Delete {selectedCount} campaign{selectedCount !== 1 ? "s" : ""}?
+                </h3>
+                <p className="text-[13px] text-gray-500 mt-1">
+                  This permanently removes {selectedCount === 1 ? "it" : "them"} and all associated recipient records. This can&apos;t be undone.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setConfirmOpen(false)}
+                disabled={deleting}
+                className="text-[13px] font-medium text-gray-600 border border-gray-200 hover:bg-gray-50 px-4 py-2 rounded-xl transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleBulkDelete}
+                disabled={deleting}
+                className="flex items-center gap-1.5 text-[13px] font-semibold text-white bg-red-500 hover:bg-red-600 px-4 py-2 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              >
+                {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

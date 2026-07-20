@@ -463,6 +463,13 @@ export function apiDeleteCampaign(id: number) {
   return apiFetch<{ success: boolean }>(`/api/campaigns/${id}`, { method: "DELETE" });
 }
 
+export function apiBulkDeleteCampaigns(ids: number[]) {
+  return apiFetch<{ success: boolean; deletedCount: number; skippedCount: number; message: string }>(
+    "/api/campaigns/bulk-delete",
+    { method: "POST", body: JSON.stringify({ ids }) }
+  );
+}
+
 export function apiSendCampaignNow(id: number) {
   return apiFetch<{ success: boolean }>(`/api/campaigns/${id}/send`, { method: "POST" });
 }
