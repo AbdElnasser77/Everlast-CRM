@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { apiGetConversations, apiMarkRead } from "@/lib/api";
 import { getSocket } from "@/lib/socket";
-import type { Conversation } from "@/types";
+import type { Conversation, ConversationView } from "@/types";
 
 const PAGE_SIZE = 50;
 
@@ -12,12 +12,15 @@ const PAGE_SIZE = 50;
 // (initial fetch, live refresh, load-more) so no code path can accidentally
 // skip it — sorting only in the render layer left a gap where load-more's
 // appended page could land unread items below already-read ones.
+// WhatsApp order: most recent message first, nothing else. Unread chats used
+// to be pinned above the rest, which made a chat jump down the list the moment
+// you opened it (opening marks it read). Read state never moves a row now —
+// only a new message does. Matches the server's lastMessageAt ordering, so
+// pages merge without reshuffling.
 function sortConversations(list: Conversation[]): Conversation[] {
-  return [...list].sort((a, b) => {
-    const unreadDiff = (a.unreadCount > 0 ? 0 : 1) - (b.unreadCount > 0 ? 0 : 1);
-    if (unreadDiff !== 0) return unreadDiff;
-    return new Date(b.lastMessageAt ?? 0).getTime() - new Date(a.lastMessageAt ?? 0).getTime();
-  });
+  return [...list].sort(
+    (a, b) => new Date(b.lastMessageAt ?? 0).getTime() - new Date(a.lastMessageAt ?? 0).getTime(),
+  );
 }
 
 interface UseConversationsReturn {
@@ -33,7 +36,20 @@ interface UseConversationsReturn {
   setSearch: (value: string) => void;
 }
 
-export function useConversations(): UseConversationsReturn {
+const idOf = (c: Conversation) => String(c.id ?? c._id);
+
+/**
+ * @param view      the inbox view — all / mine / unassigned / campaign_replies —
+ *                  filtered on the SERVER, so a match on page 3 still appears.
+ * @param pinnedId  the conversation currently open. It is kept in the list even
+ *                  when a refresh says it no longer belongs to the view (e.g. you
+ *                  just assigned it to a colleague while in "Unassigned"): the
+ *                  thread page finds its conversation in this list, and would
+ *                  otherwise treat it as gone and navigate away from it.
+ */
+export function useConversations(
+  { view = "all", pinnedId = null }: { view?: ConversationView; pinnedId?: string | null } = {},
+): UseConversationsReturn {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -48,13 +64,25 @@ export function useConversations(): UseConversationsReturn {
   const loadingMoreRef = useRef(false);
   const hasMoreRef = useRef(false);
   const searchRef = useRef("");
+  const viewRef = useRef<ConversationView>(view);
+  const pinnedRef = useRef<string | null>(pinnedId);
+  useEffect(() => { pinnedRef.current = pinnedId; }, [pinnedId]);
+
+  // Replace the list with a fresh page, keeping the open conversation if the
+  // fresh page doesn't include it.
+  const withPinned = (fresh: Conversation[], prev: Conversation[]) => {
+    const pin = pinnedRef.current;
+    if (!pin || fresh.some((c) => idOf(c) === pin)) return fresh;
+    const kept = prev.find((c) => idOf(c) === pin);
+    return kept ? [kept, ...fresh] : fresh;
+  };
 
   const fetchConversations = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiGetConversations(1, PAGE_SIZE, undefined, searchRef.current || undefined);
-      setConversations(sortConversations(res.data));
+      const res = await apiGetConversations(1, PAGE_SIZE, undefined, searchRef.current || undefined, viewRef.current);
+      setConversations((prev) => sortConversations(withPinned(res.data, prev)));
       pageRef.current = 1;
       const more = res.data.length >= PAGE_SIZE;
       setHasMore(more);
@@ -66,22 +94,33 @@ export function useConversations(): UseConversationsReturn {
     }
   }, []);
 
-  // Initial load + debounced re-fetch whenever the search term changes.
+  // Initial load + re-fetch whenever the search term (debounced) or the view changes.
   useEffect(() => {
     searchRef.current = search;
-    const delay = search ? 300 : 0;
+    const viewChanged = viewRef.current !== view;
+    viewRef.current = view;
+    const delay = search && !viewChanged ? 300 : 0;
     const t = setTimeout(() => { fetchConversations(); }, delay);
     return () => clearTimeout(t);
-  }, [search, fetchConversations]);
+  }, [search, view, fetchConversations]);
 
   // Live-update path for socket events — deliberately NOT fetchConversations.
   // That one flips `loading` (flashing the whole sidebar to a skeleton on
   // every single incoming message) and replaces the list with just page 1
   // (silently dropping anything loaded via scroll). This re-pulls page 1
   // quietly and merges it into whatever's already loaded instead.
+  //
+  // In a filtered view (Mine / Unassigned / Campaign replies) a merge would never
+  // REMOVE a row that stopped matching — a chat you just assigned away would
+  // linger in "Unassigned". So there, page 1 replaces the list instead, keeping
+  // the open conversation.
   const refreshLive = useCallback(async () => {
     try {
-      const res = await apiGetConversations(1, PAGE_SIZE, undefined, searchRef.current || undefined);
+      const res = await apiGetConversations(1, PAGE_SIZE, undefined, searchRef.current || undefined, viewRef.current);
+      if (viewRef.current !== "all") {
+        setConversations((prev) => sortConversations(withPinned(res.data, prev)));
+        return;
+      }
       setConversations((prev) => {
         const freshMap = new Map(res.data.map((c) => [String(c.id ?? c._id), c]));
         const knownIds = new Set(prev.map((c) => String(c.id ?? c._id)));
@@ -100,7 +139,7 @@ export function useConversations(): UseConversationsReturn {
     loadingMoreRef.current = true;
     setLoadingMore(true);
     try {
-      const res = await apiGetConversations(nextPage, PAGE_SIZE, undefined, searchRef.current || undefined);
+      const res = await apiGetConversations(nextPage, PAGE_SIZE, undefined, searchRef.current || undefined, viewRef.current);
       setConversations((prev) => {
         const existingIds = new Set(prev.map((c) => String(c.id ?? c._id)));
         const fresh = res.data.filter((c) => !existingIds.has(String(c.id ?? c._id)));
@@ -134,7 +173,7 @@ export function useConversations(): UseConversationsReturn {
                 assignedAgentId: payload.agentId ?? null,
                 assignedAgent:
                   payload.agentId != null
-                    ? { id: payload.agentId, username: payload.agentUsername ?? "" }
+                    ? { id: payload.agentId, name: null, username: payload.agentUsername ?? "" }
                     : null,
               }
             : c
@@ -174,12 +213,10 @@ export function useConversations(): UseConversationsReturn {
   }, [refreshLive]);
 
   const markRead = useCallback((id: string) => {
-    // Optimistic: zero out locally right away, and re-sort since this moves
-    // the conversation out of the pinned-unread group immediately.
+    // Optimistic: zero out locally right away. No re-sort: read state doesn't
+    // affect order, so the row stays exactly where it is.
     setConversations((prev) =>
-      sortConversations(
-        prev.map((c) => (String(c.id ?? c._id) === id ? { ...c, unreadCount: 0 } : c))
-      )
+      prev.map((c) => (String(c.id ?? c._id) === id ? { ...c, unreadCount: 0 } : c))
     );
     // Persist to backend in the background
     apiMarkRead(id).catch(() => {});

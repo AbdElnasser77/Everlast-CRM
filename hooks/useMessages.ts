@@ -16,6 +16,7 @@ interface UseMessagesReturn {
   error: string | null;
   appendOptimistic: (msg: Message) => void;
   confirmOptimistic: (tempId: string, confirmed: Message) => void;
+  discardOptimistic: (tempId: string) => void;
   typingUsers: string[];
 }
 
@@ -279,6 +280,13 @@ export function useMessages(conversationId: string): UseMessagesReturn {
     setMessages((prev) => [...prev, msg]);
   }, []);
 
+  // Removes an optimistic bubble outright — for a send the server refused
+  // before it reached WhatsApp (e.g. the 24h window is closed), where a FAILED
+  // bubble would suggest a delivery problem that never happened.
+  const discardOptimistic = useCallback((tempId: string) => {
+    setMessages((prev) => prev.filter((m) => getLocalId(m) !== tempId));
+  }, []);
+
   const confirmOptimistic = useCallback((tempId: string, confirmed: Message) => {
     setMessages((prev) => {
       const idx = prev.findIndex((m) => getLocalId(m) === tempId);
@@ -298,6 +306,7 @@ export function useMessages(conversationId: string): UseMessagesReturn {
     error,
     appendOptimistic,
     confirmOptimistic,
+    discardOptimistic,
     typingUsers,
   };
 }

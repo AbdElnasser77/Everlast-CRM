@@ -1,11 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState, useEffect, useLayoutEffect, useRef, startTransition, lazy, Suspense } from "react";
 import { createPortal } from "react-dom";
 import {
   ArrowLeft,
-  MoreHorizontal,
   Paperclip,
   Send,
   Smile,
@@ -31,8 +31,12 @@ import {
   apiGetTemplates,
   apiSendTemplate,
   apiDeleteMessage,
+  apiFetchMediaBlob,
+  ApiError,
 } from "@/lib/api";
+import { useCurrentUser } from "@/components/CurrentUserProvider";
 import { useToast } from "@/components/ui/toast";
+import { Spinner } from "@/components/ui/spinner";
 import type { Message, QuotedMessage, Template } from "@/types";
 import {
   MediaPlayer,
@@ -53,14 +57,49 @@ import {
   useMediaDispatch,
   MediaActionTypes,
 } from "media-chrome/react/media-store";
+import { isWindowClosed } from "@/lib/messagingWindow";
+import { AssigneePicker } from "@/components/AssigneePicker";
+import { ConversationStatusControl } from "@/components/ConversationStatusControl";
+
+/** The server refused a send because the 24-hour window is closed. */
+function isWindowClosedError(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "WINDOW_CLOSED";
+}
+
+/**
+ * "↩ Reply to <campaign>" above a patient message the server attributed to a
+ * campaign. Links to the campaign for those who can read campaigns.
+ */
+function CampaignReplyTag({ campaign, linkable }: { campaign: { id: number; name: string }; linkable: boolean }) {
+  const cls = "inline-flex items-center gap-1 mb-1 text-[11px] font-medium text-[#3B694C] bg-[#DCF2E3] px-2 py-0.5 rounded-full max-w-full";
+  const body = (
+    <>
+      <CornerUpLeft className="w-3 h-3 shrink-0" />
+      <span className="truncate">Reply to &ldquo;{campaign.name}&rdquo;</span>
+    </>
+  );
+  return linkable ? (
+    <Link href={`/campaigns/${campaign.id}`} className={`${cls} hover:bg-[#c9ead4]`} title="Open the campaign">{body}</Link>
+  ) : (
+    <span className={cls}>{body}</span>
+  );
+}
 
 const EmojiPicker = lazy(() =>
   import("@emoji-mart/react").then((m) => ({ default: m.default }))
 );
 
-function isWindowClosed(lastCustomerMessageAt: string | null | undefined): boolean {
-  if (!lastCustomerMessageAt) return false;
-  return Date.now() - new Date(lastCustomerMessageAt).getTime() > 24 * 60 * 60 * 1000;
+// One-line preview of a message for quote blocks and the reply bar. A template's
+// content is stored as JSON, so show its body text rather than "[template]" —
+// replies to a campaign quote the template, and that is the message a reader
+// most needs to recognise.
+function messagePreview(m: { messageType: string; content: string }): string {
+  if (m.messageType === "TEXT") return m.content;
+  if (m.messageType === "TEMPLATE" || m.messageType === "INTERACTIVE") {
+    const tpl = parseTemplateContent(m.content);
+    if (tpl?.body) return tpl.body;
+  }
+  return `[${m.messageType.toLowerCase()}]`;
 }
 
 function parseTemplateContent(content: string): {
@@ -70,6 +109,10 @@ function parseTemplateContent(content: string): {
   body: string;
   footer?: string;
   buttons?: { id: string; type?: "QUICK_REPLY" | "URL" | "PHONE_NUMBER"; title: string; url?: string; phoneNumber?: string }[];
+  // A list message sent by a flow: the menu button and its options.
+  list?: { buttonLabel: string; rows: { title: string; description?: string }[] };
+  // A carousel template: swipeable cards under the body.
+  cards?: { mediaType: "IMAGE" | "VIDEO"; mediaUrl: string; body: string; buttons: { id: string; type: "QUICK_REPLY" | "URL"; title: string; url?: string }[] }[];
 } | null {
   try {
     const p = JSON.parse(content);
@@ -202,8 +245,8 @@ function getAgentAvatar(
 
 /* ── media src hook ──
    directSrc: Cloudinary URL → use immediately (agent-sent, or customer after media_ready)
-   fetchUrl:  proxy URL     → fetch with credentials + blob URL (customer fallback) */
-function useMediaSrc(directSrc: string | null, fetchUrl: string | null) {
+   mediaMsgId: message id   → fetched via apiFetchMediaBlob (customer fallback) */
+function useMediaSrc(directSrc: string | null, mediaMsgId: number | null) {
   const [src, setSrc] = useState<string | null>(directSrc);
   const [loading, setLoading] = useState(!directSrc);
 
@@ -215,10 +258,11 @@ function useMediaSrc(directSrc: string | null, fetchUrl: string | null) {
   }, [directSrc]);
 
   useEffect(() => {
-    if (directSrc || !fetchUrl) return;
+    if (directSrc || !mediaMsgId) return;
     let objectUrl: string | null = null;
-    fetch(fetchUrl, { credentials: "include" })
-      .then((r) => (r.ok ? r.blob() : Promise.reject()))
+    // Goes through lib/api.ts rather than a bare fetch: media is number-scoped
+    // server-side, so without the X-WhatsApp-Number-Id header this 404s.
+    apiFetchMediaBlob(mediaMsgId)
       .then((blob) => {
         objectUrl = URL.createObjectURL(blob);
         setSrc(objectUrl);
@@ -226,7 +270,7 @@ function useMediaSrc(directSrc: string | null, fetchUrl: string | null) {
       .catch(() => {})
       .finally(() => setLoading(false));
     return () => { if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [directSrc, fetchUrl]);
+  }, [directSrc, mediaMsgId]);
 
   return { src, loading };
 }
@@ -262,8 +306,8 @@ function ImageLightbox({ src, onClose }: { src: string; onClose: () => void }) {
   );
 }
 
-function ImageMessage({ directSrc, fetchUrl }: { directSrc: string | null; fetchUrl: string | null }) {
-  const { src, loading } = useMediaSrc(directSrc, fetchUrl);
+function ImageMessage({ directSrc, mediaMsgId }: { directSrc: string | null; mediaMsgId: number | null }) {
+  const { src, loading } = useMediaSrc(directSrc, mediaMsgId);
   const [open, setOpen] = useState(false);
 
   if (loading) return <div className="w-[220px] h-[160px] bg-gray-200/60 animate-pulse rounded-xl" />;
@@ -303,8 +347,8 @@ function SpeedCycleButton() {
   );
 }
 
-function AudioMessage({ directSrc, fetchUrl }: { directSrc: string | null; fetchUrl: string | null }) {
-  const { src, loading } = useMediaSrc(directSrc, fetchUrl);
+function AudioMessage({ directSrc, mediaMsgId }: { directSrc: string | null; mediaMsgId: number | null }) {
+  const { src, loading } = useMediaSrc(directSrc, mediaMsgId);
   if (loading) return <div className="w-[260px] h-12 bg-gray-200/60 animate-pulse rounded-lg" />;
   if (!src) return <span className="text-[12px] text-gray-400">Failed to load audio</span>;
   return (
@@ -364,14 +408,12 @@ function VideoMessage({ src }: { src: string | null }) {
   );
 }
 
-function DocumentMessage({ directSrc, fetchUrl, isAgent }: { directSrc: string | null; fetchUrl: string | null; isAgent: boolean }) {
+function DocumentMessage({ directSrc, mediaMsgId, isAgent }: { directSrc: string | null; mediaMsgId: number | null; isAgent: boolean }) {
   async function handleDownload() {
     let downloadUrl = directSrc;
-    if (!downloadUrl && fetchUrl) {
+    if (!downloadUrl && mediaMsgId) {
       try {
-        const res = await fetch(fetchUrl, { credentials: "include" });
-        if (!res.ok) throw new Error();
-        const blob = await res.blob();
+        const blob = await apiFetchMediaBlob(mediaMsgId);
         downloadUrl = URL.createObjectURL(blob);
       } catch { return; }
     }
@@ -414,16 +456,14 @@ function MessageContent({ msg, isAgent }: { msg: Message; isAgent: boolean }) {
   // permanently self-heals the message, so it works for as long as Meta retains
   // the file (days) — not just the ~5 min the temporary URL itself lasts.
   const msgDbId = msg.id != null && !Number.isNaN(Number(msg.id)) ? Number(msg.id) : null;
-  const fetchUrl = !directSrc && !isAgent && msgDbId
-    ? `${process.env.NEXT_PUBLIC_API_URL}/api/messages/${msgDbId}/media`
-    : null;
+  const mediaMsgId = !directSrc && !isAgent && msgDbId ? msgDbId : null;
 
-  if (msg.messageType === "IMAGE") return <ImageMessage directSrc={directSrc} fetchUrl={fetchUrl} />;
+  if (msg.messageType === "IMAGE") return <ImageMessage directSrc={directSrc} mediaMsgId={mediaMsgId} />;
   // VIDEO: never proxy-fetch (large file — stalls/fails as blob). Use Cloudinary URL
   // directly; show placeholder until media_ready fires if not yet available.
   if (msg.messageType === "VIDEO") return <VideoMessage src={directSrc} />;
-  if (msg.messageType === "AUDIO") return <AudioMessage directSrc={directSrc} fetchUrl={fetchUrl} />;
-  if (msg.messageType === "DOCUMENT") return <DocumentMessage directSrc={directSrc} fetchUrl={fetchUrl} isAgent={isAgent} />;
+  if (msg.messageType === "AUDIO") return <AudioMessage directSrc={directSrc} mediaMsgId={mediaMsgId} />;
+  if (msg.messageType === "DOCUMENT") return <DocumentMessage directSrc={directSrc} mediaMsgId={mediaMsgId} isAgent={isAgent} />;
   if (msg.messageType === "STICKER") {
     if (!directSrc) return <p className="text-[13px] text-gray-400 italic">Sticker (loading…)</p>;
     return (
@@ -433,7 +473,7 @@ function MessageContent({ msg, isAgent }: { msg: Message; isAgent: boolean }) {
   }
 
   return (
-    <p className={`text-[14px] leading-relaxed whitespace-pre-wrap break-words ${isAgent ? "text-white" : "text-gray-800"}`}>
+    <p className={`text-[14px] leading-relaxed whitespace-pre-wrap break-words ${isAgent ? "text-white" : "text-gray-900"}`}>
       {msg.content}
     </p>
   );
@@ -645,12 +685,23 @@ function TemplatePickerModal({
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Outside the 24-hour window only a Meta-approved template can be sent — the
+  // same rule the server enforces (utils/templateSend.js needsMetaTemplate): not
+  // GENERAL, APPROVED, and submitted to Meta under a name. So that picker lists
+  // every such template, whatever its category, and nothing that would bounce.
+  const windowClosedMode = category === "RE_ENGAGEMENT";
   useEffect(() => {
-    apiGetTemplates({ category, status: "APPROVED" })
-      .then((res) => setTemplates(res.data))
+    apiGetTemplates(windowClosedMode ? { status: "APPROVED" } : { category, status: "APPROVED" })
+      .then((res) =>
+        setTemplates(
+          windowClosedMode
+            ? res.data.filter((t) => t.category !== "GENERAL" && !!t.metaTemplateName)
+            : res.data,
+        ),
+      )
       .catch(() => {})
       .finally(() => setLoadingTpls(false));
-  }, [category]);
+  }, [category, windowClosedMode]);
 
   function previewBody(body: string) {
     return body
@@ -674,8 +725,8 @@ function TemplatePickerModal({
       onClose();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to send template";
-      if (msg.toLowerCase().includes("window")) {
-        setError("The 24-hour window is still open. Use the normal message input.");
+      if (isWindowClosedError(err)) {
+        setError("The 24-hour window is closed, and this template isn't approved by Meta — pick an approved one.");
       } else if (msg.toLowerCase().includes("approved")) {
         setError("This template is pending Meta approval.");
       } else {
@@ -693,9 +744,13 @@ function TemplatePickerModal({
         <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100 shrink-0">
           <div>
             <h2 className="text-[16px] font-bold text-gray-900">
-              {category === "RE_ENGAGEMENT" ? "Re-engagement Templates" : "Insert Template"}
+              {windowClosedMode ? "Send an approved template" : "Insert Template"}
             </h2>
-            <p className="text-[12px] text-gray-400 mt-0.5">Only approved templates are shown</p>
+            <p className="text-[12px] text-gray-400 mt-0.5">
+              {windowClosedMode
+                ? "The 24-hour window is closed — only Meta-approved templates can be sent"
+                : "Only approved templates are shown"}
+            </p>
           </div>
           <button type="button" onClick={onClose} className="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-400 cursor-pointer">
             <X className="w-4 h-4" />
@@ -717,7 +772,7 @@ function TemplatePickerModal({
             <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb]:rounded-full">
               {loadingTpls ? (
                 <div className="flex items-center justify-center h-20">
-                  <span className="text-[13px] text-gray-400">Loading…</span>
+                  <Spinner size="md" label="Loading templates" />
                 </div>
               ) : filtered.length === 0 ? (
                 <div className="px-4 py-8 text-center">
@@ -816,8 +871,19 @@ export default function ConversationPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const toast = useToast();
-  const { conversations, markRead } = useConversationsContext();
+  const { conversations, loading: conversationsLoading, markRead } = useConversationsContext();
   const conversation = conversations.find((c) => String(c.id ?? c._id) === id);
+  // Conversation ids are global integers, so a bookmarked or pasted link can
+  // point at a thread belonging to a different WhatsApp number. Once the list has
+  // loaded and the id still isn't in it, this thread is not on the active number
+  // — go back to the inbox rather than rendering a headless conversation.
+  //
+  // Guarded on !loading so it cannot fire during the normal load window, and on
+  // length so an empty inbox doesn't bounce the user in a loop.
+  const conversationMissing = !conversationsLoading && !conversation && conversations.length > 0;
+  useEffect(() => {
+    if (conversationMissing) router.replace("/chats");
+  }, [conversationMissing, router]);
   const customer = conversation?.customer ?? null;
 
   const {
@@ -828,8 +894,22 @@ export default function ConversationPage() {
     loadMore,
     appendOptimistic,
     confirmOptimistic,
+    discardOptimistic,
     typingUsers,
   } = useMessages(id);
+  const { can } = useCurrentUser();
+
+  // The server said the window is closed (the client's clock or data may have
+  // disagreed). Take the bubble back, keep what was typed, and go straight to
+  // the one thing that can be sent.
+  function handleWindowClosed(err: unknown, tempId: string, text?: string): boolean {
+    if (!isWindowClosedError(err)) return false;
+    discardOptimistic(tempId);
+    if (text) setMessage((m) => m || text);
+    toast.error(err instanceof Error ? err.message : "The 24-hour window is closed.");
+    setReengagementOpen(true);
+    return true;
+  }
 
   const [aiReply, setAiReply] = useState(false);
   const [message, setMessage] = useState("");
@@ -1067,8 +1147,10 @@ export default function ConversationPage() {
         _id: realId,
         status: res.data.status,
       });
-    } catch {
-      confirmOptimistic(tempId, { ...optimistic, status: "FAILED" });
+    } catch (err) {
+      if (!handleWindowClosed(err, tempId, text)) {
+        confirmOptimistic(tempId, { ...optimistic, status: "FAILED" });
+      }
     } finally {
       setSending(false);
     }
@@ -1180,8 +1262,10 @@ export default function ConversationPage() {
             ((res.data as Record<string, unknown>)._id as string) ??
             String((res.data as Record<string, unknown>).id);
           confirmOptimistic(textTempId, { ...textMsg, _id: realId, status: res.data.status });
-        } catch {
-          confirmOptimistic(textTempId, { ...textMsg, status: "FAILED" });
+        } catch (err) {
+          if (!handleWindowClosed(err, textTempId, textMsg.content)) {
+            confirmOptimistic(textTempId, { ...textMsg, status: "FAILED" });
+          }
         }
       }
 
@@ -1193,8 +1277,10 @@ export default function ConversationPage() {
           ((res.data as Record<string, unknown>)._id as string) ??
           String((res.data as Record<string, unknown>).id);
         confirmOptimistic(mediaTempId, { ...mediaMsg, _id: realId, content: url, mediaUrl: url, messageType, status: res.data.status });
-      } catch {
-        confirmOptimistic(mediaTempId, { ...mediaMsg, status: "FAILED" });
+      } catch (err) {
+        if (!handleWindowClosed(err, mediaTempId)) {
+          confirmOptimistic(mediaTempId, { ...mediaMsg, status: "FAILED" });
+        }
       }
     }
 
@@ -1211,7 +1297,16 @@ export default function ConversationPage() {
       .join("");
   })();
 
-  const windowClosed = isWindowClosed(conversation?.lastCustomerMessageAt);
+  // Re-evaluated every minute, so a window that expires while this thread is
+  // open locks the composer without a reload. Waits for the conversation: while
+  // it is still loading there is nothing to judge, and "unknown" must not read
+  // as "closed" (a never-messaged contact counts as closed — see the helper).
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNowTick(Date.now()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+  const windowClosed = conversation ? isWindowClosed(conversation.lastCustomerMessageAt, nowTick) : false;
 
   return (
     <div
@@ -1274,19 +1369,16 @@ export default function ConversationPage() {
         </div>
 
 
-        {/* Assigned agent badge */}
-        {conversation?.assignedAgent && (
-          <span className="text-[11px] font-medium text-gray-500 bg-gray-100 border border-gray-200 rounded-full px-2 py-0.5 whitespace-nowrap">
-            @ {conversation.assignedAgent.username}
-          </span>
+        {/* Lifecycle + owner. Both update live from the server's socket events,
+            which patch the conversation list this header reads from. */}
+        {conversation && (
+          <>
+            <div className="hidden md:block">
+              <ConversationStatusControl conversationId={id} status={conversation.status} />
+            </div>
+            <AssigneePicker conversationId={id} assignee={conversation.assignedAgent ?? null} />
+          </>
         )}
-
-        <button
-          type="button"
-          className="w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors cursor-pointer"
-        >
-          <MoreHorizontal className="w-4 h-4" />
-        </button>
       </div>
 
       {/* File preview panel — replaces messages + input when files are queued */}
@@ -1305,7 +1397,12 @@ export default function ConversationPage() {
       {/* Messages */}
       {pendingFiles.length === 0 && (loading ? (
         <div className="relative z-10 flex flex-1 items-center justify-center">
-          <span className="text-[13px] text-gray-400">Loading messages…</span>
+          {/* On a card rather than straight on the chat background: the patterned
+              wallpaper swallowed a bare spinner. */}
+          <div className="flex items-center gap-3 bg-white/95 border border-gray-100 shadow-sm rounded-2xl px-5 py-3.5">
+            <Spinner size="md" label="Loading messages" />
+            <span className="text-[13px] font-medium text-gray-600" aria-hidden>Loading messages…</span>
+          </div>
         </div>
       ) : (
         <div className="relative flex-1 z-10 min-h-0">
@@ -1316,7 +1413,7 @@ export default function ConversationPage() {
           >
           {loadingMore && (
             <div className="flex justify-center py-2">
-              <span className="text-[12px] text-gray-400">Loading…</span>
+              <Spinner size="sm" label="Loading older messages" />
             </div>
           )}
           {messages.map((msg, i) => {
@@ -1333,15 +1430,20 @@ export default function ConversationPage() {
             return msg.senderType === "CUSTOMER" ? (
               <div key={mid} data-msg-id={mid} className="group/msg flex justify-start items-end gap-1" onDoubleClick={(e) => { window.getSelection()?.removeAllRanges(); highlightEl(e.currentTarget); setReplyingTo({ id: Number(msg.id ?? msg._id), content: msg.content, messageType: msg.messageType, senderType: msg.senderType, mediaUrl: msg.mediaUrl }); }}>
                 <div className={isMediaMsg ? "" : "max-w-[65%] min-w-0"}>
+                  {msg.campaignRecipient?.campaign && (
+                    <CampaignReplyTag campaign={msg.campaignRecipient.campaign} linkable={can("campaign:read")} />
+                  )}
                   {isMediaMsg ? (
                     <div>
                       <MessageContent msg={msg} isAgent={false} />
-                      <div className="bg-white border border-gray-100 rounded-xl rounded-tl-sm px-3 py-1 shadow-sm inline-flex mt-1">
-                        <p className="text-[10px] text-gray-400">{formatMessageTime(msg.createdAt)}</p>
+                      <div className="bg-[#E1E8E3] border border-[#C9D4CD] rounded-xl rounded-tl-sm px-3 py-1 shadow-sm inline-flex mt-1">
+                        <p className="text-[10px] text-gray-600">{formatMessageTime(msg.createdAt)}</p>
                       </div>
                     </div>
                   ) : (
-                    <div className="msg-bubble bg-white border border-gray-100 rounded-2xl rounded-tl-sm px-4 pt-2.5 pb-2 shadow-sm">
+                    // Tinted rather than white: a white bubble all but disappeared into the
+                    // patterned chat background, making received messages hard to pick out.
+                    <div className="msg-bubble bg-[#E1E8E3] border border-[#C9D4CD] rounded-2xl rounded-tl-sm px-4 pt-2.5 pb-2 shadow-sm">
                       {msg.quotedMessage && (() => {
                         const qm = msg.quotedMessage;
                         const qImg = !qm.deletedAt && qm.messageType === "IMAGE" ? (qm.mediaUrl ?? qm.content) : null;
@@ -1360,14 +1462,14 @@ export default function ConversationPage() {
                               </div>
                             ) : (
                               <p className="text-[12px] text-gray-500 truncate leading-tight">
-                                {qm.messageType !== "TEXT" ? `[${qm.messageType.toLowerCase()}]` : qm.content}
+                                {messagePreview(qm)}
                               </p>
                             )}
                           </div>
                         );
                       })()}
                       <MessageContent msg={msg} isAgent={false} />
-                      <p className="text-[10px] text-gray-400 text-right mt-1 -mb-0.5">
+                      <p className="text-[10px] text-gray-600 text-right mt-1 -mb-0.5">
                         {formatMessageTime(msg.createdAt)}
                       </p>
                     </div>
@@ -1394,20 +1496,29 @@ export default function ConversationPage() {
               </div>
             ) : (
               (() => {
-                const agent = getAgentAvatar(
-                  msg.senderId,
-                  user,
-                  conversation?.assignedAgent ?? null,
-                  agentCache,
-                );
+                // A flow's message has no human sender: show it as the automation,
+                // never as whoever happens to be looking at the chat.
+                const agent = msg.senderType === "BOT"
+                  ? { initials: "⚡", color: "#64748B", name: "Automation" }
+                  : getAgentAvatar(
+                      msg.senderId,
+                      user,
+                      conversation?.assignedAgent ?? null,
+                      agentCache,
+                    );
                 const prevMsg = i > 0 ? messages[i - 1] : null;
                 const senderChanged =
                   !prevMsg ||
-                  prevMsg.senderType !== "AGENT" ||
+                  prevMsg.senderType !== msg.senderType ||
                   String(prevMsg.senderId) !== String(msg.senderId);
 
-                // Template message — special rendering
-                const tpl = msg.messageType === "INTERACTIVE" ? parseTemplateContent(msg.content) : null;
+                // Template message — special rendering. TEMPLATE is a Meta-approved
+                // template send; INTERACTIVE is an ad-hoc one. Both store the same
+                // JSON shape, so both render as a template bubble.
+                const tpl =
+                  msg.messageType === "INTERACTIVE" || msg.messageType === "TEMPLATE"
+                    ? parseTemplateContent(msg.content)
+                    : null;
                 if (tpl) {
                   return (
                     <div key={mid} data-msg-id={mid} className="group/msg flex justify-end items-end gap-1 pr-4" onDoubleClick={(e) => { window.getSelection()?.removeAllRanges(); highlightEl(e.currentTarget); setReplyingTo({ id: Number(msg.id ?? msg._id), content: tpl.body, messageType: msg.messageType, senderType: msg.senderType, mediaUrl: null }); }}>
@@ -1434,7 +1545,7 @@ export default function ConversationPage() {
                           <p className="text-[11px] text-gray-400 text-right mb-1">{agent.name}</p>
                         )}
                         {/* Bubble — header / body / footer / timestamp */}
-                        <div className={`msg-bubble bg-[#3B694C] rounded-2xl rounded-tr-sm px-4 pt-2.5 pb-2 shadow-sm transition-opacity ${isSending ? "opacity-75" : "opacity-100"} ${tpl.buttons?.length ? "rounded-b-none" : ""}`}>
+                        <div className={`msg-bubble ${msg.senderType === "BOT" ? "bg-[#4B5B6B]" : "bg-[#3B694C]"} rounded-2xl rounded-tr-sm px-4 pt-2.5 pb-2 shadow-sm transition-opacity ${isSending ? "opacity-75" : "opacity-100"} ${tpl.buttons?.length ? "rounded-b-none" : ""}`}>
                           {tpl.headerType === "TEXT" && tpl.header && (
                             <p className="text-[14px] font-bold text-white mb-1 leading-snug">{tpl.header}</p>
                           )}
@@ -1474,6 +1585,42 @@ export default function ConversationPage() {
                               }
                               return <div key={btn.id} className={cls}>{btn.title}</div>;
                             })}
+                          </div>
+                        )}
+                        {tpl.cards && tpl.cards.length > 0 && (
+                          <div className="mt-1 flex gap-2 overflow-x-auto pb-1 snap-x max-w-full">
+                            {tpl.cards.map((card, ci) => (
+                              <div key={ci} className="snap-start shrink-0 w-[180px] bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+                                {card.mediaType === "IMAGE" && card.mediaUrl ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={card.mediaUrl} alt="" className="w-full h-24 object-cover" />
+                                ) : (
+                                  <div className="h-24 bg-gray-100 flex items-center justify-center text-[12px] text-gray-500">▶ Video</div>
+                                )}
+                                <p className="px-2.5 pt-2 text-[12px] text-gray-800 whitespace-pre-wrap line-clamp-4">{card.body}</p>
+                                <div className="p-1.5 space-y-1">
+                                  {card.buttons.map((b) =>
+                                    b.type === "URL" && b.url ? (
+                                      <a key={b.id} href={b.url} target="_blank" rel="noreferrer" className="block border border-gray-100 rounded-lg py-1.5 text-center text-[12px] font-medium text-[#3B694C] hover:bg-[#F5FAF7]">🔗 {b.title}</a>
+                                    ) : (
+                                      <div key={b.id} className="border border-gray-100 rounded-lg py-1.5 text-center text-[12px] font-medium text-[#3B694C]">{b.title}</div>
+                                    ),
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {tpl.list && (
+                          <div className="mt-1 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+                            <div className="py-2 text-center text-[13px] font-medium text-[#3B694C] border-b border-gray-100">☰ {tpl.list.buttonLabel}</div>
+                            <ul className="px-3 py-1.5 space-y-0.5">
+                              {tpl.list.rows.map((r, ri) => (
+                                <li key={ri} className="text-[12px] text-gray-600 leading-snug">
+                                  {r.title}{r.description ? <span className="text-gray-400"> · {r.description}</span> : null}
+                                </li>
+                              ))}
+                            </ul>
                           </div>
                         )}
                         {msg.reactions && Object.keys(msg.reactions).length > 0 && (
@@ -1557,7 +1704,7 @@ export default function ConversationPage() {
                                     </div>
                                   ) : (
                                     <p className="text-[12px] text-white/70 truncate leading-tight">
-                                      {qm.messageType !== "TEXT" ? `[${qm.messageType.toLowerCase()}]` : qm.content}
+                                      {messagePreview(qm)}
                                     </p>
                                   )}
                                 </div>
@@ -1647,9 +1794,7 @@ export default function ConversationPage() {
                   </div>
                 ) : (
                   <p className="text-[12px] text-gray-500 truncate leading-tight">
-                    {replyingTo.messageType !== "TEXT"
-                      ? `[${replyingTo.messageType.toLowerCase()}]`
-                      : replyingTo.content}
+                    {messagePreview(replyingTo)}
                   </p>
                 )}
               </div>
@@ -1668,7 +1813,9 @@ export default function ConversationPage() {
             <div className="flex items-center gap-2 px-4 pt-3 pb-1">
               <Clock className="w-3.5 h-3.5 text-red-400 shrink-0" />
               <p className="text-[12px] text-red-500 font-medium">
-                24-hour messaging window closed — use a re-engagement template to restart the conversation.
+                {conversation?.lastCustomerMessageAt
+                  ? "24-hour messaging window closed — send an approved template to restart the conversation."
+                  : "This contact hasn't messaged you yet — start the conversation with an approved template."}
               </p>
             </div>
           )}
@@ -1770,7 +1917,7 @@ export default function ConversationPage() {
             <button
               type="button"
               onClick={() => windowClosed ? setReengagementOpen(true) : setTemplatePickerOpen(true)}
-              title={windowClosed ? "Send re-engagement template" : "Insert template"}
+              title={windowClosed ? "Send an approved template" : "Insert template"}
               className={`flex items-center gap-1.5 text-[12px] font-medium border rounded-xl px-2.5 py-2 transition-colors cursor-pointer shrink-0 ${
                 windowClosed
                   ? "text-red-600 bg-red-50 border-red-300 hover:bg-red-100 hover:border-red-400"

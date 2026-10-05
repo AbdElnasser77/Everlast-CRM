@@ -3,18 +3,18 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import type { ReactNode } from "react";
 import { LogOut, Clock } from "lucide-react";
 import { useConversations } from "@/hooks/useConversations";
-import { disconnectSocket } from "@/lib/socket";
+import { disconnectSocket, getSocket } from "@/lib/socket";
+import { apiGetConversationCounts, apiLogout } from "@/lib/api";
+import { useCurrentUser } from "@/components/CurrentUserProvider";
+import { PageSpinner } from "@/components/ui/spinner";
+import { homePathFor } from "@/lib/permissions";
 import { ConversationsContext } from "@/components/ConversationsContext";
-import type { User } from "@/types";
-
-function isWindowClosed(lastCustomerMessageAt: string | null | undefined): boolean {
-  if (!lastCustomerMessageAt) return false;
-  return Date.now() - new Date(lastCustomerMessageAt).getTime() > 24 * 60 * 60 * 1000;
-}
+import type { ConversationCounts, ConversationView, User } from "@/types";
+import { isWindowClosed } from "@/lib/messagingWindow";
 
 function getId(c: import("@/types").Conversation): string {
   const raw = c.id ?? c._id;
@@ -121,15 +121,82 @@ function LogoutDrawer({ open, onConfirm, onCancel }: { open: boolean; onConfirm:
 
 const FILTERS = ["All", "Unread", "Window closed", "AI handling"];
 
+// Server-side views: who owns the chat, and whether it answers a campaign.
+// The pills below them (FILTERS) only narrow the page already loaded; these go
+// to the server, so an unassigned chat on page 3 still shows up.
+const VIEWS: { value: ConversationView; label: string; count?: keyof ConversationCounts }[] = [
+  { value: "all", label: "All" },
+  { value: "mine", label: "Mine", count: "mine" },
+  { value: "unassigned", label: "Unassigned", count: "unassigned" },
+  { value: "campaign_replies", label: "Campaign replies", count: "campaign_replies" },
+];
+
+const STATUS_CHIP: Record<string, string> = {
+  PENDING: "bg-amber-50 text-amber-600",
+  RESOLVED: "bg-gray-100 text-gray-500",
+};
+
+/**
+ * Badge counts for the views. Refetched (coalesced to one request per burst)
+ * on any event that can move a conversation between views.
+ */
+function useConversationCounts(): ConversationCounts | null {
+  const [counts, setCounts] = useState<ConversationCounts | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      apiGetConversationCounts()
+        .then((res) => { if (!cancelled) setCounts(res.data); })
+        .catch(() => {});
+    };
+    const schedule = () => {
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(load, 400);
+    };
+    load();
+    const socket = getSocket();
+    const events = ["conversation.updated", "conversation.assigned", "conversation.status_changed", "campaign.replied", "connect"];
+    events.forEach((e) => socket.on(e, schedule));
+    return () => {
+      cancelled = true;
+      if (timer.current) clearTimeout(timer.current);
+      events.forEach((e) => socket.off(e, schedule));
+    };
+  }, []);
+
+  return counts;
+}
+
 export default function ChatsLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [activeFilter, setActiveFilter] = useState("All");
+  const [view, setView] = useState<ConversationView>("all");
   const [aiStates, setAiStates] = useState<Record<string, boolean>>({});
   const [user, setUser] = useState<User | null>(null);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
-  const { conversations, loading, loadingMore, hasMore, loadMore, markRead, search, setSearch } = useConversations();
+  const activeId = pathname.startsWith("/chats/") ? pathname.split("/chats/")[1] : null;
+  const { conversations, loading, loadingMore, hasMore, loadMore, markRead, search, setSearch } =
+    useConversations({ view, pinnedId: activeId });
+  const counts = useConversationCounts();
+  const { ready: userReady, can, me } = useCurrentUser();
+  const canUseInbox = can("conversation:write");
+  // /chats is the app's default landing (the site root, and proxy.ts after
+  // login both point here), so a role without an inbox is sent on to the first
+  // screen it can use rather than stranded on "access denied".
+  useEffect(() => {
+    if (userReady && !canUseInbox) router.replace(homePathFor(me));
+  }, [userReady, canUseInbox, me, router]);
+
+  // Memoised: this object was previously rebuilt inline on every render, so every
+  // consumer of the context re-rendered with it.
+  const conversationsCtx = useMemo(
+    () => ({ conversations, loading, markRead }),
+    [conversations, loading, markRead],
+  );
 
   useEffect(() => {
     const raw = localStorage.getItem("user");
@@ -157,17 +224,15 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
   async function handleLogout() {
     document.cookie = "logged_in=; path=/; max-age=0";
     localStorage.removeItem("user");
+    // Was a hand-rolled duplicate of apiLogout(). Kept in one place so
+    // NEXT_PUBLIC_API_URL appears only in lib/api.ts.
     try {
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/logout`, {
-        method: "POST",
-        credentials: "include",
-      });
+      await apiLogout();
     } catch {}
     disconnectSocket();
     router.push("/login");
   }
 
-  const activeId = pathname.startsWith("/chats/") ? pathname.split("/chats/")[1] : null;
   const totalUnread = conversations.reduce(
     (s, c) => s + (String(c.id ?? c._id) === activeId ? 0 : c.unreadCount),
     0
@@ -189,6 +254,12 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
   // On mobile: show sidebar when no conversation is open, show main otherwise
   const sidebarVisible = !activeId;
 
+  // The inbox is for replying, so it needs conversation:write — MARKETING can
+  // read conversations for context elsewhere but has no inbox. The sidebar
+  // already hides the link; this covers a bookmark or pasted URL, which would
+  // otherwise show an inbox where every action fails.
+  if (!userReady || !canUseInbox) return <PageSpinner />;
+
   return (
     <>
       <LogoutDrawer
@@ -197,7 +268,7 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
         onCancel={() => setShowLogoutModal(false)}
       />
 
-      <ConversationsContext.Provider value={{ conversations, markRead }}>
+      <ConversationsContext.Provider value={conversationsCtx}>
       <div className="flex flex-1 min-h-0 font-[family-name:var(--font-geist-sans)]">
         {/* Sidebar */}
         <aside
@@ -239,6 +310,35 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
                 className="flex-1 text-[13px] text-gray-600 placeholder:text-gray-400 outline-none bg-transparent"
               />
             </div>
+          </div>
+
+          {/* Views (server-side) */}
+          <div role="tablist" aria-label="Inbox view" className="flex gap-4 px-4 mb-3 border-b border-gray-100 overflow-x-auto">
+            {VIEWS.map((v) => {
+              const active = view === v.value;
+              const n = v.count && counts ? counts[v.count] : 0;
+              return (
+                <button
+                  key={v.value}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setView(v.value)}
+                  className={`shrink-0 flex items-center gap-1.5 pb-2 -mb-px border-b-2 text-[13px] transition-colors cursor-pointer ${
+                    active ? "border-[#3B694C] text-[#3B694C] font-semibold" : "border-transparent text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  {v.label}
+                  {n > 0 && (
+                    <span className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10.5px] font-semibold flex items-center justify-center ${
+                      v.value === "unassigned" ? "bg-amber-100 text-amber-700" : active ? "bg-[#DCF2E3] text-[#3B694C]" : "bg-gray-100 text-gray-500"
+                    }`}>
+                      {n > 99 ? "99+" : n}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
 
           {/* Filter tabs */}
@@ -285,7 +385,7 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
               ))
             ) : searched.length === 0 ? (
               <div className="flex items-center justify-center h-32 text-[13px] text-gray-400">
-                No conversations found
+                {view === "mine" ? "Nothing assigned to you" : view === "unassigned" ? "Every open chat has an owner" : view === "campaign_replies" ? "No open campaign replies" : "No conversations found"}
               </div>
             ) : (
               searched.map((c, i) => {
@@ -344,12 +444,30 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
                         )}
                       </div>
 
-                      {/* AI AUTO-REPLY + toggle */}
+                      {/* AI AUTO-REPLY + toggle, then status and owner */}
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] font-semibold text-gray-400 tracking-widest uppercase">
                           AI Auto-Reply
                         </span>
                         <Toggle on={!!aiStates[cid]} onToggle={() => toggleAi(cid)} />
+                        <span className="flex-1" />
+                        {STATUS_CHIP[c.status] && (
+                          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${STATUS_CHIP[c.status]}`}>
+                            {c.status === "PENDING" ? "Pending" : "Resolved"}
+                          </span>
+                        )}
+                        {c.assignedAgent ? (
+                          <span
+                            title={`Assigned to ${c.assignedAgent.name || c.assignedAgent.username}`}
+                            className={`w-5 h-5 rounded-full text-[9px] font-bold flex items-center justify-center ${
+                              c.assignedAgent.id === me?.id ? "bg-[#3B694C] text-white" : "bg-gray-200 text-gray-600"
+                            }`}
+                          >
+                            {getInitials(c.assignedAgent.name || c.assignedAgent.username)}
+                          </span>
+                        ) : c.status !== "RESOLVED" ? (
+                          <span className="text-[10px] font-medium text-amber-600">Unassigned</span>
+                        ) : null}
                       </div>
                     </div>
                   </Link>
