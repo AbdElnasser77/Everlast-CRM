@@ -30,34 +30,164 @@ const BASE = process.env.NEXT_PUBLIC_API_URL;
 // error, instead of only having a message string to guess from.
 export class ApiError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  /** The server's machine-readable reason, e.g. "WINDOW_CLOSED", when it sent one. */
+  code?: string;
+  /** Structured context from the server, e.g. { field: "header" } for a Meta template rejection. */
+  details?: { field?: string | null; [k: string]: unknown };
+  constructor(message: string, status: number, code?: string, details?: ApiError["details"]) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.code = code;
+    this.details = details;
   }
 }
 
-async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+// One expired session makes every in-flight request 401 at once — the
+// dashboard alone fires /users/me, /stats/overview and /conversations on
+// mount. Latched once so only the first of them tears down the session and
+// navigates, instead of three racing redirects.
+let sessionExpired = false;
+
+// ── Active WhatsApp number ──────────────────────────────────────────────────
+//
+// apiFetch is module scope and cannot use hooks, so the selected number lives
+// here and WhatsAppNumberProvider pushes it in. Same pattern as the
+// sessionExpired latch above.
+//
+// `numberEpoch` and `numberAbort` are what make switching safe. Neither alone is
+// enough: abort() does nothing to a fetch whose response has ALREADY resolved
+// and is sitting in the microtask queue, while an epoch check alone lets the
+// request finish and waste the round trip. Together they close both gaps, and
+// because both live here rather than in ~30 call sites, there is nothing for a
+// future page to forget.
+let activeNumberId: string | null = null;
+let numberEpoch = 0;
+let numberAbort = new AbortController();
+
+export function getActiveNumber(): string | null {
+  return activeNumberId;
+}
+
+/**
+ * Point every subsequent request at a different WhatsApp number, and cut off
+ * every request already in flight for the previous one.
+ *
+ * MUST be called synchronously from the switch handler, BEFORE the React state
+ * update that remounts the dashboard. If it ran in an effect instead, the
+ * remounted children's effects would fire first and fetch under the OLD number.
+ */
+export function setActiveNumber(id: string | null): void {
+  if (id === activeNumberId) return;
+  activeNumberId = id;
+  numberEpoch++;
+  numberAbort.abort();
+  numberAbort = new AbortController();
+}
+
+// A promise that never settles. Returned when a response belongs to a number the
+// user has already switched away from.
+//
+// Deliberately not a rejection: every existing `.catch(err => setError(...))` in
+// the app would paint "The user aborted a request" into a visible error banner on
+// every single switch, which would mean auditing and patching a dozen catch
+// blocks. A promise that never settles runs no .then, no .catch and no .finally,
+// so no state is written and no call site changes. The pending promises are
+// collected when the key-remount in the dashboard layout unmounts their owners.
+//
+// If this looks like a bug: it is load-bearing. See WhatsAppNumberProvider.
+function neverSettles<T>(): Promise<T> {
+  return new Promise<T>(() => {});
+}
+
+/**
+ * @param numberScoped  true (default) for anything whose answer depends on the
+ *   active WhatsApp number: such a request is cut off the moment the user
+ *   switches, so the previous number's data can never land. Pass false for a
+ *   request that has nothing to do with numbers AND whose result is held above
+ *   the dashboard's remount boundary — /users/me above all. A number-scoped
+ *   request that is cut off never settles, so if /users/me were one, the first
+ *   automatic number selection after login would leave the app waiting forever
+ *   for a user that never arrives (empty sidebar, endless spinner).
+ */
+async function apiFetch<T>(
+  path: string,
+  options: RequestInit = {},
+  { numberScoped = true }: { numberScoped?: boolean } = {},
+): Promise<T> {
   const isFormData = options.body instanceof FormData;
+  // Auth calls are carved out: sending a number during login is a chicken-and-egg,
+  // and the same carve-out already exists for the 401 handling below.
+  const isAuthCall = path.startsWith("/api/auth/");
   const headers: Record<string, string> = {
     ...(isFormData ? {} : { "Content-Type": "application/json" }),
+    // Outside the isFormData ternary so uploads carry it too, and BEFORE
+    // options.headers so a caller can deliberately override it for the rare
+    // "ask about a specific number" call.
+    ...(activeNumberId && !isAuthCall ? { "X-WhatsApp-Number-Id": activeNumberId } : {}),
     ...(options.headers as Record<string, string> | undefined),
   };
 
-  const res = await fetch(`${BASE}${path}`, { ...options, headers, credentials: "include" });
+  const epochAtStart = numberEpoch;
+  // A number switch changing mid-flight only invalidates number-scoped answers.
+  const switchedAway = () => numberScoped && epochAtStart !== numberEpoch;
+  const signal = !numberScoped
+    ? options.signal ?? undefined
+    : options.signal
+      ? AbortSignal.any([numberAbort.signal, options.signal])
+      : numberAbort.signal;
+
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, { ...options, headers, signal, credentials: "include" });
+  } catch (err) {
+    // An abort from a number switch is not an error the UI should ever see, and
+    // must never trip the session-expired latch below.
+    if (switchedAway() || (numberScoped && err instanceof DOMException && err.name === "AbortError")) {
+      return neverSettles<T>();
+    }
+    throw err;
+  }
+
+  // The request completed, but the user switched while it was in flight.
+  if (switchedAway()) return neverSettles<T>();
+
+  // Belt and braces: the server echoes the number it actually scoped the query
+  // to. A mismatch means an endpoint ignored the header — a class of bug the
+  // client is otherwise completely blind to.
+  if (process.env.NODE_ENV !== "production" && !isAuthCall && numberScoped) {
+    const echoed = res.headers.get("X-WhatsApp-Number-Id");
+    if (echoed && activeNumberId && echoed !== "all" && echoed !== activeNumberId) {
+      console.error(
+        `[whatsapp-number] ${path} was scoped to number ${echoed} but ${activeNumberId} is active — ` +
+        "the endpoint is ignoring X-WhatsApp-Number-Id.",
+      );
+      return neverSettles<T>();
+    }
+  }
 
   if (res.status === 401 && !path.startsWith("/api/auth/")) {
-    localStorage.removeItem("user");
-    document.cookie = "logged_in=; path=/; max-age=0";
-    await fetch(`${BASE}/api/auth/logout`, { method: "POST", credentials: "include" }).catch(() => {});
-    window.location.href = "/login";
+    if (!sessionExpired) {
+      sessionExpired = true;
+      localStorage.removeItem("user");
+      document.cookie = "logged_in=; path=/; max-age=0";
+      // Deliberately no logout POST: the token the server would clear has
+      // already been rejected, and /api/auth/* is capped at 20 requests per
+      // 15 minutes per IP — spending that budget on a dead session is what
+      // turns "session expired" into "Too many requests" on the next real
+      // login attempt, for everyone sharing the office IP.
+      //
+      // `expired` tells proxy.ts to leave us on the login page even if the
+      // cookie clear above didn't stick, so this can't become a loop.
+      window.location.href = "/login?expired=1";
+    }
     throw new Error("Session expired");
   }
 
   const data = await res.json();
 
   if (!res.ok || !data.success) {
-    throw new ApiError(data?.message ?? `HTTP ${res.status}`, res.status);
+    throw new ApiError(data?.message ?? `HTTP ${res.status}`, res.status, data?.code, data?.details);
   }
 
   return data as T;
@@ -70,11 +200,28 @@ export function apiLogin(username: string, password: string) {
   });
 }
 
-export function apiGetConversations(page = 1, limit = 50, lastSenderType?: string, search?: string) {
+export function apiGetConversations(
+  page = 1,
+  limit = 50,
+  lastSenderType?: string,
+  search?: string,
+  view: import("@/types").ConversationView = "all",
+) {
   const params = new URLSearchParams({ page: String(page), limit: String(limit) });
   if (lastSenderType) params.append("lastSenderType", lastSenderType);
   if (search) params.append("search", search);
+  if (view !== "all") params.append("view", view);
   return apiFetch<ConversationListResponse>(`/api/conversations?${params}`);
+}
+
+/** The numbers on the inbox's view tabs (Mine / Unassigned / Campaign replies). */
+export function apiGetConversationCounts() {
+  return apiFetch<{ success: boolean; data: import("@/types").ConversationCounts }>("/api/conversations/counts");
+}
+
+/** Who a conversation can be assigned to. Open to anyone who can assign, agents included. */
+export function apiGetAssignableUsers() {
+  return apiFetch<{ success: boolean; data: import("@/types").AssignableUser[] }>("/api/users/assignable");
 }
 
 export function apiGetMessages(conversationId: string, page = 1, limit = 200) {
@@ -302,18 +449,20 @@ export function apiGetUsers(params?: { page?: number; limit?: number; search?: s
 }
 
 export function apiGetMe() {
-  return apiFetch<import("@/types").UserResponse>("/api/users/me");
+  // Not number-scoped: who you are does not change with the selected number, and
+  // CurrentUserProvider holds the result above the remount boundary. See apiFetch.
+  return apiFetch<import("@/types").UserResponse>("/api/users/me", {}, { numberScoped: false });
 }
 
 export function apiGetUser(id: number | string) {
   return apiFetch<import("@/types").UserResponse>(`/api/users/${id}`);
 }
 
-export function apiCreateUser(data: { name?: string; username: string; password: string; role?: "ADMIN" | "AGENT" }) {
+export function apiCreateUser(data: { name?: string; username: string; password: string; role?: import("@/types").UserRole }) {
   return apiFetch<import("@/types").UserResponse>("/api/users", { method: "POST", body: JSON.stringify(data) });
 }
 
-export function apiUpdateUser(id: number | string, data: Partial<{ name: string | null; username: string; role: "ADMIN" | "AGENT"; status: import("@/types").UserStatus }>) {
+export function apiUpdateUser(id: number | string, data: Partial<{ name: string | null; username: string; role: import("@/types").UserRole; status: import("@/types").UserStatus }>) {
   return apiFetch<import("@/types").UserResponse>(`/api/users/${id}`, { method: "PUT", body: JSON.stringify(data) });
 }
 
@@ -345,6 +494,12 @@ export function apiGetStatsAgents() {
   return apiFetch<import("@/types").StatsAgentsResponse>("/api/stats/agents");
 }
 
+// The n8n clinic-day board, proxied by the backend. `html` is a full page.
+export function apiGetClinicDay(date?: string) {
+  const qs = date ? `?date=${encodeURIComponent(date)}` : "";
+  return apiFetch<{ success: boolean; data: { html: string } }>(`/api/stats/clinic-day${qs}`);
+}
+
 export function apiGetStatsConversations() {
   return apiFetch<{ success: boolean; data: unknown }>("/api/stats/conversations");
 }
@@ -372,6 +527,7 @@ export function apiCreateTemplate(data: {
   body: string;
   footer?: string;
   buttons?: import("@/types").TemplateButton[];
+  cards?: import("@/types").TemplateCard[];
 }) {
   return apiFetch<import("@/types").TemplateResponse>("/api/templates", {
     method: "POST",
@@ -391,6 +547,8 @@ export function apiUpdateTemplate(
     body: string;
     footer: string;
     buttons: import("@/types").TemplateButton[];
+    // [] switches a carousel back to a standard template.
+    cards: import("@/types").TemplateCard[];
   }>
 ) {
   return apiFetch<import("@/types").TemplateResponse>(`/api/templates/${id}`, {
@@ -425,12 +583,33 @@ export function apiGetCampaign(id: number) {
   return apiFetch<import("@/types").CampaignResponse>(`/api/campaigns/${id}`);
 }
 
+/** A campaign's Replies worklist: who answered, and whether anyone has got back to them. */
+export function apiGetCampaignReplies(id: number, page = 1, limit = 50) {
+  return apiFetch<{
+    success: boolean;
+    data: import("@/types").CampaignReply[];
+    pagination: { total: number; page: number; limit: number; totalPages: number };
+  }>(`/api/campaigns/${id}/replies?page=${page}&limit=${limit}`);
+}
+
 export interface ActiveCampaignProgress {
   id: number;
   status: "RUNNING" | "PAUSED";
   sentCount: number;
   failedCount: number;
   totalRecipients: number;
+}
+
+// Dev-only message/cost tracker (the API only mounts /api/dev outside production).
+export function apiDevBilling(since?: string) {
+  const qs = since ? `?since=${encodeURIComponent(since)}` : "";
+  return apiFetch<{ success: boolean; data: import("@/components/DevCostTracker").DevBilling }>(
+    `/api/dev/billing${qs}`, {}, { numberScoped: false },
+  );
+}
+
+export function apiGetQuietHours() {
+  return apiFetch<{ success: boolean; data: import("@/lib/quietHours").QuietHours }>("/api/campaigns/quiet-hours");
 }
 
 export function apiGetActiveCampaignProgress() {
@@ -440,8 +619,14 @@ export function apiGetActiveCampaignProgress() {
 export function apiCreateCampaign(data: {
   name: string;
   templateId: number;
-  recipientIds: number[];
+  // Either a hand-picked list of ids, or a segment the server resolves and
+  // freezes at creation. Passing segmentId is what makes the approved count
+  // and the sent count the same number.
+  recipientIds?: number[];
+  segmentId?: number;
   scheduledAt?: string;
+  flowId?: number | null;
+  category?: import("@/types").CampaignCategory;
 }) {
   return apiFetch<import("@/types").CampaignResponse>("/api/campaigns", {
     method: "POST",
@@ -449,9 +634,58 @@ export function apiCreateCampaign(data: {
   });
 }
 
+// ── Flows (campaign automations) ────────────────────────────────────────────
+type FlowWrite = { name?: string; description?: string | null; isActive?: boolean; graph?: import("@/types").FlowGraph };
+
+export function apiGetFlows() {
+  return apiFetch<{ success: boolean; data: import("@/types").FlowSummary[] }>("/api/campaigns/flows");
+}
+
+export function apiGetFlow(id: number) {
+  return apiFetch<{ success: boolean; data: import("@/types").Flow }>(`/api/campaigns/flows/${id}`);
+}
+
+export function apiCreateFlow(data: FlowWrite & { name: string; graph: import("@/types").FlowGraph }) {
+  return apiFetch<{ success: boolean; data: import("@/types").Flow }>("/api/campaigns/flows", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function apiUpdateFlow(id: number, data: FlowWrite) {
+  return apiFetch<{ success: boolean; data: import("@/types").Flow }>(`/api/campaigns/flows/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export function apiDeleteFlow(id: number) {
+  return apiFetch<{ success: boolean }>(`/api/campaigns/flows/${id}`, { method: "DELETE" });
+}
+
+export function apiGetFlowRuns(id: number, params: { page?: number; limit?: number; status?: string } = {}) {
+  const qs = new URLSearchParams();
+  if (params.page) qs.set("page", String(params.page));
+  if (params.limit) qs.set("limit", String(params.limit));
+  if (params.status) qs.set("status", params.status);
+  return apiFetch<{
+    success: boolean;
+    data: import("@/types").FlowRun[];
+    variables: string[];
+    pagination: { total: number; page: number; limit: number; totalPages: number };
+  }>(`/api/campaigns/flows/${id}/runs${qs.size ? `?${qs}` : ""}`);
+}
+
+export function apiSetCampaignFlow(campaignId: number, flowId: number | null) {
+  return apiFetch<import("@/types").CampaignResponse>(`/api/campaigns/${campaignId}/flow`, {
+    method: "PUT",
+    body: JSON.stringify({ flowId }),
+  });
+}
+
 export function apiUpdateCampaign(
   id: number,
-  data: Partial<{ name: string; templateId: number; recipientIds: number[]; scheduledAt: string | null }>
+  data: Partial<{ name: string; templateId: number; recipientIds: number[]; segmentId: number | null; scheduledAt: string | null; category: import("@/types").CampaignCategory; flowId: number | null }>
 ) {
   return apiFetch<import("@/types").CampaignResponse>(`/api/campaigns/${id}`, {
     method: "PUT",
@@ -474,6 +708,24 @@ export function apiSendCampaignNow(id: number) {
   return apiFetch<{ success: boolean }>(`/api/campaigns/${id}/send`, { method: "POST" });
 }
 
+// Sends one template to one number for a pre-flight check. Creates no
+// campaign, no recipient rows and no stored message.
+export function apiTestSendTemplate(templateId: number, phone: string) {
+  return apiFetch<{
+    success: boolean;
+    data: {
+      to: string;
+      whatsappMessageId: string;
+      personalizedFor: string | null;
+      asMetaTemplate: boolean;
+      preview: string;
+    };
+  }>("/api/campaigns/test-send", {
+    method: "POST",
+    body: JSON.stringify({ templateId, phone }),
+  });
+}
+
 export function apiCancelCampaign(id: number) {
   return apiFetch<{ success: boolean }>(`/api/campaigns/${id}/cancel`, { method: "POST" });
 }
@@ -493,6 +745,33 @@ export function apiGetWhatsAppStatus() {
 
 export function apiGetWhatsAppNumbers() {
   return apiFetch<import("@/types").WhatsAppNumbersListResponse>("/api/whatsapp/numbers");
+}
+
+// The switcher's list: from this app's own database, not a live Graph call, so
+// it renders instantly and still works when Meta is slow.
+export function apiGetMyWhatsAppNumbers() {
+  return apiFetch<import("@/types").ConfiguredNumbersResponse>("/api/whatsapp/my-numbers");
+}
+
+// Media has to bypass the JSON path above (apiFetch always calls res.json()),
+// but it must NOT bypass the header and abort handling — a media id is only
+// readable with a token that can reach its own number. Built on the same
+// request setup so there is still exactly one place headers are assembled.
+export async function apiFetchMediaBlob(messageId: string | number): Promise<Blob> {
+  const headers: Record<string, string> = activeNumberId
+    ? { "X-WhatsApp-Number-Id": activeNumberId }
+    : {};
+  const epochAtStart = numberEpoch;
+
+  const res = await fetch(`${BASE}/api/messages/${messageId}/media`, {
+    headers,
+    signal: numberAbort.signal,
+    credentials: "include",
+  });
+
+  if (epochAtStart !== numberEpoch) return neverSettles<Blob>();
+  if (!res.ok) throw new ApiError(`Media unavailable (HTTP ${res.status})`, res.status);
+  return res.blob();
 }
 
 export function apiCreateConversation(customerId: number) {
@@ -577,4 +856,131 @@ export function apiImportListMembers(id: string | number, file: File, dateFormat
       errors: ImportIssue[];
     };
   }>(`/api/lists/${id}/import`, { method: "POST", body: form });
+}
+
+// ── Segments ────────────────────────────────────────────────────────────────
+
+/**
+ * Both the customers screen and the segment builder speak the same rule
+ * grammar, so the definition travels as one JSON-encoded `filter` param
+ * rather than being flattened into a dozen query keys. A definition with no
+ * rules is omitted entirely — sending `{rules:[]}` would read as "match
+ * everyone", which is right, but sending nothing is cheaper and clearer.
+ */
+function filterParam(definition?: import("@/types").SegmentDefinition | null): string | null {
+  if (!definition || !definition.rules?.length) return null;
+  return JSON.stringify(definition);
+}
+
+export function apiGetSegments() {
+  return apiFetch<import("@/types").SegmentListResponse>("/api/segments");
+}
+
+export function apiGetSegment(id: number | string) {
+  return apiFetch<import("@/types").SegmentResponse>(`/api/segments/${id}`);
+}
+
+export function apiCreateSegment(data: {
+  name: string;
+  description?: string;
+  definition: import("@/types").SegmentDefinition;
+  excludeOptedOut?: boolean;
+}) {
+  return apiFetch<import("@/types").SegmentResponse>("/api/segments", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function apiUpdateSegment(
+  id: number | string,
+  data: Partial<{
+    name: string;
+    description: string;
+    definition: import("@/types").SegmentDefinition;
+    excludeOptedOut: boolean;
+  }>
+) {
+  return apiFetch<import("@/types").SegmentResponse>(`/api/segments/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export function apiDeleteSegment(id: number | string) {
+  return apiFetch<{ success: boolean; message: string }>(`/api/segments/${id}`, { method: "DELETE" });
+}
+
+/**
+ * Count an unsaved rule. This is the call that makes the builder honest — it
+ * runs the same compiler the send path runs, so the number shown here is the
+ * number that gets messaged.
+ */
+export function apiPreviewSegment(
+  definition: import("@/types").SegmentDefinition,
+  excludeOptedOut = true
+) {
+  return apiFetch<import("@/types").SegmentPreviewResponse>("/api/segments/preview", {
+    method: "POST",
+    body: JSON.stringify({ definition, excludeOptedOut }),
+  });
+}
+
+export function apiGetSegmentFields() {
+  return apiFetch<import("@/types").SegmentFieldsResponse>("/api/segments/fields");
+}
+
+export function apiGetSegmentOptions() {
+  return apiFetch<import("@/types").SegmentOptionsResponse>("/api/segments/options");
+}
+
+export function apiGetSegmentMemberIds(id: number | string) {
+  return apiFetch<import("@/types").SegmentMemberIdsResponse>(`/api/segments/${id}/members/ids`);
+}
+
+export function apiGetSegmentMembers(id: number | string, page = 1, limit = 30, search = "") {
+  const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (search) params.append("search", search);
+  return apiFetch<import("@/types").CustomerListResponse & { data: import("@/types").Customer[] }>(
+    `/api/segments/${id}/members?${params.toString()}`
+  );
+}
+
+/** Filtered customer page — same signature as apiGetCustomers plus a rule. */
+export function apiGetCustomersFiltered(
+  page = 1,
+  limit = 20,
+  search = "",
+  definition?: import("@/types").SegmentDefinition | null
+) {
+  const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (search) params.append("search", search);
+  const filter = filterParam(definition);
+  if (filter) params.append("filter", filter);
+  return apiFetch<CustomerListResponse>(`/api/customers?${params.toString()}`);
+}
+
+/**
+ * Every id matching the current filter, not just the visible page. "Select all
+ * 1,284 matches" has to mean all of them, and only the server knows the rest.
+ */
+export function apiGetFilteredCustomerIds(
+  search = "",
+  definition?: import("@/types").SegmentDefinition | null
+) {
+  const params = new URLSearchParams();
+  if (search) params.append("search", search);
+  const filter = filterParam(definition);
+  if (filter) params.append("filter", filter);
+  const qs = params.toString();
+  return apiFetch<import("@/types").CustomerIdsResponse>(`/api/customers/ids${qs ? `?${qs}` : ""}`);
+}
+
+/** Re-run a DRAFT campaign's segment against current data. DRAFT-only server-side. */
+export function apiRefreshCampaignAudience(id: number) {
+  return apiFetch<
+    import("@/types").CampaignResponse & {
+      meta: { previousCount: number; newCount: number; delta: number };
+    }
+  >(`/api/campaigns/${id}/refresh-audience`, { method: "POST" });
 }
