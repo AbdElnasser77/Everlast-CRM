@@ -12,6 +12,7 @@ import {
 } from "@/lib/api";
 import ContactPicker from "@/components/ContactPicker";
 import type { Customer, ContactList } from "@/types";
+import { useCurrentUser } from "@/components/CurrentUserProvider";
 
 const PAGE_SIZE = 30;
 
@@ -26,6 +27,11 @@ function memberId(c: Member): number {
 }
 
 export default function ListDetailPage() {
+  // Viewing lists is list:read (every role); creating, editing, importing into
+  // and deleting them is list:write — agents may use a list, not reshape it.
+  const { can } = useCurrentUser();
+  const canEdit = can("list:write");
+  const canCampaign = can("campaign:write", "campaign:send");
   const params = useParams();
   const router = useRouter();
   const id = params.id as string;
@@ -149,7 +155,7 @@ export default function ListDetailPage() {
           </button>
           <div className="flex items-center gap-2">
             <h1 className="text-[22px] font-bold text-gray-900 tracking-tight truncate">{list?.name ?? "Loading…"}</h1>
-            {list && (
+            {list && canEdit && (
               <button type="button" onClick={openEdit} className="text-gray-300 hover:text-gray-500 cursor-pointer shrink-0">
                 <Pencil className="w-4 h-4" />
               </button>
@@ -160,6 +166,7 @@ export default function ListDetailPage() {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          {canCampaign && (
           <button
             type="button"
             onClick={() => router.push(`/campaigns/new?listId=${id}`)}
@@ -170,6 +177,8 @@ export default function ListDetailPage() {
             <Megaphone className="w-3.5 h-3.5" />
             Create Campaign
           </button>
+          )}
+          {canEdit && (
           <button
             type="button"
             onClick={() => router.push(`/customers/lists/${id}/import`)}
@@ -178,6 +187,8 @@ export default function ListDetailPage() {
             <Upload className="w-3.5 h-3.5" />
             Import CSV
           </button>
+          )}
+          {canEdit && (
           <button
             type="button"
             onClick={() => setShowPicker(true)}
@@ -186,6 +197,8 @@ export default function ListDetailPage() {
             <UserPlus className="w-3.5 h-3.5" />
             Add contacts
           </button>
+          )}
+          {canEdit && (
           <button
             type="button"
             onClick={() => setShowDelete(true)}
@@ -194,6 +207,7 @@ export default function ListDetailPage() {
           >
             <Trash2 className="w-4 h-4" />
           </button>
+          )}
         </div>
       </div>
 
@@ -253,6 +267,7 @@ export default function ListDetailPage() {
                     <td className="px-3 py-2.5 text-[13px] text-gray-500">{m.email || "—"}</td>
                     <td className="px-3 py-2.5 text-[12px] text-gray-400">{new Date(m.addedAt).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}</td>
                     <td className="px-3 py-2.5 text-right">
+                      {canEdit && (
                       <button
                         type="button"
                         onClick={() => removeMember(mid)}
@@ -261,6 +276,7 @@ export default function ListDetailPage() {
                       >
                         {removingId === mid ? "Removing…" : "Remove"}
                       </button>
+                      )}
                     </td>
                   </tr>
                 );

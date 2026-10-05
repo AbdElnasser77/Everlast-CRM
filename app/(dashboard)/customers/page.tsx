@@ -3,7 +3,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
-  apiGetCustomers,
+  apiGetCustomersFiltered,
+  apiGetFilteredCustomerIds,
+  apiCreateSegment,
   apiDeleteCustomer,
   apiBulkDeleteCustomers,
   apiGetConversations,
@@ -14,7 +16,9 @@ import {
   apiGetTemplates,
   apiSendTemplate,
 } from "@/lib/api";
-import type { Customer, Conversation, Template } from "@/types";
+import type { Customer, Conversation, Template, SegmentDefinition } from "@/types";
+import SegmentBuilder from "@/components/SegmentBuilder";
+import { useCurrentUser } from "@/components/CurrentUserProvider";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -158,6 +162,8 @@ interface DetailDrawerProps {
 }
 
 function CustomerDetailDrawer({ customer, conv, onClose, onSaved, onDeleted }: DetailDrawerProps) {
+  const { can } = useCurrentUser();
+  const canDelete = can("contact:delete");
   const router = useRouter();
   const open = customer !== null;
 
@@ -690,7 +696,7 @@ function CustomerDetailDrawer({ customer, conv, onClose, onSaved, onDeleted }: D
                   </div>
                 </div>
               ) : (
-                <button
+                canDelete && <button
                   type="button"
                   onClick={() => setConfirmDelete(true)}
                   className="flex items-center gap-1.5 text-[12px] font-medium text-red-400 hover:text-red-600 transition-colors cursor-pointer"
@@ -1204,6 +1210,15 @@ function SendTemplateDrawer({ customer, onClose, onSent }: SendTemplateDrawerPro
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function CRMPage() {
+  // Everyone who reaches Contacts can view and edit contacts; everything below
+  // is shown only to roles whose permissions include it (see CurrentUserProvider).
+  const { can } = useCurrentUser();
+  const canImport = can("contact:import");
+  const canBulkDelete = can("contact:bulk_delete");
+  const canSaveSegment = can("segment:write");
+  const canOpenChat = can("conversation:write");
+  const canMessage = can("message:send", "conversation:write");
+  const canCampaign = can("campaign:write", "campaign:send");
   const router = useRouter();
 
 
@@ -1213,6 +1228,15 @@ export default function CRMPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [search, setSearch] = useState("");
+  // An ad-hoc segment rule layered on top of the search box. Held here rather
+  // than in the builder so paging, "select all matching" and "save as segment"
+  // all read the same definition the table was filtered by.
+  const [filterDef, setFilterDef] = useState<SegmentDefinition>({ match: "ALL", rules: [] });
+  const [showFilters, setShowFilters] = useState(false);
+  const [savingSegment, setSavingSegment] = useState(false);
+  const [segmentName, setSegmentName] = useState("");
+  const [showSaveSegment, setShowSaveSegment] = useState(false);
+  const [saveSegmentError, setSaveSegmentError] = useState<string | null>(null);
 
   const pageRef = useRef(1);
   const loadingMoreRef = useRef(false);
@@ -1261,12 +1285,21 @@ export default function CRMPage() {
       .catch(() => {});
   }, []);
 
+  // Mirrors searchRef: paging callbacks are memoised, so they need a ref to
+  // read the CURRENT filter rather than the one captured when they were made.
+  const filterRef = useRef<SegmentDefinition>(filterDef);
+  filterRef.current = filterDef;
+  const activeRuleCount = filterDef.rules.length;
+  // Structural identity of the rule, so the refetch effect fires when the rule
+  // actually changed rather than on every render that rebuilt the object.
+  const filterKey = JSON.stringify(filterDef);
+
   // ─ Initial + search fetch ──────────────────────────────────────────────────
-  const fetchPage1 = useCallback(async (q: string) => {
+  const fetchPage1 = useCallback(async (q: string, def?: SegmentDefinition) => {
     setLoading(true);
     pageRef.current = 1;
     try {
-      const res = await apiGetCustomers(1, PAGE_SIZE, q);
+      const res = await apiGetCustomersFiltered(1, PAGE_SIZE, q, def ?? filterRef.current);
       setCustomers(res.data);
       const more = res.data.length >= PAGE_SIZE;
       setHasMore(more);
@@ -1287,7 +1320,7 @@ export default function CRMPage() {
     setLoadingMore(true);
     const nextPage = pageRef.current + 1;
     try {
-      const res = await apiGetCustomers(nextPage, PAGE_SIZE, searchRef.current);
+      const res = await apiGetCustomersFiltered(nextPage, PAGE_SIZE, searchRef.current, filterRef.current);
       setCustomers((prev) => {
         // Guard against overlapping pages returning a row we already have.
         const seen = new Set(prev.map((c) => String(c._id ?? c.id)));
@@ -1323,9 +1356,12 @@ export default function CRMPage() {
   // ─ Debounced search ────────────────────────────────────────────────────────
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => fetchPage1(search), 400);
+    debounceRef.current = setTimeout(() => fetchPage1(search, filterDef), 400);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [search, fetchPage1]);
+    // filterKey (not filterDef) so an identical rule rebuilt on re-render
+    // does not retrigger the fetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, filterKey, fetchPage1]);
 
   // ─ Export CSV ─────────────────────────────────────────────────────────────
   function downloadCustomersCSV(list: Customer[], filenamePrefix: string) {
@@ -1405,31 +1441,56 @@ export default function CRMPage() {
   async function selectAllMatchingCustomers() {
     setSelectingAll(true);
     try {
-      const PAGE = 100;
-      const MAX_PAGES = 50; // safety cap → up to 5,000 rows reachable
-      const first = await apiGetCustomers(1, PAGE, searchRef.current);
-      const items = [...first.data];
-      const pages = Math.min(first.pagination?.totalPages ?? 1, MAX_PAGES);
-      if (pages > 1) {
-        const rest = await Promise.all(
-          Array.from({ length: pages - 1 }, (_, i) => apiGetCustomers(i + 2, PAGE, searchRef.current))
-        );
-        rest.forEach((r) => items.push(...r.data));
-      }
+      // One request for every matching id, resolved server-side. The old
+      // approach paged through rows 100 at a time and gave up at 5,000, which
+      // meant "select all 8,000 matching" quietly selected 5,000 — the failure
+      // mode a targeted campaign can least afford. The server now refuses
+      // outright above its cap instead of silently truncating.
+      const idsRes = await apiGetFilteredCustomerIds(searchRef.current, filterRef.current);
+      const ids = new Set(idsRes.data.customerIds);
+
+      // Rows already paged in carry their full record, so keep those; the rest
+      // are held as id-only stubs, which is all the bulk actions need.
       setSelectedMap((prev) => {
         const next = new Map(prev);
-        items.forEach((c) => next.set(customerKey(c), c));
+        const loaded = new Map(customers.map((c) => [Number(c.id), c]));
+        ids.forEach((id) => {
+          const full = loaded.get(id);
+          if (full) next.set(customerKey(full), full);
+          else next.set(String(id), { id } as Customer);
+        });
         return next;
       });
       setSelectAllMatching(true);
-      // If the search matches more rows than we could page through, surface it —
-      // never silently under-select. Only these `reachable` rows are acted on.
-      const trueTotal = first.pagination?.total ?? items.length;
-      setMatchCap(items.length < trueTotal ? { reachable: items.length, total: trueTotal } : null);
-    } catch {
-      // leave the page-level selection intact on failure
+      setMatchCap(null);
+    } catch (err) {
+      setMatchCap(null);
+      setBulkDeleteError(err instanceof Error ? err.message : "Couldn't select all matching contacts");
     } finally {
       setSelectingAll(false);
+    }
+  }
+
+  // Turn the filter currently on screen into a saved segment. The bridge from
+  // "I found this audience once" to "this audience re-checks itself" — without
+  // it, every useful filter has to be rebuilt from memory in another screen.
+  async function saveFilterAsSegment() {
+    if (!segmentName.trim() || activeRuleCount === 0) return;
+    setSavingSegment(true);
+    setSaveSegmentError(null);
+    try {
+      const res = await apiCreateSegment({
+        name: segmentName.trim(),
+        definition: filterDef,
+        excludeOptedOut: true,
+      });
+      setShowSaveSegment(false);
+      setSegmentName("");
+      router.push(`/customers/segments/${res.data.id}`);
+    } catch (err) {
+      setSaveSegmentError(err instanceof Error ? err.message : "Couldn't save that segment");
+    } finally {
+      setSavingSegment(false);
     }
   }
 
@@ -1540,9 +1601,10 @@ export default function CRMPage() {
       <div className="shrink-0 flex items-center justify-between px-6 pt-6 pb-4 border-b border-gray-100 gap-4 flex-wrap">
         <div>
           <h1 className="text-[22px] font-bold text-gray-900 tracking-tight">Contacts</h1>
-          <p className="text-[13px] text-gray-400 mt-0.5">CRM — admin view</p>
+          <p className="text-[13px] text-gray-400 mt-0.5">Your patient and contact database</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          {canImport && (
           <button
             type="button"
             onClick={downloadTemplate}
@@ -1551,6 +1613,8 @@ export default function CRMPage() {
             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Template
           </button>
+          )}
+          {canImport && (
           <button
             type="button"
             onClick={() => router.push("/customers/import")}
@@ -1559,6 +1623,7 @@ export default function CRMPage() {
             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             Import CSV
           </button>
+          )}
           <button
             type="button"
             onClick={exportCSV}
@@ -1579,9 +1644,10 @@ export default function CRMPage() {
         </div>
       </div>
 
-      {/* Search */}
+      {/* Search + filter */}
       <div className="shrink-0 px-6 py-4">
-        <div className="flex items-center gap-2.5 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 max-w-sm focus-within:ring-2 focus-within:ring-[#3B694C]/20 focus-within:border-[#3B694C] transition-colors">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <div className="flex items-center gap-2.5 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 w-full max-w-sm focus-within:ring-2 focus-within:ring-[#3B694C]/20 focus-within:border-[#3B694C] transition-colors">
           <svg className="w-4 h-4 text-gray-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
           </svg>
@@ -1597,7 +1663,59 @@ export default function CRMPage() {
               <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
             </button>
           )}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowFilters((v) => !v)}
+            className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl border text-[13px] font-semibold transition-colors cursor-pointer ${
+              activeRuleCount > 0 || showFilters
+                ? "border-[#3B694C] bg-[#EEF6F1] text-[#3B694C]"
+                : "border-gray-200 text-gray-600 hover:bg-gray-50"
+            }`}
+          >
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" /></svg>
+            Filter
+            {activeRuleCount > 0 && (
+              <span className="bg-[#3B694C] text-white text-[10px] font-bold rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center">
+                {activeRuleCount}
+              </span>
+            )}
+          </button>
+
+          {activeRuleCount > 0 && (
+            <>
+              {canSaveSegment && (
+              <button
+                type="button"
+                onClick={() => setShowSaveSegment(true)}
+                className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-gray-200 text-[13px] font-semibold text-gray-600 hover:bg-[#EEF6F1] hover:border-[#3B694C] hover:text-[#3B694C] transition-colors cursor-pointer"
+                title="Turn this filter into a reusable segment"
+              >
+                Save as segment
+              </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setFilterDef({ match: "ALL", rules: [] })}
+                className="text-[12.5px] font-medium text-gray-400 hover:text-gray-700 transition-colors cursor-pointer"
+              >
+                Clear
+              </button>
+            </>
+          )}
         </div>
+
+        {showFilters && (
+          <div className="mt-4 rounded-2xl border border-gray-100 bg-gray-50/60 p-5">
+            <SegmentBuilder
+              definition={filterDef}
+              onChange={setFilterDef}
+              excludeOptedOut={false}
+              onExcludeOptedOutChange={() => {}}
+            />
+          </div>
+        )}
       </div>
 
       {/* Table (this is the page's scroll container — both axes) */}
@@ -1798,7 +1916,7 @@ export default function CRMPage() {
                     <td className="px-4 py-3.5">
                       <div className="flex items-center gap-2">
                         {conv?.id != null ? (
-                          <button
+                          canOpenChat && <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); router.push(`/chats/${conv.id}`); }}
                             className="flex items-center gap-1.5 text-[12px] font-semibold text-[#3B694C] bg-[#3B694C]/10 hover:bg-[#3B694C]/20 px-3 py-1.5 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
@@ -1807,7 +1925,7 @@ export default function CRMPage() {
                             Open Chat
                           </button>
                         ) : (
-                          <button
+                          canMessage && <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); setTemplateTarget(customer); }}
                             className="flex items-center gap-1.5 text-[12px] font-semibold text-purple-600 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
@@ -1870,6 +1988,7 @@ export default function CRMPage() {
             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Export
           </button>
+          {canCampaign && (
           <button
             type="button"
             onClick={createCampaignFromSelected}
@@ -1878,6 +1997,8 @@ export default function CRMPage() {
             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2 11 13M22 2 15 22l-4-9-9-4 20-7z"/></svg>
             Create campaign
           </button>
+          )}
+          {canBulkDelete && (
           <button
             type="button"
             onClick={() => { setBulkDeleteError(null); setConfirmBulkDelete(true); }}
@@ -1886,6 +2007,7 @@ export default function CRMPage() {
             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
             Delete
           </button>
+          )}
           <div className="w-px h-6 bg-gray-200" />
           <button
             type="button"
@@ -1895,6 +2017,52 @@ export default function CRMPage() {
           >
             <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
           </button>
+        </div>
+      )}
+
+      {/* Save the current filter as a reusable segment */}
+      {showSaveSegment && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-2xl shadow-2xl px-6 py-6 w-[440px] max-w-full space-y-5">
+            <div>
+              <h3 className="text-[15px] font-bold text-gray-900">Save as segment</h3>
+              <p className="text-[12px] text-gray-400 mt-0.5 leading-relaxed">
+                Saves the rule, not the contacts. Anyone who qualifies later is included later,
+                without rebuilding this filter.
+              </p>
+            </div>
+            <div>
+              <label className="text-[12px] font-semibold text-gray-600 mb-1 block">
+                Segment name <span className="text-red-500">*</span>
+              </label>
+              <input
+                value={segmentName}
+                onChange={(e) => setSegmentName(e.target.value)}
+                placeholder="e.g. Lapsed dermatology patients"
+                autoFocus
+                onKeyDown={(e) => { if (e.key === "Enter") saveFilterAsSegment(); }}
+                className="w-full text-[13px] rounded-xl border border-gray-200 px-3 py-2.5 outline-none focus:ring-2 focus:ring-[#3B694C]/20 focus:border-[#3B694C] transition-colors"
+              />
+            </div>
+            {saveSegmentError && <p className="text-[12px] text-red-500">{saveSegmentError}</p>}
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => { setShowSaveSegment(false); setSaveSegmentError(null); }}
+                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-[13px] font-semibold text-gray-600 hover:bg-gray-50 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={saveFilterAsSegment}
+                disabled={!segmentName.trim() || savingSegment}
+                className="flex-1 py-2.5 rounded-xl bg-[#3B694C] text-white text-[13px] font-semibold hover:bg-[#2f5840] disabled:opacity-50 transition-colors cursor-pointer"
+              >
+                {savingSegment ? "Saving…" : "Save segment"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

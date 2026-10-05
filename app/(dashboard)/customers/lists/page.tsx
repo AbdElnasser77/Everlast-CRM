@@ -6,12 +6,17 @@ import { ListChecks, Users, Trash2, Megaphone } from "lucide-react";
 import { apiGetLists, apiCreateList, apiAddListMembers, apiDeleteList } from "@/lib/api";
 import ContactPicker from "@/components/ContactPicker";
 import type { ContactList } from "@/types";
+import { useCurrentUser } from "@/components/CurrentUserProvider";
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
 }
 
 export default function ContactListsPage() {
+  // Viewing lists is list:read (every role); creating, editing, importing into
+  // and deleting them is list:write — agents may use a list, not reshape it.
+  const { can } = useCurrentUser();
+  const canEdit = can("list:write");
   const router = useRouter();
 
   const [lists, setLists] = useState<ContactList[]>([]);
@@ -134,6 +139,7 @@ export default function ContactListsPage() {
 
       <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb]:rounded-full">
         {/* Full-width create button */}
+        {canEdit && (
         <button
           type="button"
           onClick={() => setShowCreate(true)}
@@ -144,6 +150,7 @@ export default function ContactListsPage() {
           </div>
           <p className="text-[14px] font-semibold text-gray-700 group-hover:text-[#3B694C]">Create List</p>
         </button>
+        )}
 
         {error && <p className="text-[13px] text-red-500 text-center mb-4">{error}</p>}
 
@@ -167,6 +174,7 @@ export default function ContactListsPage() {
                 onClick={() => router.push(`/customers/lists/${l.id}`)}
                 className="relative p-4 rounded-2xl border border-gray-100 hover:border-gray-200 hover:shadow-sm bg-white transition-all cursor-pointer group"
               >
+                {canEdit && (
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); setDeleteTarget(l); }}
@@ -175,6 +183,7 @@ export default function ContactListsPage() {
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
+                )}
                 <div className="w-9 h-9 rounded-xl bg-[#EEF6F1] flex items-center justify-center mb-3">
                   <ListChecks className="w-4 h-4 text-[#3B694C]" />
                 </div>
