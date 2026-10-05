@@ -8,7 +8,10 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { apiGetWhatsAppStatus, apiGetWhatsAppNumbers, ApiError } from "@/lib/api";
+import { TIERS } from "@/lib/whatsappTiers";
 import type { WhatsAppPhoneStatus, WhatsAppPhoneNumberSummary } from "@/types";
+import { useCurrentUser } from "@/components/CurrentUserProvider";
+import { PageSpinner } from "@/components/ui/spinner";
 
 type Severity = "good" | "warning" | "critical" | "neutral";
 
@@ -52,18 +55,6 @@ const QUALITY_META: Record<string, { severity: Severity; label: string }> = {
   NA: { severity: "neutral", label: "Unknown" },
   UNKNOWN: { severity: "neutral", label: "Unknown" },
 };
-
-// Order matters — this is the ladder's left-to-right rendering order.
-// Confirm exact enum strings against a live /status response; some accounts
-// report TIER_2K instead of TIER_1K for the second rung.
-const TIERS: { key: string; cap: number | null; label: string }[] = [
-  { key: "TIER_250", cap: 250, label: "250" },
-  { key: "TIER_1K", cap: 1000, label: "1,000" },
-  { key: "TIER_2K", cap: 2000, label: "2,000" },
-  { key: "TIER_10K", cap: 10000, label: "10,000" },
-  { key: "TIER_100K", cap: 100000, label: "100,000" },
-  { key: "TIER_UNLIMITED", cap: null, label: "Unlimited" },
-];
 
 function QualityDot({ severity, label }: { severity: Severity; label: string }) {
   return (
@@ -152,22 +143,16 @@ function HeaderSkeleton() {
 type ErrorKind = "forbidden" | "upstream" | "generic";
 
 export default function NumberHealthPage() {
-  const [user, setUser] = useState<{ role: string } | null>(null);
+  // Access comes from the server's permission list, never from the role
+  // name: see CurrentUserProvider. `ready` is false until /users/me answers.
+  const { ready, can } = useCurrentUser();
+  const allowed = can("stats:read");
   const [status, setStatus] = useState<WhatsAppPhoneStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<{ kind: ErrorKind; message: string } | null>(null);
   const [numbers, setNumbers] = useState<WhatsAppPhoneNumberSummary[] | null>(null);
   const [numbersError, setNumbersError] = useState<string | null>(null);
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem("user");
-      setUser(raw ? JSON.parse(raw) : null);
-    } catch {
-      setUser(null);
-    }
-  }, []);
 
   const load = useCallback((isRefresh: boolean) => {
     if (isRefresh) setRefreshing(true);
@@ -206,24 +191,24 @@ export default function NumberHealthPage() {
   }, []);
 
   useEffect(() => {
-    if (user?.role === "ADMIN") load(false);
-  }, [user, load]);
+    if (allowed) load(false);
+  }, [allowed, ready, load]);
 
   // Quality rating / status shift over hours, not seconds — a light
   // background poll is enough, no need for socket push here. Uses the same
   // quiet refresh path as the manual button (icon spinner only, no
   // full-page loading flash).
   useEffect(() => {
-    if (user?.role !== "ADMIN") return;
+    if (!allowed) return;
     const interval = setInterval(() => load(true), 60 * 1000);
     return () => clearInterval(interval);
-  }, [user, load]);
+  }, [allowed, ready, load]);
 
-  if (!user) return null;
+  if (!ready) return <PageSpinner />;
 
-  if (user.role !== "ADMIN") {
+  if (!allowed) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen gap-3">
+      <div className="flex flex-col items-center justify-center min-h-full gap-3">
         <Lock className="w-10 h-10 text-gray-300" />
         <h1 className="text-lg font-semibold text-gray-500">Admin access only</h1>
       </div>
@@ -321,7 +306,7 @@ export default function NumberHealthPage() {
               <div className="px-5 py-4 border-b border-gray-100">
                 <p className="text-[14px] font-bold text-gray-900">All numbers on this account</p>
                 <p className="text-[12px] text-gray-400 mt-0.5">
-                  Every phone number on your WhatsApp Business Account, not just the one this app sends from.
+                  Every phone number on this WhatsApp Business Account — including any not yet added to the CRM.
                 </p>
               </div>
               {numbersError ? (
@@ -336,9 +321,12 @@ export default function NumberHealthPage() {
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
                             <p className="text-[13px] font-semibold text-gray-800 truncate">{n.displayPhoneNumber || n.id}</p>
+                            {/* "Active" is the number currently selected in the
+                                switcher, not a number the app is hardwired to —
+                                that concept no longer exists. */}
                             {n.isPrimary && (
                               <span className="text-[10px] font-semibold text-[#3B694C] bg-[#EEF6F1] px-1.5 py-0.5 rounded-full uppercase tracking-wide shrink-0">
-                                This app
+                                Active
                               </span>
                             )}
                           </div>
