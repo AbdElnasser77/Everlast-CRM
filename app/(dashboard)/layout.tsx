@@ -23,21 +23,56 @@ import {
   LogOut,
 } from "lucide-react";
 import { getSocket, disconnectSocket } from "@/lib/socket";
-import { apiGetMe, apiLogout, apiGetStatsOverview } from "@/lib/api";
+import { apiLogout, apiGetStatsOverview } from "@/lib/api";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { WhatsAppNumberProvider, useActiveNumber } from "@/components/WhatsAppNumberProvider";
+import { NumberSwitcher } from "@/components/NumberSwitcher";
+import { CurrentUserProvider, useCurrentUser } from "@/components/CurrentUserProvider";
 import { ToastProvider } from "@/components/ui/toast";
+import DevCostTracker from "@/components/DevCostTracker";
+import TemplateStatusWatcher from "@/components/TemplateStatusWatcher";
 
 
 const COLLAPSED_W = "w-14";   // 56px icon rail
 const EXPANDED_W  = "w-[260px]";
 
+// The provider sits ABOVE the shell so the switcher itself is outside the
+// remount boundary below — switching must not unmount the control you just used.
+// Rendered inside CurrentUserProvider so it can ask for the permission.
+function AdminDevCostTracker() {
+  const { can } = useCurrentUser();
+  return can("dev:tools") ? <DevCostTracker /> : null;
+}
+
 export default function DashboardLayout({ children }: { children: ReactNode }) {
+  return (
+    <WhatsAppNumberProvider>
+      <CurrentUserProvider>
+        <DashboardShell>{children}</DashboardShell>
+        {/* Dev-only, admin-only message/cost tracker; compiled out of production builds. */}
+        {process.env.NODE_ENV === "development" && <AdminDevCostTracker />}
+      </CurrentUserProvider>
+    </WhatsAppNumberProvider>
+  );
+}
+
+function DashboardShell({ children }: { children: ReactNode }) {
+  const { activeNumberId } = useActiveNumber();
   const pathname = usePathname();
   const router = useRouter();
-  const [isAdmin, setIsAdmin] = useState(false);
+  const { can } = useCurrentUser();
   const [expanded, setExpanded] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
+  // Tagged with the number it was fetched for, so a count belonging to the
+  // previous number can never be displayed — it is simply ignored once the
+  // active number no longer matches, rather than reset from inside an effect.
+  const [unread, setUnread] = useState<{ numberId: string | null; count: number }>({
+    numberId: null,
+    count: 0,
+  });
+  const unreadCount = unread.numberId === activeNumberId ? unread.count : 0;
+  // Templates Meta approved/rejected since this browser last opened /templates.
+  const [templateUpdates, setTemplateUpdates] = useState(0);
   const [contactsOpen, setContactsOpen] = useState(pathname.startsWith("/customers"));
 
   // Keep the Contacts sub-menu expanded whenever the user is on one of its pages.
@@ -73,20 +108,16 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     router.push("/login");
   }
 
-  useEffect(() => {
-    // Verify role from the server — never trust localStorage for access control
-    apiGetMe()
-      .then((res) => {
-        setIsAdmin(res.data.role === "ADMIN");
-        localStorage.setItem("user", JSON.stringify(res.data));
-      })
-      .catch(() => {});
-  }, []);
 
+  // The sidebar renders outside the key-remount below, so unlike every page this
+  // effect does NOT re-run on its own when the number changes — activeNumberId is
+  // in the dep array for exactly that reason. See `unread` above for why a stale
+  // count cannot flash while the refetch is in flight.
   useEffect(() => {
+    const forNumber = activeNumberId;
     function fetchUnread() {
       apiGetStatsOverview()
-        .then((res) => setUnreadCount(res.data.unreadMessages))
+        .then((res) => setUnread({ numberId: forNumber, count: res.data.unreadMessages }))
         .catch(() => {});
     }
     fetchUnread();
@@ -97,7 +128,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       socket.off("message.new", fetchUnread);
       socket.off("conversation.updated", fetchUnread);
     };
-  }, []);
+  }, [activeNumberId]);
 
   // Auto-close on navigation
   useEffect(() => {
@@ -111,24 +142,32 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     return pathname === href || pathname.startsWith(href + "/");
   }
 
+  // Each link names the permission that opens its page, and is shown only to
+  // users who hold it — so the sidebar can never offer a page that would then
+  // say "access denied". The Inbox needs conversation:WRITE, not read: MARKETING
+  // may read conversations for context elsewhere, but the inbox is for replying.
   const navBeforeContacts = [
-    { href: "/chats",            icon: MessageSquare,   label: "Inbox",        enabled: true,  badge: unreadCount > 0 ? unreadCount : undefined },
-  ];
+    { href: "/chats",            icon: MessageSquare,   label: "Inbox",        enabled: true,  badge: unreadCount > 0 ? unreadCount : undefined, perm: "conversation:write" as const },
+  ].filter((i) => can(i.perm));
   const navAfterContacts = [
-    { href: "/campaigns",        icon: Megaphone,       label: "Campaigns",    enabled: true  },
-  ];
+    { href: "/campaigns",        icon: Megaphone,       label: "Campaigns",    enabled: true, perm: "campaign:read" as const },
+  ].filter((i) => can(i.perm));
+  const showContacts = can("contact:read");
   const contactsActive = isActive("/customers");
   const listsActive = isActive("/customers/lists");
-  const contactsChildActive = contactsActive && !listsActive;
+  const segmentsActive = isActive("/customers/segments");
+  const contactsChildActive = contactsActive && !listsActive && !segmentsActive;
+  // The management screens. Headed "Manage" rather than "Admin" now that
+  // MARKETING sees most of them too.
   const adminNav = [
-    { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard"     },
-    { href: "/team",      icon: UsersRound,      label: "Team & Access" },
-    { href: "/templates", icon: LayoutTemplate,  label: "Templates"     },
-    { href: "/media-library", icon: Images,      label: "Media Library" },
-    { href: "/number-health", icon: ShieldCheck, label: "Number Health" },
-    { href: "/audit",     icon: ClipboardList,   label: "Audit Log"     },
-    { href: "/settings",  icon: Settings,        label: "Settings"      },
-  ];
+    { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard",     perm: "stats:read" as const },
+    { href: "/team",      icon: UsersRound,      label: "Team & Access", perm: "user:read" as const },
+    { href: "/templates", icon: LayoutTemplate,  label: "Templates",     perm: "template:write" as const, badge: templateUpdates > 0 ? templateUpdates : undefined },
+    { href: "/media-library", icon: Images,      label: "Media Library", perm: "media:write" as const },
+    { href: "/number-health", icon: ShieldCheck, label: "Number Health", perm: "stats:read" as const },
+    { href: "/audit",     icon: ClipboardList,   label: "Audit Log",     perm: "audit:read" as const },
+    { href: "/settings",  icon: Settings,        label: "Settings",      perm: "number:write" as const },
+  ].filter((i) => can(i.perm));
 
   /* ── desktop nav item: icon + label that fades in on expand ── */
   const DesktopItem = ({
@@ -264,7 +303,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       {expanded && (
         <div
           className={`overflow-hidden transition-[max-height,opacity] duration-200 ease-out ${
-            contactsOpen ? "max-h-24 opacity-100" : "max-h-0 opacity-0"
+            contactsOpen ? "max-h-36 opacity-100" : "max-h-0 opacity-0"
           }`}
         >
           <div className="mt-0.5 ml-[29px] pl-2.5 border-l border-gray-100 space-y-0.5">
@@ -283,6 +322,14 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
               }`}
             >
               Lists
+            </Link>
+            <Link
+              href="/customers/segments"
+              className={`relative flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-[13px] transition-colors ${
+                segmentsActive ? "bg-[#EEF6F1] text-[#3B694C] font-medium" : "text-gray-400 hover:bg-gray-50 hover:text-gray-600"
+              }`}
+            >
+              Segments
             </Link>
           </div>
         </div>
@@ -308,7 +355,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
       <div
         className={`overflow-hidden transition-[max-height,opacity] duration-200 ease-out ${
-          contactsOpen ? "max-h-28 opacity-100" : "max-h-0 opacity-0"
+          contactsOpen ? "max-h-44 opacity-100" : "max-h-0 opacity-0"
         }`}
       >
         <div className="mt-0.5 mb-0.5 ml-[22px] pl-2.5 border-l border-gray-100 space-y-0.5">
@@ -330,6 +377,15 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           >
             Lists
           </Link>
+          <Link
+            href="/customers/segments"
+            onClick={() => setMobileOpen(false)}
+            className={`relative flex items-center gap-1.5 px-3 py-2 rounded-lg text-[13px] transition-colors ${
+              segmentsActive ? "bg-[#EEF6F1] text-[#3B694C] font-medium" : "text-gray-500 hover:bg-gray-50"
+            }`}
+          >
+            Segments
+          </Link>
         </div>
       </div>
     </div>
@@ -339,6 +395,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     <TooltipProvider>
     <ToastProvider>
     <>
+      {can("template:write") && <TemplateStatusWatcher onCount={setTemplateUpdates} />}
       {/* ══════════════ MOBILE ══════════════ */}
 
       {/* top bar */}
@@ -350,6 +407,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           <span className="text-white font-bold text-xs leading-none">E</span>
         </div>
         <span className="font-bold text-[14px] text-gray-800">Everlast CRM</span>
+        <div className="ml-auto">
+          <NumberSwitcher />
+        </div>
       </div>
 
       {/* mobile backdrop */}
@@ -373,11 +433,11 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         </div>
         <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
           {navBeforeContacts.map((item) => <MobileItem key={item.label} {...item} />)}
-          <MobileContactsNav />
+          {showContacts && <MobileContactsNav />}
           {navAfterContacts.map((item) => <MobileItem key={item.label} {...item} />)}
-          {isAdmin && (
+          {adminNav.length > 0 && (
             <>
-              <p className="px-3 pt-5 pb-1.5 text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Admin</p>
+              <p className="px-3 pt-5 pb-1.5 text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Manage</p>
               {adminNav.map((item) => <MobileItem key={item.label} {...item} />)}
             </>
           )}
@@ -422,13 +482,13 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
           {navBeforeContacts.map((item) => <DesktopItem key={item.label} {...item} />)}
-          <DesktopContactsNav />
+          {showContacts && <DesktopContactsNav />}
           {navAfterContacts.map((item) => <DesktopItem key={item.label} {...item} />)}
-          {isAdmin && (
+          {adminNav.length > 0 && (
             <>
               <div className="border-t border-gray-100 my-2 mx-1" />
               {expanded && (
-                <p className="px-3 pb-1.5 text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Admin</p>
+                <p className="px-3 pb-1.5 text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Manage</p>
               )}
               {adminNav.map((item) => <DesktopItem key={item.label} {...item} />)}
             </>
@@ -467,8 +527,36 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       </div>
 
       {/* ── main content ── */}
+      {/* Keying the content on the active number remounts the entire dashboard
+          subtree on a switch. In an app with no data-fetching library there is no
+          cache to invalidate, so this one line IS the re-scoping: every useState
+          resets and all ~30 effects re-run under the new number, with no
+          per-page changes and no chance of a page being forgotten.
+
+          It also deletes the state that stale-data bugs live in — the campaign
+          progress Math.max guards and the chats page's conversation lookup.
+
+          Requests already in flight are handled separately, in lib/api.ts: the
+          remount does not cancel them. Do not remove one without the other. */}
       <div className="lg:ml-14 pt-12 lg:pt-0 h-screen flex flex-col overflow-hidden">
-        {children}
+        {/* Desktop top bar. Deliberately OUTSIDE the keyed div below: if the
+            switcher lived inside it, choosing a number would unmount the very
+            menu you just clicked. (Mobile has its own bar, above.)
+
+            Its 48px is taken from the page's height, not added to it — pages
+            size themselves with h-full / min-h-full against the flex-1 region
+            below, never with min-h-screen, or their bottom edge would be pushed
+            under the fold. */}
+        <header className="hidden lg:flex h-12 shrink-0 items-center justify-end gap-3 px-4 border-b border-gray-100 bg-white">
+          <NumberSwitcher />
+        </header>
+
+        <div
+          key={activeNumberId ?? "default"}
+          className="flex-1 min-h-0 flex flex-col overflow-hidden"
+        >
+          {children}
+        </div>
       </div>
     </>
     </ToastProvider>

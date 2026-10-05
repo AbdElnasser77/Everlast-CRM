@@ -1,28 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { User } from "@/types";
+import { useCurrentUser } from "@/components/CurrentUserProvider";
+import { PageSpinner } from "@/components/ui/spinner";
 
 export default function SettingsPage() {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
-  const [ready, setReady] = useState(false);
+  // Access comes from the server's permission list, never from the role
+  // name: see CurrentUserProvider. `ready` is false until /users/me answers.
+  const { ready, can } = useCurrentUser();
+  const allowed = can("number:write");
 
-  useEffect(() => {
-    const raw = localStorage.getItem("user");
-    if (raw) {
-      try {
-        setUser(JSON.parse(raw));
-      } catch {}
-    }
-    setReady(true);
-  }, []);
-
-  if (!ready) return null;
-
-  // Non-admin: show access denied
-  if (user?.role !== "ADMIN") {
+  if (!ready) return <PageSpinner />;
+  if (!allowed) {
     return (
       <div className="min-h-full bg-white font-[family-name:var(--font-geist-sans)]">
         {/* Page header */}

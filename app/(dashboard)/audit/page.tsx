@@ -4,6 +4,8 @@ import { useState, useEffect, useRef } from "react";
 import { Lock } from "lucide-react";
 import { apiGetAuditLog } from "@/lib/api";
 import type { AuditLog } from "@/types";
+import { useCurrentUser } from "@/components/CurrentUserProvider";
+import { PageSpinner } from "@/components/ui/spinner";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -28,6 +30,15 @@ function truncateDetails(details: Record<string, unknown> | null, max = 80): str
 
 function actionColorClass(action: string): string {
   const lower = action.toLowerCase();
+  // Checked before "sent" so a dry-run test never wears the live-send colour.
+  if (lower.includes("test_send")) return "bg-slate-100 text-slate-600 border-slate-200";
+  // A real outbound blast is the highest-consequence entry in this log — give
+  // it the strongest badge so it's findable at a glance.
+  if (lower.includes("sent")) return "bg-purple-100 text-purple-700 border-purple-200";
+  if (lower.includes("deleted")) return "bg-red-100 text-red-700 border-red-200";
+  if (lower.includes("cancelled") || lower.includes("paused")) {
+    return "bg-orange-100 text-orange-700 border-orange-200";
+  }
   if (lower.includes("assigned")) return "bg-blue-100 text-blue-700 border-blue-200";
   if (lower.includes("status_changed")) return "bg-yellow-100 text-yellow-700 border-yellow-200";
   if (lower.includes("created")) return "bg-green-100 text-green-700 border-green-200";
@@ -69,7 +80,10 @@ function AccessDenied() {
 // ---------------------------------------------------------------------------
 
 export default function AuditLogPage() {
-  const [user, setUser] = useState<{ role: string } | null>(null);
+  // Access comes from the server's permission list, never from the role
+  // name: see CurrentUserProvider. `ready` is false until /users/me answers.
+  const { ready, can } = useCurrentUser();
+  const allowed = can("audit:read");
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -80,19 +94,9 @@ export default function AuditLogPage() {
   // Debounce ref for action filter
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Read user from localStorage once on mount
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem("user");
-      setUser(raw ? JSON.parse(raw) : null);
-    } catch {
-      setUser(null);
-    }
-  }, []);
-
   // Fetch logs whenever page or actionFilter changes (debounced on filter)
   useEffect(() => {
-    if (user?.role !== "ADMIN") return;
+    if (!allowed) return;
 
     async function fetchLogs(resetPage: boolean) {
       const targetPage = resetPage ? 1 : page;
@@ -126,12 +130,12 @@ export default function AuditLogPage() {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [actionFilter, user]);
+  }, [actionFilter, allowed]);
 
   // Separate effect for page increments (load more)
   useEffect(() => {
     if (page === 1) return; // handled by the filter effect above
-    if (user?.role !== "ADMIN") return;
+    if (!allowed) return;
 
     async function fetchMore() {
       setLoadingMore(true);
@@ -160,7 +164,7 @@ export default function AuditLogPage() {
   // ---------------------------------------------------------------------------
 
   // While user is not yet read from localStorage, render nothing to avoid flicker
-  if (user === null && loading) {
+  if (!ready) {
     return (
       <div className="flex flex-col h-full bg-[#f5f4f0]">
         <div className="bg-white border-b border-gray-100 px-6 py-4">
@@ -175,7 +179,8 @@ export default function AuditLogPage() {
     );
   }
 
-  if (user?.role !== "ADMIN") {
+  if (!ready) return <PageSpinner />;
+  if (!allowed) {
     return (
       <div className="flex flex-col h-full bg-[#f5f4f0]">
         <div className="bg-white border-b border-gray-100 px-6 py-4 shrink-0">

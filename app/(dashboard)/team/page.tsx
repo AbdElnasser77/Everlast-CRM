@@ -9,7 +9,8 @@ import {
   apiDeleteUser,
   apiResetUserPassword,
 } from "@/lib/api";
-import type { AgentUser } from "@/types";
+import type { UserRole, AgentUser } from "@/types";
+import { useCurrentUser } from "@/components/CurrentUserProvider";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -114,17 +115,20 @@ function StatusBadge({ status }: { status: AgentUser["status"] }) {
 // Role badge
 // ---------------------------------------------------------------------------
 
+// One entry per role. A Record keyed by UserRole, so adding a role to the type
+// fails to compile here until it has a badge — MARKETING used to fall through to
+// the default and be labelled "Agent".
+const ROLE_BADGE: Record<AgentUser["role"], { label: string; className: string }> = {
+  ADMIN: { label: "Admin", className: "bg-green-50 text-green-700 border-green-200" },
+  MARKETING: { label: "Marketing", className: "bg-amber-50 text-amber-700 border-amber-200" },
+  AGENT: { label: "Agent", className: "bg-gray-50 text-gray-500 border-gray-200" },
+};
+
 function RoleBadge({ role }: { role: AgentUser["role"] }) {
-  if (role === "ADMIN") {
-    return (
-      <span className="inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full bg-green-50 text-green-700 border border-green-200">
-        Admin
-      </span>
-    );
-  }
+  const badge = ROLE_BADGE[role] ?? ROLE_BADGE.AGENT;
   return (
-    <span className="inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full bg-gray-50 text-gray-500 border border-gray-200">
-      Agent
+    <span className={`inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full border ${badge.className}`}>
+      {badge.label}
     </span>
   );
 }
@@ -224,7 +228,7 @@ function CreateUserDrawer({ open, onClose, onCreated }: CreateDrawerProps) {
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<"ADMIN" | "AGENT">("AGENT");
+  const [role, setRole] = useState<UserRole>("AGENT");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const usernameRef = useRef<HTMLInputElement>(null);
@@ -284,6 +288,7 @@ function CreateUserDrawer({ open, onClose, onCreated }: CreateDrawerProps) {
           <label className={labelCls}>Role</label>
           <div className="grid grid-cols-2 gap-3">
             <RoleCard role="ADMIN" selected={role === "ADMIN"} onSelect={() => setRole("ADMIN")} />
+            <RoleCard role="MARKETING" selected={role === "MARKETING"} onSelect={() => setRole("MARKETING")} />
             <RoleCard role="AGENT" selected={role === "AGENT"} onSelect={() => setRole("AGENT")} />
           </div>
         </div>
@@ -317,7 +322,7 @@ interface EditDrawerProps {
 function EditUserDrawer({ open, user, onClose, onSaved }: EditDrawerProps) {
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
-  const [role, setRole] = useState<"ADMIN" | "AGENT">("AGENT");
+  const [role, setRole] = useState<UserRole>("AGENT");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -368,6 +373,7 @@ function EditUserDrawer({ open, user, onClose, onSaved }: EditDrawerProps) {
           <label className={labelCls}>Role</label>
           <div className="grid grid-cols-2 gap-3">
             <RoleCard role="ADMIN" selected={role === "ADMIN"} onSelect={() => setRole("ADMIN")} />
+            <RoleCard role="MARKETING" selected={role === "MARKETING"} onSelect={() => setRole("MARKETING")} />
             <RoleCard role="AGENT" selected={role === "AGENT"} onSelect={() => setRole("AGENT")} />
           </div>
         </div>
@@ -586,13 +592,22 @@ function DrawerShell({ open, onClose, title, children }: DrawerShellProps) {
 // ---------------------------------------------------------------------------
 
 interface RoleCardProps {
-  role: "ADMIN" | "AGENT";
+  role: UserRole;
   selected: boolean;
   onSelect: () => void;
 }
 
+// Described by what the role can do, not by where it sits in a hierarchy —
+// "Limited access" told an agent nothing, and with three roles it stops being
+// true anyway. Kept in sync with config/permissions.js on the server.
+const ROLE_COPY: Record<UserRole, { label: string; blurb: string }> = {
+  ADMIN: { label: "Admin", blurb: "Everything, including team and settings" },
+  MARKETING: { label: "Marketing", blurb: "Campaigns, audiences and templates" },
+  AGENT: { label: "Agent", blurb: "Inbox, contacts and replies" },
+};
+
 function RoleCard({ role, selected, onSelect }: RoleCardProps) {
-  const isAdmin = role === "ADMIN";
+  const copy = ROLE_COPY[role];
   return (
     <button
       type="button"
@@ -612,10 +627,10 @@ function RoleCard({ role, selected, onSelect }: RoleCardProps) {
       </div>
       <div>
         <p className={`text-[13px] font-semibold ${selected ? "text-[#3B694C]" : "text-gray-700"}`}>
-          {isAdmin ? "Admin" : "Agent"}
+          {copy.label}
         </p>
         <p className="text-[11px] text-gray-400 leading-tight mt-0.5">
-          {isAdmin ? "Full access" : "Limited access"}
+          {copy.blurb}
         </p>
       </div>
     </button>
@@ -652,10 +667,15 @@ function FilterPill({ label, active, onClick }: FilterPillProps) {
 // Main page
 // ---------------------------------------------------------------------------
 
-type RoleFilter = "ALL" | "ADMIN" | "AGENT";
+type RoleFilter = "ALL" | UserRole;
 
 export default function TeamPage() {
-  const [selfUser, setSelfUser] = useState<{ role: string; id?: number } | null>(null);
+  // Viewing the team is user:read (ADMIN, MARKETING); changing it is user:write
+  // (ADMIN). Both come from the server's permission list — see
+  // CurrentUserProvider.
+  const { me, ready: meReady, can } = useCurrentUser();
+  const canView = can("user:read");
+  const canManage = can("user:write");
   const [users, setUsers] = useState<AgentUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
@@ -670,15 +690,6 @@ export default function TeamPage() {
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Read self from localStorage once
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem("user");
-      setSelfUser(raw ? JSON.parse(raw) : null);
-    } catch {
-      setSelfUser(null);
-    }
-  }, []);
 
   const fetchUsers = useCallback(async (q: string, role: RoleFilter) => {
     setLoading(true);
@@ -700,7 +711,7 @@ export default function TeamPage() {
 
   // Debounce search; immediate on role change
   useEffect(() => {
-    if (selfUser?.role !== "ADMIN") return;
+    if (!canView) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       fetchUsers(search, roleFilter);
@@ -709,7 +720,7 @@ export default function TeamPage() {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, roleFilter, selfUser?.role]);
+  }, [search, roleFilter, canView]);
 
   function openEdit(user: AgentUser) {
     setSelectedUser(user);
@@ -726,10 +737,10 @@ export default function TeamPage() {
     setShowDeleteDrawer(true);
   }
 
-  const selfId = selfUser?.id ?? null;
+  const selfId = me?.id ?? null;
 
   // While loading user info, render nothing to avoid flicker
-  if (selfUser === null && loading) {
+  if (!meReady) {
     return (
       <div className="flex flex-col h-full bg-white">
         <div className="px-6 pt-6 pb-4 border-b border-gray-100">
@@ -750,7 +761,7 @@ export default function TeamPage() {
     );
   }
 
-  if (selfUser?.role !== "ADMIN") {
+  if (!canView) {
     return (
       <div className="flex flex-col h-full bg-white">
         <div className="px-6 pt-6 pb-4 border-b border-gray-100 shrink-0">
@@ -796,6 +807,7 @@ export default function TeamPage() {
             {loading ? "Loading…" : `${total} team member${total !== 1 ? "s" : ""}`}
           </p>
         </div>
+        {canManage && (
         <button
           type="button"
           onClick={() => setShowCreateDrawer(true)}
@@ -806,6 +818,7 @@ export default function TeamPage() {
           </svg>
           Create user
         </button>
+        )}
       </div>
 
       {/* Filters row */}
@@ -840,6 +853,7 @@ export default function TeamPage() {
         <div className="flex items-center gap-2 shrink-0">
           <FilterPill label="All roles" active={roleFilter === "ALL"} onClick={() => setRoleFilter("ALL")} />
           <FilterPill label="Admin" active={roleFilter === "ADMIN"} onClick={() => setRoleFilter("ADMIN")} />
+          <FilterPill label="Marketing" active={roleFilter === "MARKETING"} onClick={() => setRoleFilter("MARKETING")} />
           <FilterPill label="Agent" active={roleFilter === "AGENT"} onClick={() => setRoleFilter("AGENT")} />
         </div>
       </div>
@@ -897,8 +911,10 @@ export default function TeamPage() {
               users.map((user) => {
                 const initials = getInitials(user);
                 const displayName = user.name || user.username;
-                const avatarBg = user.role === "ADMIN" ? "bg-[#DCF2E3]" : "bg-gray-100";
-                const avatarText = user.role === "ADMIN" ? "text-[#3B694C]" : "text-gray-500";
+                // Both privileged roles carry the brand tint; agents stay neutral.
+                const elevated = user.role === "ADMIN" || user.role === "MARKETING";
+                const avatarBg = elevated ? "bg-[#DCF2E3]" : "bg-gray-100";
+                const avatarText = elevated ? "text-[#3B694C]" : "text-gray-500";
 
                 return (
                   <tr
@@ -941,6 +957,7 @@ export default function TeamPage() {
 
                     {/* Actions */}
                     <td className="px-4 py-3">
+                      {canManage && (
                       <ActionsDropdown
                         user={user}
                         selfId={typeof selfId === "number" ? selfId : null}
@@ -948,6 +965,7 @@ export default function TeamPage() {
                         onResetPassword={() => openReset(user)}
                         onDelete={() => openDelete(user)}
                       />
+                      )}
                     </td>
                   </tr>
                 );

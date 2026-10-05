@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { apiLogin } from "@/lib/api";
+import { homePathFor } from "@/lib/permissions";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -21,8 +22,15 @@ export default function LoginPage() {
     try {
       const res = await apiLogin(username, password);
       localStorage.setItem("user", JSON.stringify(res.user));
-      document.cookie = "logged_in=1; path=/; SameSite=Lax; max-age=604800";
-      router.push("/chats");
+      // Must not outlive the httpOnly `token` JWT the API issues alongside it
+      // (8h — see auth.controller.js). A longer max-age leaves this hint
+      // claiming "signed in" against a session the API has already stopped
+      // accepting, so proxy.ts waves the user through to /chats and every
+      // request there 401s.
+      document.cookie = "logged_in=1; path=/; SameSite=Lax; max-age=28800";
+      // The login response carries the permission list, so the user lands on a
+      // screen their role can actually open (MARKETING has no inbox).
+      router.push(homePathFor(res.user));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
