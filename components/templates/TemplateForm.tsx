@@ -26,17 +26,21 @@ import {
   BUTTON_TYPE_META,
   OPT_OUT_TEXT,
   PLACEHOLDER_RE,
+  headerCharError,
   renderPreview,
   CharCount,
   HeaderPreview,
   ButtonRow,
 } from "./shared";
+import { usePlaceholderAutocomplete } from "./usePlaceholderAutocomplete";
+import { CarouselEditor, CarouselPreview, carouselError, newCard } from "./CarouselEditor";
 import type {
   Template,
   TemplateButton,
   TemplateButtonType,
   TemplateCategory,
   TemplateHeaderType,
+  TemplateCard,
   MediaAsset,
 } from "@/types";
 
@@ -44,8 +48,17 @@ const EmojiPicker = lazy(() =>
   import("@emoji-mart/react").then((m) => ({ default: m.default }))
 );
 
-export default function TemplateForm({ template }: { template?: Template | null }) {
+export default function TemplateForm({
+  template,
+  fix = null,
+}: {
+  template?: Template | null;
+  // From a rejected submit: the field to point at and Meta's reason.
+  fix?: { field: string | null; reason: string } | null;
+}) {
   const router = useRouter();
+  const fixRing = (field: string) =>
+    fix?.field === field ? "rounded-xl ring-2 ring-red-300 ring-offset-4 ring-offset-white" : "";
   const isEditing = !!template;
   const [name, setName] = useState(template?.name ?? "");
   const [category, setCategory] = useState<TemplateCategory>(
@@ -61,6 +74,13 @@ export default function TemplateForm({ template }: { template?: Template | null 
   const [buttons, setButtons] = useState<TemplateButton[]>(
     template?.buttons ?? [],
   );
+  // A carousel template is the body text plus 2–10 swipeable cards; the
+  // header, footer and message buttons don't exist on it.
+  const [format, setFormat] = useState<"STANDARD" | "CAROUSEL">(template?.cards?.length ? "CAROUSEL" : "STANDARD");
+  const [cards, setCards] = useState<TemplateCard[]>(
+    template?.cards?.length ? template.cards : [newCard("QR", "IMAGE"), newCard("QR", "IMAGE")],
+  );
+  const isCarousel = format === "CAROUSEL";
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -70,6 +90,10 @@ export default function TemplateForm({ template }: { template?: Template | null 
   const [showAddButtonMenu, setShowAddButtonMenu] = useState(false);
   const [uploadingHeaderMedia, setUploadingHeaderMedia] = useState(false);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const headerRef = useRef<HTMLInputElement>(null);
+  // "{{" autocomplete. Meta allows one variable in a text header.
+  const headerAc = usePlaceholderAutocomplete(headerRef, header, setHeader, { maxVars: 1 });
+  const bodyAc = usePlaceholderAutocomplete(bodyRef, body, setBody);
   const personalizeRef = useRef<HTMLDivElement>(null);
   const emojiRef = useRef<HTMLDivElement>(null);
   const addButtonMenuRef = useRef<HTMLDivElement>(null);
@@ -203,10 +227,21 @@ export default function TemplateForm({ template }: { template?: Template | null 
   function validateClientSide(): string | null {
     if (!name.trim() || !body.trim()) return "Name and body are required.";
     if (body.length > LIMITS.body) return `Body must be ≤ ${LIMITS.body} characters.`;
+    if (isCarousel) {
+      if (category === "GENERAL") return "A carousel is a marketing template — choose Campaign or Re-engagement.";
+      return carouselError(cards);
+    }
     if (footer.length > LIMITS.footer) return `Footer must be ≤ ${LIMITS.footer} characters.`;
     if (headerType === "TEXT") {
       if (!header.trim()) return "Header text is required when the header type is Text.";
       if (header.length > LIMITS.header) return `Header must be ≤ ${LIMITS.header} characters.`;
+      const charErr = headerCharError(header);
+      if (charErr) return charErr;
+      const headerVars = header.match(PLACEHOLDER_RE) || [];
+      if (headerVars.length > 1) return "A text header can have at most 1 placeholder.";
+      const known = PERSONALIZE_VARS.map((v) => v.key);
+      const unknown = headerVars.find((v) => !known.includes(v.replace(/[{}\s]/g, "").toLowerCase()));
+      if (unknown) return `Unknown placeholder ${unknown} in the header. Type {{ to pick one.`;
     }
     if (["IMAGE", "VIDEO", "DOCUMENT"].includes(headerType) && !headerMediaUrl.trim()) {
       return `A sample ${headerType.toLowerCase()} URL is required for a ${headerType.toLowerCase()} header.`;
@@ -214,7 +249,7 @@ export default function TemplateForm({ template }: { template?: Template | null 
     return validateButtonsClientSide();
   }
 
-  const buttonsError = validateButtonsClientSide();
+  const buttonsError = isCarousel ? null : validateButtonsClientSide();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -226,17 +261,28 @@ export default function TemplateForm({ template }: { template?: Template | null 
     setError(null);
     setSaving(true);
     try {
-      const payload = {
-        name: name.trim(),
-        category,
-        language,
-        headerType,
-        header: headerType === "TEXT" ? header.trim() : undefined,
-        headerMediaUrl: ["IMAGE", "VIDEO", "DOCUMENT"].includes(headerType) ? headerMediaUrl.trim() : undefined,
-        body: body.trim(),
-        footer: footer.trim() || undefined,
-        buttons: buttons.length > 0 ? buttons : undefined,
-      };
+      const payload = isCarousel
+        ? {
+            name: name.trim(),
+            category,
+            language,
+            headerType: "NONE" as TemplateHeaderType,
+            body: body.trim(),
+            cards: cards.map((c) => ({ ...c, body: c.body.trim(), mediaUrl: c.mediaUrl.trim() })),
+          }
+        : {
+            name: name.trim(),
+            category,
+            language,
+            headerType,
+            header: headerType === "TEXT" ? header.trim() : undefined,
+            headerMediaUrl: ["IMAGE", "VIDEO", "DOCUMENT"].includes(headerType) ? headerMediaUrl.trim() : undefined,
+            body: body.trim(),
+            footer: footer.trim() || undefined,
+            buttons: buttons.length > 0 ? buttons : undefined,
+            // Switching an existing carousel back to a standard template.
+            ...(isEditing && template?.cards?.length ? { cards: [] as TemplateCard[] } : {}),
+          };
       if (isEditing && template) {
         await apiUpdateTemplate(template.id, payload);
       } else {
@@ -276,7 +322,16 @@ export default function TemplateForm({ template }: { template?: Template | null 
         {/* Left — form */}
         <div className="flex-1 overflow-y-auto px-6 py-6 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb]:rounded-full">
           <form id="tpl-form" onSubmit={handleSubmit} className="space-y-5 max-w-2xl">
-            <div>
+            {fix && (
+              <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5">
+                <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                <div className="text-[13px] text-red-700">
+                  <p className="font-semibold">Meta rejected this template{fix.field ? ` — fix the ${fix.field} (outlined in red)` : ""}.</p>
+                  <p className="text-red-600 mt-0.5">{fix.reason}</p>
+                </div>
+              </div>
+            )}
+            <div className={fixRing("name")}>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="text-[12px] font-semibold text-gray-600">
                   Template Name *
@@ -306,7 +361,7 @@ export default function TemplateForm({ template }: { template?: Template | null 
                   }
                   className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-[14px] text-gray-800 outline-none focus:border-[#3B694C] bg-white"
                 >
-                  <option value="GENERAL">General</option>
+                  <option value="GENERAL" disabled={isCarousel}>General{isCarousel ? " (not for carousels)" : ""}</option>
                   <option value="RE_ENGAGEMENT">Re-engagement</option>
                   <option value="CAMPAIGN">Campaign</option>
                 </select>
@@ -326,8 +381,34 @@ export default function TemplateForm({ template }: { template?: Template | null 
               </div>
             </div>
 
-            {/* Header */}
+            {/* Format */}
             <div>
+              <label className="block text-[12px] font-semibold text-gray-600 mb-1.5">Format</label>
+              <div className="grid grid-cols-2 gap-1.5">
+                {([
+                  ["STANDARD", "Standard message", "Header, text, footer and buttons"],
+                  ["CAROUSEL", "Carousel", "Text plus 2–10 swipeable cards"],
+                ] as const).map(([value, label, hint]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => {
+                      setFormat(value);
+                      setError(null);
+                      if (value === "CAROUSEL" && category === "GENERAL") setCategory("CAMPAIGN");
+                    }}
+                    className={`text-left px-3 py-2 rounded-lg border transition-colors cursor-pointer ${format === value ? "border-[#3B694C] bg-[#EEF6F1]" : "border-gray-200 hover:bg-gray-50"}`}
+                  >
+                    <span className={`block text-[13px] font-semibold ${format === value ? "text-[#3B694C]" : "text-gray-700"}`}>{label}</span>
+                    <span className="block text-[11px] text-gray-400">{hint}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Header */}
+            {!isCarousel && (
+            <div className={fixRing("header")}>
               <label className="text-[12px] font-semibold text-gray-600 mb-1.5 block">
                 Header <span className="font-normal text-gray-400">(optional)</span>
               </label>
@@ -354,14 +435,23 @@ export default function TemplateForm({ template }: { template?: Template | null 
                   <div className="flex items-center justify-end mb-1">
                     <CharCount val={header} max={LIMITS.header} />
                   </div>
-                  <input
-                    type="text"
-                    value={header}
-                    onChange={(e) => setHeader(e.target.value)}
-                    maxLength={LIMITS.header}
-                    placeholder="e.g. Everlast Wellness"
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-[14px] text-gray-800 outline-none focus:border-[#3B694C] focus:ring-1 focus:ring-[#3B694C]/20"
-                  />
+                  <div className="relative">
+                    <input
+                      ref={headerRef}
+                      type="text"
+                      value={header}
+                      {...headerAc.fieldProps}
+                      maxLength={LIMITS.header}
+                      placeholder="e.g. Hi {{first_name}}"
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-[14px] text-gray-800 outline-none focus:border-[#3B694C] focus:ring-1 focus:ring-[#3B694C]/20"
+                    />
+                    {headerAc.menu}
+                  </div>
+                  {headerCharError(header) ? (
+                    <p className="text-[11px] text-red-600 mt-1">{headerCharError(header)}</p>
+                  ) : (
+                    <p className="text-[11px] text-gray-400 mt-1">Type {"{{"} to add a placeholder — one allowed in the header. No emojis or formatting.</p>
+                  )}
                 </div>
               )}
               {(["IMAGE", "VIDEO", "DOCUMENT"] as TemplateHeaderType[]).includes(headerType) && (
@@ -432,25 +522,29 @@ export default function TemplateForm({ template }: { template?: Template | null 
                 </div>
               )}
             </div>
+            )}
 
             {/* Body */}
-            <div>
+            <div className={fixRing("body")}>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="text-[12px] font-semibold text-gray-600">
-                  Message Body *
+                  {isCarousel ? "Message text * (shown above the cards)" : "Message Body *"}
                 </label>
                 <CharCount val={body} max={LIMITS.body} />
               </div>
-              <textarea
-                ref={bodyRef}
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                maxLength={LIMITS.body}
-                placeholder={`Hi {{customer_name}}, we'd love to reconnect.`}
-                rows={4}
-                required
-                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-[14px] text-gray-800 outline-none focus:border-[#3B694C] focus:ring-1 focus:ring-[#3B694C]/20 resize-none"
-              />
+              <div className="relative">
+                <textarea
+                  ref={bodyRef}
+                  value={body}
+                  {...bodyAc.fieldProps}
+                  maxLength={LIMITS.body}
+                  placeholder={`Hi {{customer_name}}, we'd love to reconnect. (Type {{ for placeholders)`}
+                  rows={4}
+                  required
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-[14px] text-gray-800 outline-none focus:border-[#3B694C] focus:ring-1 focus:ring-[#3B694C]/20 resize-none"
+                />
+                {bodyAc.menu}
+              </div>
               <div className="flex items-center gap-1 mt-2 flex-wrap">
                 <button type="button" title="Bold" onClick={() => wrapBodySelection("*")} className="p-1.5 rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-800 transition-colors cursor-pointer">
                   <Bold className="w-3.5 h-3.5" />
@@ -513,8 +607,16 @@ export default function TemplateForm({ template }: { template?: Template | null 
               </div>
             </div>
 
+            {isCarousel && (
+              <div className={fixRing("cards")}>
+                <label className="block text-[12px] font-semibold text-gray-600 mb-1.5">Cards *</label>
+                <CarouselEditor cards={cards} onChange={setCards} />
+              </div>
+            )}
+
             {/* Footer */}
-            <div>
+            {!isCarousel && (
+            <div className={fixRing("footer")}>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="text-[12px] font-semibold text-gray-600">
                   Footer{" "}
@@ -545,9 +647,11 @@ export default function TemplateForm({ template }: { template?: Template | null 
                 <span className="text-[12px] text-gray-500">Add opt-out notice to footer</span>
               </label>
             </div>
+            )}
 
             {/* Buttons */}
-            <div>
+            {!isCarousel && (
+            <div className={fixRing("buttons")}>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="text-[12px] font-semibold text-gray-600">
                   Buttons{" "}
@@ -670,6 +774,7 @@ export default function TemplateForm({ template }: { template?: Template | null 
                 </div>
               )}
             </div>
+            )}
 
             {error && (
               <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5">
@@ -706,7 +811,7 @@ export default function TemplateForm({ template }: { template?: Template | null 
             <div className="px-3 py-4 bg-[#f0ece4]/40">
               <div className="flex justify-end">
                 <div className="bg-[#3B694C] rounded-2xl rounded-br-sm px-3.5 py-3 max-w-[95%] shadow-sm">
-                  <HeaderPreview headerType={headerType} header={header} headerMediaUrl={headerMediaUrl} />
+                  {!isCarousel && <HeaderPreview headerType={headerType} header={header} headerMediaUrl={headerMediaUrl} />}
                   <p className="text-[13px] text-white leading-relaxed whitespace-pre-wrap">
                     {body.trim() ? (
                       renderPreview(body)
@@ -716,7 +821,7 @@ export default function TemplateForm({ template }: { template?: Template | null 
                       </span>
                     )}
                   </p>
-                  {footer.trim() && (
+                  {!isCarousel && footer.trim() && (
                     <p className="text-[11px] text-white/55 mt-2 italic leading-snug">
                       {renderPreview(footer)}
                     </p>
@@ -729,8 +834,10 @@ export default function TemplateForm({ template }: { template?: Template | null 
                 </div>
               </div>
 
+              {isCarousel && <CarouselPreview cards={cards} />}
+
               {/* Buttons preview */}
-              {visibleButtons.length > 0 && (
+              {!isCarousel && visibleButtons.length > 0 && (
                 <div className="mt-2 space-y-1.5">
                   {visibleButtons.map((btn) => (
                     <ButtonRow key={btn.id} btn={btn} />

@@ -2,8 +2,8 @@
 
 import { Suspense, useEffect, useState, useRef, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Check, ArrowLeft, Loader2, Search, ChevronRight, ChevronLeft } from "lucide-react";
-import type { Template, Customer, Conversation, ContactList } from "@/types";
+import { Check, ArrowLeft, Loader2, Search, ChevronRight, ChevronLeft, Lock, Send, AlertCircle, ShieldCheck, Clock } from "lucide-react";
+import type { Template, Customer, Conversation, ContactList, Segment, CampaignCategory } from "@/types";
 import {
   apiGetTemplates,
   apiGetCampaign,
@@ -14,8 +14,21 @@ import {
   apiSendCampaignNow,
   apiGetLists,
   apiGetListMemberIds,
+  apiGetSegments,
+  apiGetSegment,
+  apiGetSegmentMemberIds,
+  apiTestSendTemplate,
+  apiGetWhatsAppStatus,
+  apiGetQuietHours,
 } from "@/lib/api";
+import { isQuietAt, nextOpenAfter, formatClock, type QuietHours } from "@/lib/quietHours";
+import { assessTier, type TierVerdict } from "@/lib/whatsappTiers";
 import { useToast } from "@/components/ui/toast";
+import { useActiveNumber } from "@/components/WhatsAppNumberProvider";
+import { describeRule } from "@/components/SegmentBuilder";
+import { useCurrentUser } from "@/components/CurrentUserProvider";
+import { CAMPAIGN_CATEGORIES, CAMPAIGN_CATEGORY_COLORS } from "@/lib/campaignCategories";
+import { FlowPicker } from "@/components/flows/FlowPicker";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -294,6 +307,51 @@ function Step1({
   );
 }
 
+// ── Messaging-limit pre-flight ────────────────────────────────────────────────
+
+// Meta caps how many unique people a number may start conversations with in a
+// rolling 24 hours. Exceeding it doesn't fail up front — the campaign starts
+// and then dies partway through, recipient by recipient. So warn here, before
+// anyone commits.
+function TierWarning({ verdict }: { verdict: TierVerdict }) {
+  if (verdict.level === "ok" || verdict.level === "unlimited") return null;
+
+  if (verdict.level === "unknown") {
+    return (
+      <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
+        <p className="text-[12px] font-semibold text-gray-600">Messaging limit unknown</p>
+        <p className="text-[11px] text-gray-500 mt-0.5 leading-relaxed">
+          Meta hasn&apos;t reported a tier for this number yet. Start with a small send and check Number Health afterwards.
+        </p>
+      </div>
+    );
+  }
+
+  const over = verdict.level === "over";
+  return (
+    <div
+      className={
+        over
+          ? "bg-red-50 border border-red-200 rounded-xl p-3"
+          : "bg-amber-50 border border-amber-200 rounded-xl p-3"
+      }
+    >
+      <p className={`text-[12px] font-semibold ${over ? "text-red-700" : "text-amber-700"}`}>
+        {over
+          ? "\u26a0 Over your 24-hour messaging limit"
+          : "\u26a0 Close to your 24-hour messaging limit"}
+      </p>
+      <p className={`text-[11px] mt-0.5 leading-relaxed ${over ? "text-red-600" : "text-amber-600"}`}>
+        {verdict.used.toLocaleString()} recipients against a cap of {verdict.cap.toLocaleString()} unique
+        contacts per rolling 24 hours.
+        {over
+          ? " Sends past the cap will fail individually once it's reached — split this into smaller batches across days."
+          : " Anything else you've sent in the last 24 hours counts toward the same cap."}
+      </p>
+    </div>
+  );
+}
+
 // ── Step 2: Select Recipients ─────────────────────────────────────────────────
 
 function Step2({
@@ -304,6 +362,9 @@ function Step2({
   convMap,
   loading,
   template,
+  tier,
+  segmentAudience,
+  onPickSegment,
 }: {
   selectedIds: Set<number>;
   onToggle: (id: number) => void;
@@ -312,8 +373,16 @@ function Step2({
   convMap: Map<number, Conversation>;
   loading: boolean;
   template: Template | null;
+  tier: string | null | undefined;
+  segmentAudience: Segment | null;
+  onPickSegment: (segment: Segment | null) => void;
 }) {
-  const [mode, setMode] = useState<"contacts" | "lists">("contacts");
+  const [mode, setMode] = useState<"contacts" | "lists" | "segments">(
+    segmentAudience ? "segments" : "contacts"
+  );
+  const [segments, setSegments] = useState<Segment[]>([]);
+  const [loadingSegments, setLoadingSegments] = useState(true);
+  const [pickingSegmentId, setPickingSegmentId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
   const [tagFilter, setTagFilter] = useState("All");
   const [lists, setLists] = useState<ContactList[]>([]);
@@ -329,6 +398,36 @@ function Step2({
   useEffect(() => {
     apiGetLists().then((res) => setLists(res.data)).catch(() => {}).finally(() => setLoadingLists(false));
   }, []);
+
+  useEffect(() => {
+    apiGetSegments().then((res) => setSegments(res.data)).catch(() => {}).finally(() => setLoadingSegments(false));
+  }, []);
+
+  // Picking a segment is exclusive: the payload carries either a segmentId or
+  // a hand-picked list, never both, so choosing one clears whatever was
+  // selected before. The resolved ids are handed to the parent as well, which
+  // keeps the counter, tier check and cost estimate honest while the wizard is
+  // open — the send itself is still resolved server-side from the rule.
+  async function toggleSegment(segment: Segment) {
+    if (pickingSegmentId !== null) return;
+    if (segmentAudience?.id === segment.id) {
+      onToggleAll([...selectedIds], false);
+      onPickSegment(null);
+      return;
+    }
+    setPickingSegmentId(segment.id);
+    try {
+      const res = await apiGetSegmentMemberIds(segment.id);
+      onToggleAll([...selectedIds], false);
+      onToggleAll(res.data.customerIds, true);
+      onPickSegment(segment);
+      setSelectedListIds(new Set());
+    } catch {
+      // leave the previous audience untouched
+    } finally {
+      setPickingSegmentId(null);
+    }
+  }
 
   async function toggleList(list: ContactList) {
     if (list.memberCount === 0 || loadingListId !== null) return;
@@ -419,9 +518,78 @@ function Step2({
           >
             Lists
           </button>
+          <button
+            type="button"
+            onClick={() => setMode("segments")}
+            className={`text-[13px] font-semibold px-4 py-1.5 rounded-lg transition-colors cursor-pointer ${
+              mode === "segments" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            Segments
+          </button>
         </div>
 
-        {mode === "contacts" ? (
+        {mode === "segments" ? (
+          loadingSegments ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-5 h-5 text-gray-300 animate-spin" />
+            </div>
+          ) : segments.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-[13px] text-gray-400">No segments yet.</p>
+              <p className="text-[12px] text-gray-400 mt-1">
+                Create one from Contacts &rarr; Segments to target by rule instead of by hand.
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-start gap-2 rounded-xl bg-[#EEF6F1] border border-[#3B694C]/15 px-4 py-3 mb-4">
+                <ShieldCheck className="w-4 h-4 text-[#3B694C] shrink-0 mt-0.5" />
+                <p className="text-[12px] text-[#3B694C] leading-relaxed">
+                  A segment is re-run on the server when the campaign is created, and its
+                  recipients are frozen at that moment. The number you approve is the number
+                  that gets messaged.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                {segments.map((sg) => {
+                  const isOn = segmentAudience?.id === sg.id;
+                  const isLoadingThis = pickingSegmentId === sg.id;
+                  const broken = !!sg.error;
+                  const empty = !sg.reachable;
+                  return (
+                    <button
+                      key={sg.id}
+                      type="button"
+                      onClick={() => toggleSegment(sg)}
+                      disabled={broken || empty || (pickingSegmentId !== null && !isLoadingThis)}
+                      title={broken ? "This segment&apos;s rules no longer compile" : empty ? "Nobody matches this segment right now" : undefined}
+                      className={`text-left rounded-xl border p-4 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                        isOn ? "border-[#3B694C] bg-[#EEF6F1] ring-1 ring-[#3B694C]" : "border-gray-200 bg-white hover:border-gray-300"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${isOn ? "border-[#3B694C] bg-[#3B694C]" : "border-gray-300"}`}>
+                            {isOn && <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />}
+                          </div>
+                          <span className="text-[14px] font-semibold text-gray-800 truncate">{sg.name}</span>
+                        </div>
+                        {isLoadingThis && <Loader2 className="w-3.5 h-3.5 text-gray-300 animate-spin shrink-0" />}
+                      </div>
+                      <p className="text-[12px] text-gray-500 line-clamp-2 ml-6 mb-2">
+                        {sg.description || (sg.definition?.rules ?? []).map((r) => describeRule(r, null)).join(sg.definition?.match === "ANY" ? " or " : " and ")}
+                      </p>
+                      <p className="text-[11px] text-gray-400 ml-6 tabular-nums">
+                        {broken ? "Rules need fixing" : `${(sg.reachable ?? 0).toLocaleString()} contact${sg.reachable === 1 ? "" : "s"} right now`}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )
+        ) : mode === "contacts" ? (
           <>
             {/* Search */}
             <div className="relative mb-3">
@@ -597,6 +765,7 @@ function Step2({
             <span className="font-semibold text-gray-900">${estimatedCost}</span>
           </div>
         </div>
+        {selectedIds.size > 0 && <TierWarning verdict={assessTier(tier, selectedIds.size)} />}
         {optedOut > 0 && (
           <div className="bg-amber-50 border border-amber-100 rounded-xl p-3">
             <p className="text-[12px] font-semibold text-amber-700">⚠ {optedOut} contact{optedOut > 1 ? "s" : ""} have opted out</p>
@@ -608,31 +777,131 @@ function Step2({
   );
 }
 
+// ── Test Send ─────────────────────────────────────────────────────────────────
+
+// A pre-flight check: fire this exact template at one number and look at it on
+// a real handset. Sends nothing to the campaign's recipients and records no
+// campaign data.
+function TestSendBox({ template }: { template: Template }) {
+  const [phone, setPhone] = useState("");
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState<
+    { ok: true; to: string; personalizedFor: string | null; asMetaTemplate: boolean } | { ok: false; message: string } | null
+  >(null);
+
+  async function handleTest() {
+    if (!phone.trim() || sending) return;
+    setSending(true);
+    setResult(null);
+    try {
+      const res = await apiTestSendTemplate(template.id, phone.trim());
+      setResult({
+        ok: true,
+        to: res.data.to,
+        personalizedFor: res.data.personalizedFor,
+        asMetaTemplate: res.data.asMetaTemplate,
+      });
+    } catch (err) {
+      setResult({ ok: false, message: err instanceof Error ? err.message : "Test send failed." });
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="border-t border-gray-100 pt-4">
+      <p className="text-[10px] font-bold tracking-widest text-gray-400 uppercase mb-2">Test first</p>
+      <p className="text-[12px] text-gray-500 mb-2.5 leading-relaxed">
+        Send this template to one number and check it on a handset. Nothing is recorded against the campaign.
+      </p>
+      <div className="flex gap-1.5">
+        <input
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") handleTest(); }}
+          placeholder="+971 50 123 4567"
+          inputMode="tel"
+          className="flex-1 min-w-0 px-3 py-2 text-[13px] border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3B694C]/20 focus:border-[#3B694C]"
+        />
+        <button
+          type="button"
+          onClick={handleTest}
+          disabled={sending || !phone.trim()}
+          className="flex items-center gap-1.5 text-[13px] font-medium text-[#3B694C] border border-[#3B694C]/30 hover:bg-[#EEF6F1] px-3 py-2 rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shrink-0"
+        >
+          {sending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+          Test
+        </button>
+      </div>
+
+      {result?.ok === true && (
+        <div className="mt-2.5 bg-[#EEF6F1] border border-[#3B694C]/20 rounded-xl p-2.5">
+          <p className="text-[12px] font-semibold text-[#3B694C]">Test sent to +{result.to}</p>
+          <p className="text-[11px] text-[#3B694C]/80 mt-0.5">
+            {result.personalizedFor
+              ? "Personalized for " + result.personalizedFor + " — exactly as a recipient will see it."
+              : "That number isn't a saved contact, so variables used sample values."}
+          </p>
+          {!result.asMetaTemplate && (
+            <p className="text-[11px] text-amber-700 mt-1">
+              Sent as a plain message, not an approved template — a real campaign to a cold number will look the same but may be rejected.
+            </p>
+          )}
+        </div>
+      )}
+
+      {result?.ok === false && (
+        <div className="mt-2.5 bg-red-50 border border-red-100 rounded-xl p-2.5 flex gap-2">
+          <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0 mt-0.5" />
+          <p className="text-[11px] text-red-600 leading-relaxed">{result.message}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Step 3: Review & Schedule ─────────────────────────────────────────────────
 
 function Step3({
   template,
+  segmentAudience,
   selectedIds,
   customers,
   campaignName,
   onNameChange,
+  category,
+  onCategoryChange,
+  flowId,
+  onFlowChange,
   onGoStep,
   onSubmit,
   submitting,
+  tier,
 }: {
   template: Template;
+  segmentAudience: Segment | null;
   selectedIds: Set<number>;
   customers: Customer[];
   campaignName: string;
   onNameChange: (v: string) => void;
+  category: CampaignCategory | null;
+  onCategoryChange: (v: CampaignCategory) => void;
+  flowId: number | null;
+  onFlowChange: (id: number | null) => void;
   onGoStep: (n: number) => void;
   onSubmit: (scheduledAt?: string) => void;
   submitting: boolean;
+  tier: string | null | undefined;
 }) {
   const [sendMode, setSendMode] = useState<"now" | "later">("now");
   const [schedDate, setSchedDate] = useState("");
   const [schedTime, setSchedTime] = useState("");
   const [schedTz, setSchedTz] = useState("Asia/Dubai");
+  const [quietHours, setQuietHours] = useState<QuietHours | null>(null);
+
+  useEffect(() => {
+    apiGetQuietHours().then((res) => setQuietHours(res.data)).catch(() => {});
+  }, []);
   const [detectedTz, setDetectedTz] = useState<string | null>(null);
 
   useEffect(() => {
@@ -670,6 +939,22 @@ function Step3({
     ? tzToISO(schedDate, schedTime, schedTz)
     : undefined;
 
+  // The server refuses a schedule inside quiet hours; this says so up front.
+  const scheduleInQuiet = !!scheduledAt && isQuietAt(new Date(scheduledAt), quietHours);
+  const nowInQuiet = sendMode === "now" && isQuietAt(new Date(), quietHours);
+  const applyFirstAllowedTime = () => {
+    if (!scheduledAt) return;
+    const open = nextOpenAfter(new Date(scheduledAt), quietHours);
+    const parts = Object.fromEntries(
+      new Intl.DateTimeFormat("en-CA", {
+        timeZone: schedTz, year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+      }).formatToParts(open).map(({ type, value }) => [type, value]),
+    );
+    setSchedDate(`${parts.year}-${parts.month}-${parts.day}`);
+    setSchedTime(`${parts.hour}:${parts.minute}`);
+  };
+
   const startDisplay = sendMode === "now"
     ? "Now"
     : scheduledAt
@@ -696,6 +981,34 @@ function Step3({
             placeholder="My campaign"
             className="w-full px-4 py-2.5 text-[14px] border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3B694C]/20 focus:border-[#3B694C]"
           />
+        </div>
+
+        {/* Automation answering the template's buttons */}
+        <FlowPicker template={template} flowId={flowId} onChange={onFlowChange} />
+
+        {/* Campaign category — the business purpose, used to filter and report */}
+        <div>
+          <label className="block text-[12px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Category</label>
+          <div className="flex flex-wrap gap-2">
+            {CAMPAIGN_CATEGORIES.map((c) => {
+              const active = category === c.value;
+              return (
+                <button
+                  key={c.value}
+                  type="button"
+                  onClick={() => onCategoryChange(c.value)}
+                  className={`px-3 py-1.5 rounded-full text-[12px] font-medium border transition-colors cursor-pointer ${
+                    active
+                      ? `${CAMPAIGN_CATEGORY_COLORS[c.value]} border-current`
+                      : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
+                  }`}
+                >
+                  {c.label}
+                </button>
+              );
+            })}
+          </div>
+          {!category && <p className="text-[12px] text-gray-400 mt-1.5">Pick a category before sending.</p>}
         </div>
 
         {/* Template */}
@@ -729,6 +1042,30 @@ function Step3({
             <p className="text-[13px] text-gray-500">contacts will receive this message</p>
           </div>
           {tagSummary && <p className="text-[12px] text-gray-400 mt-1">{tagSummary}</p>}
+
+          {/* Provenance. An approver signing off on a send should be able to
+              read WHY these people were chosen, not just how many there are —
+              a headcount alone is unreviewable. */}
+          {segmentAudience && (
+            <div className="mt-3 rounded-xl bg-[#EEF6F1] border border-[#3B694C]/15 px-3.5 py-3">
+              <div className="flex items-center gap-1.5 mb-1">
+                <ShieldCheck className="w-3.5 h-3.5 text-[#3B694C] shrink-0" />
+                <p className="text-[12px] font-semibold text-[#3B694C]">
+                  Segment · {segmentAudience.name}
+                </p>
+              </div>
+              <p className="text-[11.5px] text-[#3B694C]/85 leading-relaxed">
+                {(segmentAudience.definition?.rules ?? [])
+                  .map((r) => describeRule(r, null))
+                  .join(segmentAudience.definition?.match === "ANY" ? " or " : " and ")}
+                .
+              </p>
+              <p className="text-[11px] text-[#3B694C]/70 mt-1.5 pt-1.5 border-t border-[#3B694C]/10">
+                Re-checked and frozen on the server when this campaign is created, so the
+                approved count is the sent count.
+              </p>
+            </div>
+          )}
           <div className="flex gap-1 mt-3">
             {selectedCustomers.slice(0, 6).map((c) => (
               <div key={c.id} className="w-7 h-7 rounded-full bg-[#EEF6F1] flex items-center justify-center" title={c.name || ""}>
@@ -797,6 +1134,33 @@ function Step3({
               <svg className="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20M12 2a14.5 14.5 0 0 1 0 20M2 12h20"/></svg>
               Time is in <span className="font-medium text-gray-500">{schedTz.replace(/_/g, " ")}</span> — auto-detected from your device
             </p>
+            {scheduleInQuiet && quietHours && (
+              <div className="flex items-start gap-2 bg-red-50 border border-red-100 rounded-xl p-3">
+                <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                <div className="text-[12px] text-red-700">
+                  <p>
+                    {formatClock(scheduledAt!, schedTz)} is inside quiet hours ({quietHours.start}–{quietHours.end}{" "}
+                    {quietHours.timezone.replace(/_/g, " ")}). Customers won&apos;t get messages then.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={applyFirstAllowedTime}
+                    className="mt-1.5 font-semibold underline hover:no-underline cursor-pointer"
+                  >
+                    Use {formatClock(nextOpenAfter(new Date(scheduledAt!), quietHours), schedTz)} instead
+                  </button>
+                </div>
+              </div>
+            )}
+            </div>
+          )}
+          {nowInQuiet && quietHours && (
+            <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-xl p-3 mt-2">
+              <Clock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <p className="text-[12px] text-amber-800">
+                Quiet hours ({quietHours.start}–{quietHours.end}). Sending will start at{" "}
+                <span className="font-semibold">{formatClock(quietHours.nextOpenAt)}</span>.
+              </p>
             </div>
           )}
         </div>
@@ -822,16 +1186,20 @@ function Step3({
           ))}
         </div>
 
+        <TierWarning verdict={assessTier(tier, count)} />
+
         <div className="bg-[#EEF6F1] rounded-xl p-3">
           <p className="text-[12px] text-[#3B694C]">
             <span className="font-semibold">Rate-limited:</span> messages send in small batches (~{SEND_SEC_PER_MSG_MIN.toFixed(1)}–{SEND_SEC_PER_MSG_MAX.toFixed(1)}s/msg effective) to keep your number trusted.
           </p>
         </div>
 
+        <TestSendBox template={template} />
+
         <div className="mt-auto space-y-2">
           <button
             onClick={() => onSubmit(scheduledAt)}
-            disabled={submitting || !campaignName.trim() || (sendMode === "later" && (!schedDate || !schedTime))}
+            disabled={submitting || !campaignName.trim() || !category || scheduleInQuiet || (sendMode === "later" && (!schedDate || !schedTime))}
             className="w-full py-3 rounded-xl text-[14px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5540] disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2 cursor-pointer"
           >
             {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
@@ -860,6 +1228,30 @@ function NewCampaignLoading() {
 }
 
 export default function NewCampaignPage() {
+  // Building a campaign is ADMIN-only server-side, so a direct visit to this
+  // URL has to be turned away here too — otherwise an agent fills in the whole
+  // three-step wizard and only discovers it on the 403 at save/send.
+  // The wizard ends in a send, so it needs both building and sending
+  // permission. Read from the server's permission list, never the role name.
+  const { ready, can } = useCurrentUser();
+  const access: "checking" | "granted" | "denied" = !ready
+    ? "checking"
+    : can("campaign:write", "campaign:send")
+      ? "granted"
+      : "denied";
+
+  if (access === "checking") return <NewCampaignLoading />;
+
+  if (access === "denied") {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-3">
+        <Lock className="w-10 h-10 text-gray-300" />
+        <h1 className="text-lg font-semibold text-gray-500">Admin access only</h1>
+        <p className="text-[13px] text-gray-400">Only admins can create and send campaigns.</p>
+      </div>
+    );
+  }
+
   return (
     <Suspense fallback={<NewCampaignLoading />}>
       <NewCampaignContent />
@@ -888,12 +1280,41 @@ function NewCampaignContent() {
     );
   });
   const [customers, setCustomers] = useState<Customer[]>([]);
+
+  // Warn before a number switch discards this wizard. The audience here is
+  // resolved against the active number and the template belongs to its WABA, so
+  // switching mid-flow would otherwise build a campaign pairing one number's
+  // recipients with another number's template.
+  const { registerSwitchGuard } = useActiveNumber();
+  const wizardDirty = step > 1 || selectedIds.size > 0 || selectedTemplate !== null;
+  useEffect(
+    () =>
+      registerSwitchGuard("campaign-wizard", () =>
+        wizardDirty ? "This campaign draft will be discarded." : null,
+      ),
+    [registerSwitchGuard, wizardDirty],
+  );
+  // When set, the campaign is sent as a RULE rather than a list of ids: the
+  // server re-resolves the segment at creation and freezes the result. The ids
+  // in selectedIds are still tracked so the wizard can show a live count, a
+  // tier warning and a cost estimate, but they are not what gets submitted.
+  const [segmentAudience, setSegmentAudience] = useState<Segment | null>(null);
   const [convMap, setConvMap] = useState<Map<number, Conversation>>(new Map());
   const [loadingCustomers, setLoadingCustomers] = useState(true);
   const [campaignName, setCampaignName] = useState("");
+  const [category, setCategory] = useState<CampaignCategory | null>(null);
+  const [flowId, setFlowId] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
   const [loadingDraft, setLoadingDraft] = useState(!!draftIdParam);
+  // undefined = not loaded yet / unknown; null = Meta reported no tier.
+  const [tier, setTier] = useState<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    apiGetWhatsAppStatus()
+      .then((res) => setTier(res.data.messagingLimitTier))
+      .catch(() => setTier(undefined));
+  }, []);
 
   const sampleName = customers[0]?.name || "Sample Customer";
 
@@ -904,6 +1325,8 @@ function NewCampaignContent() {
       .then((res) => {
         const c = res.data;
         setCampaignName(c.name);
+        setCategory(c.category);
+        setFlowId(c.flowId ?? null);
         if (c.template) {
           setSelectedTemplate(c.template as unknown as Template);
         }
@@ -941,6 +1364,24 @@ function NewCampaignContent() {
         toast.info(`${res.data.customerIds.length} recipient${res.data.customerIds.length !== 1 ? "s" : ""} carried over from "${res.data.name}".`);
       })
       .catch(() => toast.error("Couldn't load that list's contacts."));
+  }, [draftIdParam, searchParams, toast]);
+
+  // Seed the audience from an entire segment via ?segmentId=ID (the "Create
+  // Campaign" button on a segment card). The draft flow owns selection, so skip.
+  const seededSegmentRef = useRef(false);
+  useEffect(() => {
+    const segmentIdParam = searchParams.get("segmentId");
+    if (seededSegmentRef.current || draftIdParam || !segmentIdParam) return;
+    seededSegmentRef.current = true;
+    Promise.all([apiGetSegment(segmentIdParam), apiGetSegmentMemberIds(segmentIdParam)])
+      .then(([seg, members]) => {
+        setSegmentAudience(seg.data);
+        setSelectedIds(new Set(members.data.customerIds));
+        toast.info(
+          `Targeting "${seg.data.name}" — ${members.data.count.toLocaleString()} contact${members.data.count !== 1 ? "s" : ""} right now.`
+        );
+      })
+      .catch(() => toast.error("Couldn't load that segment."));
   }, [draftIdParam, searchParams, toast]);
 
   useEffect(() => {
@@ -1003,7 +1444,11 @@ function NewCampaignContent() {
     }
   }, [selectedTemplate, campaignName]);
 
+  // Hand-editing the selection has to break the segment link, or the payload
+  // would still send segmentId and the server would re-resolve the rule —
+  // silently discarding the edit the user just made.
   const handleToggle = (id: number) => {
+    setSegmentAudience(null);
     setSelectedIds((prev) => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
@@ -1026,11 +1471,22 @@ function NewCampaignContent() {
     }
     setSavingDraft(true);
     try {
-      const payload = {
-        name: campaignName || `${selectedTemplate.name} · Draft`,
-        templateId: selectedTemplate.id,
-        recipientIds: [...selectedIds],
-      };
+      // A segment campaign sends the rule, not the ids — see segmentAudience.
+      const payload = segmentAudience
+        ? {
+            name: campaignName || `${selectedTemplate.name} · Draft`,
+            templateId: selectedTemplate.id,
+            segmentId: segmentAudience.id,
+            flowId,
+            ...(category && { category }),
+          }
+        : {
+            name: campaignName || `${selectedTemplate.name} · Draft`,
+            templateId: selectedTemplate.id,
+            recipientIds: [...selectedIds],
+            flowId,
+            ...(category && { category }),
+          };
       if (draftCampaignId) {
         await apiUpdateCampaign(draftCampaignId, payload);
       } else {
@@ -1049,12 +1505,10 @@ function NewCampaignContent() {
     if (!selectedTemplate || submitting) return;
     setSubmitting(true);
     try {
-      const payload = {
-        name: campaignName || `${selectedTemplate.name} · ${new Date().toLocaleDateString()}`,
-        templateId: selectedTemplate.id,
-        recipientIds: [...selectedIds],
-        scheduledAt,
-      };
+      const baseName = campaignName || `${selectedTemplate.name} · ${new Date().toLocaleDateString()}`;
+      const payload = segmentAudience
+        ? { name: baseName, templateId: selectedTemplate.id, segmentId: segmentAudience.id, scheduledAt, flowId, ...(category && { category }) }
+        : { name: baseName, templateId: selectedTemplate.id, recipientIds: [...selectedIds], scheduledAt, flowId, ...(category && { category }) };
       let campaignId: number;
       if (draftCampaignId) {
         await apiUpdateCampaign(draftCampaignId, payload);
@@ -1062,6 +1516,9 @@ function NewCampaignContent() {
       } else {
         const res = await apiCreateCampaign(payload);
         campaignId = res.data.id;
+        // If the send below fails, a retry must reuse this campaign, not
+        // create a second one.
+        setDraftCampaignId(campaignId);
       }
       if (!scheduledAt) {
         await apiSendCampaignNow(campaignId);
@@ -1149,18 +1606,27 @@ function NewCampaignContent() {
                 convMap={convMap}
                 loading={loadingCustomers}
                 template={selectedTemplate}
+                tier={tier}
+                segmentAudience={segmentAudience}
+                onPickSegment={setSegmentAudience}
               />
             )}
             {step === 3 && selectedTemplate && (
               <Step3
                 template={selectedTemplate}
+                segmentAudience={segmentAudience}
                 selectedIds={selectedIds}
                 customers={customers}
                 campaignName={campaignName}
                 onNameChange={setCampaignName}
+                category={category}
+                onCategoryChange={setCategory}
+                flowId={flowId}
+                onFlowChange={setFlowId}
                 onGoStep={setStep}
                 onSubmit={handleSubmit}
                 submitting={submitting}
+                tier={tier}
               />
             )}
           </>

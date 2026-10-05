@@ -14,8 +14,9 @@ import {
   Play,
   Loader2,
   Trash2,
+  Workflow,
 } from "lucide-react";
-import type { Campaign } from "@/types";
+import type { Campaign, CampaignCategory } from "@/types";
 import {
   apiGetCampaigns,
   apiGetActiveCampaignProgress,
@@ -23,9 +24,14 @@ import {
   apiPauseCampaign,
   apiResumeCampaign,
   apiBulkDeleteCampaigns,
-} from "@/lib/api";
+  } from "@/lib/api";
 import { getSocket } from "@/lib/socket";
 import { useToast } from "@/components/ui/toast";
+import { useCurrentUser } from "@/components/CurrentUserProvider";
+import { PageSpinner } from "@/components/ui/spinner";
+import { NoAccess } from "@/components/NoAccess";
+import CampaignCategoryBadge from "@/components/CampaignCategoryBadge";
+import { CAMPAIGN_CATEGORIES, CAMPAIGN_CATEGORY_LABELS } from "@/lib/campaignCategories";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -71,11 +77,13 @@ function RunningCard({
   onCancel,
   onPause,
   pausing,
+  canControl,
 }: {
   campaign: Campaign;
   onCancel: (id: number) => void;
   onPause: (id: number) => void;
   pausing: boolean;
+  canControl: boolean;
 }) {
   const { sentCount, failedCount, totalRecipients, startedAt, name } = campaign;
   const done = sentCount + failedCount;
@@ -95,26 +103,29 @@ function RunningCard({
           </span>
           <span className="text-[11px] font-bold tracking-wider text-green-600 uppercase">Sending Now</span>
           <span className="text-[13px] font-semibold text-gray-800">{name}</span>
+          <CampaignCategoryBadge category={campaign.category} />
           {startedAt && (
             <span className="text-[12px] text-gray-400">Started {timeAgo(startedAt)}</span>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => onPause(campaign.id)}
-            disabled={pausing}
-            className="flex items-center gap-1 text-[12px] font-medium text-gray-500 hover:text-gray-700 border border-gray-200 hover:border-gray-300 px-3 py-1 rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {pausing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Pause className="w-3 h-3" />}
-            Pause
-          </button>
-          <button
-            onClick={() => onCancel(campaign.id)}
-            className="text-[12px] font-medium text-red-500 hover:text-red-600 border border-red-200 hover:border-red-300 px-3 py-1 rounded-lg transition-colors cursor-pointer"
-          >
-            Cancel
-          </button>
-        </div>
+        {canControl && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => onPause(campaign.id)}
+              disabled={pausing}
+              className="flex items-center gap-1 text-[12px] font-medium text-gray-500 hover:text-gray-700 border border-gray-200 hover:border-gray-300 px-3 py-1 rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {pausing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Pause className="w-3 h-3" />}
+              Pause
+            </button>
+            <button
+              onClick={() => onCancel(campaign.id)}
+              className="text-[12px] font-medium text-red-500 hover:text-red-600 border border-red-200 hover:border-red-300 px-3 py-1 rounded-lg transition-colors cursor-pointer"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="relative h-2 bg-gray-100 rounded-full overflow-hidden mb-2">
@@ -153,11 +164,13 @@ function PausedCard({
   onCancel,
   onResume,
   resuming,
+  canControl,
 }: {
   campaign: Campaign;
   onCancel: (id: number) => void;
   onResume: (id: number) => void;
   resuming: boolean;
+  canControl: boolean;
 }) {
   const { sentCount, failedCount, totalRecipients, name } = campaign;
   const done = sentCount + failedCount;
@@ -168,25 +181,30 @@ function PausedCard({
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2.5">
           <Pause className="w-3.5 h-3.5 text-orange-500" />
-          <span className="text-[11px] font-bold tracking-wider text-orange-600 uppercase">Paused</span>
+          <span className="text-[11px] font-bold tracking-wider text-orange-600 uppercase">
+            {campaign.pauseReason === "QUIET_HOURS" ? "Quiet hours" : "Paused"}
+          </span>
           <span className="text-[13px] font-semibold text-gray-800">{name}</span>
+          <CampaignCategoryBadge category={campaign.category} />
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => onResume(campaign.id)}
-            disabled={resuming}
-            className="flex items-center gap-1 text-[12px] font-semibold text-[#3B694C] hover:text-[#2f5540] border border-[#3B694C]/30 hover:border-[#3B694C]/50 px-3 py-1 rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {resuming ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
-            Resume
-          </button>
-          <button
-            onClick={() => onCancel(campaign.id)}
-            className="text-[12px] font-medium text-red-500 hover:text-red-600 border border-red-200 hover:border-red-300 px-3 py-1 rounded-lg transition-colors cursor-pointer"
-          >
-            Cancel
-          </button>
-        </div>
+        {canControl && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => onResume(campaign.id)}
+              disabled={resuming}
+              className="flex items-center gap-1 text-[12px] font-semibold text-[#3B694C] hover:text-[#2f5540] border border-[#3B694C]/30 hover:border-[#3B694C]/50 px-3 py-1 rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {resuming ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+              Resume
+            </button>
+            <button
+              onClick={() => onCancel(campaign.id)}
+              className="text-[12px] font-medium text-red-500 hover:text-red-600 border border-red-200 hover:border-red-300 px-3 py-1 rounded-lg transition-colors cursor-pointer"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="relative h-2 bg-gray-100 rounded-full overflow-hidden mb-2">
@@ -196,7 +214,14 @@ function PausedCard({
         />
       </div>
       <div className="text-[12px] text-gray-500">
-        {done} / {totalRecipients} sent — paused before completing.
+        {done} / {totalRecipients} sent —{" "}
+        {campaign.pauseReason === "QUIET_HOURS"
+          ? "paused for quiet hours, resumes automatically when they end."
+          : campaign.pauseReason === "SEND_ERROR"
+          ? `paused because Meta refused the send${campaign.pauseDetail ? ` (${campaign.pauseDetail})` : ""}. Fix it, then Resume — nobody left was marked failed.`
+          : campaign.pauseReason === "NUMBER_INACTIVE"
+          ? "paused because the WhatsApp number can't send."
+          : "paused before completing."}
       </div>
     </div>
   );
@@ -204,24 +229,29 @@ function PausedCard({
 
 // ── Scheduled Card ─────────────────────────────────────────────────────────
 
-function ScheduledCard({ campaign, onCancel }: { campaign: Campaign; onCancel: (id: number) => void }) {
+function ScheduledCard({ campaign, onCancel, canControl }: { campaign: Campaign; onCancel: (id: number) => void; canControl: boolean }) {
   return (
     <div className="bg-white border border-dashed border-gray-300 rounded-2xl p-4 flex items-center gap-4">
       <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center shrink-0">
         <Clock className="w-4.5 h-4.5 text-amber-500" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-[14px] font-semibold text-gray-800 truncate">{campaign.name}</p>
+        <div className="flex items-center gap-2 min-w-0">
+          <p className="text-[14px] font-semibold text-gray-800 truncate">{campaign.name}</p>
+          <CampaignCategoryBadge category={campaign.category} />
+        </div>
         <p className="text-[12px] text-gray-400">
           Scheduled · {campaign.scheduledAt ? formatDateTime(campaign.scheduledAt) : "—"} · {campaign.totalRecipients} recipients
         </p>
       </div>
-      <button
-        onClick={() => onCancel(campaign.id)}
-        className="text-[12px] font-medium text-gray-500 hover:text-red-500 border border-gray-200 hover:border-red-200 px-3 py-1.5 rounded-lg transition-colors shrink-0 cursor-pointer"
-      >
-        Cancel
-      </button>
+      {canControl && (
+        <button
+          onClick={() => onCancel(campaign.id)}
+          className="text-[12px] font-medium text-gray-500 hover:text-red-500 border border-gray-200 hover:border-red-200 px-3 py-1.5 rounded-lg transition-colors shrink-0 cursor-pointer"
+        >
+          Cancel
+        </button>
+      )}
     </div>
   );
 }
@@ -240,6 +270,13 @@ export default function CampaignsPage() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [categoryFilter, setCategoryFilter] = useState<"ALL" | CampaignCategory>("ALL");
+  // From the server's permission list (see CurrentUserProvider), so the page
+  // shows exactly the actions the API will accept. Two separate capabilities:
+  // building campaigns, and stopping or removing them.
+  const { ready: userReady, can } = useCurrentUser();
+  const canWrite = can("campaign:write");
+  const canControl = can("campaign:control");
 
   const load = useCallback(() => {
     apiGetCampaigns()
@@ -385,13 +422,18 @@ export default function CampaignsPage() {
 
   const clearSelection = () => setSelectedIds(new Set());
 
+  // Only offer chips for categories that actually have campaigns.
+  const presentCategories = CAMPAIGN_CATEGORIES.filter((cat) => campaigns.some((c) => c.category === cat.value));
+  const visible = categoryFilter === "ALL" ? campaigns : campaigns.filter((c) => c.category === categoryFilter);
+
   const handleExport = () => {
-    const completed = campaigns.filter((c) => c.status === "COMPLETED");
+    const completed = visible.filter((c) => c.status === "COMPLETED");
     const rows = [
-      ["Name", "Status", "Recipients", "Sent", "Failed", "Delivered", "Read", "Replied", "Started", "Completed"],
+      ["Name", "Status", "Category", "Recipients", "Sent", "Failed", "Delivered", "Read", "Replied", "Started", "Completed"],
       ...completed.map((c) => [
         c.name,
         c.status,
+        CAMPAIGN_CATEGORY_LABELS[c.category] ?? c.category,
         c.totalRecipients,
         c.sentCount,
         c.failedCount,
@@ -412,11 +454,11 @@ export default function CampaignsPage() {
     URL.revokeObjectURL(url);
   };
 
-  const running = campaigns.filter((c) => c.status === "RUNNING");
-  const paused = campaigns.filter((c) => c.status === "PAUSED");
-  const scheduled = campaigns.filter((c) => c.status === "SCHEDULED");
-  const drafts = campaigns.filter((c) => c.status === "DRAFT");
-  const sent = campaigns.filter((c) => c.status === "COMPLETED" || c.status === "CANCELLED");
+  const running = visible.filter((c) => c.status === "RUNNING");
+  const paused = visible.filter((c) => c.status === "PAUSED");
+  const scheduled = visible.filter((c) => c.status === "SCHEDULED");
+  const drafts = visible.filter((c) => c.status === "DRAFT");
+  const sent = visible.filter((c) => c.status === "COMPLETED" || c.status === "CANCELLED");
 
   // Only deletable campaigns can be selected; prune the selection to what's
   // actually on screen so the counter never counts rows that reloaded away.
@@ -453,6 +495,9 @@ export default function CampaignsPage() {
     }
   };
 
+  if (!userReady) return <PageSpinner />;
+  if (!can("campaign:read")) return <NoAccess what="campaigns" />;
+
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -487,20 +532,51 @@ export default function CampaignsPage() {
               Export
             </button>
             <button
-              onClick={() => router.push("/campaigns/new")}
-              className="flex items-center gap-1.5 text-[13px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5540] px-4 py-2 rounded-xl transition-colors cursor-pointer"
+              onClick={() => router.push("/campaigns/flows")}
+              className="flex items-center gap-1.5 text-[13px] font-medium text-gray-600 border border-gray-200 hover:bg-gray-50 px-3 py-2 rounded-xl transition-colors cursor-pointer"
             >
-              <Plus className="w-4 h-4" />
-              New campaign
+              <Workflow className="w-4 h-4" />
+              Flows
             </button>
+            {canWrite && (
+              <button
+                onClick={() => router.push("/campaigns/new")}
+                className="flex items-center gap-1.5 text-[13px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5540] px-4 py-2 rounded-xl transition-colors cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                New campaign
+              </button>
+            )}
           </div>
         </div>
+
+        {/* Category filter */}
+        {(presentCategories.length > 1 || categoryFilter !== "ALL") && (
+          <div className="flex flex-wrap gap-2 -mt-4">
+            {[{ value: "ALL" as const, label: "All" }, ...presentCategories].map((cat) => {
+              const active = categoryFilter === cat.value;
+              return (
+                <button
+                  key={cat.value}
+                  onClick={() => setCategoryFilter(cat.value)}
+                  className={`px-3 py-1 rounded-full text-[12px] font-medium border transition-colors cursor-pointer ${
+                    active
+                      ? "bg-[#3B694C] text-white border-[#3B694C]"
+                      : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
+                  }`}
+                >
+                  {cat.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* Running */}
         {running.length > 0 && (
           <div className="space-y-3">
             {running.map((c) => (
-              <RunningCard key={c.id} campaign={c} onCancel={handleCancel} onPause={handlePause} pausing={pausingIds.has(c.id)} />
+              <RunningCard key={c.id} campaign={c} onCancel={handleCancel} onPause={handlePause} pausing={pausingIds.has(c.id)} canControl={canControl} />
             ))}
           </div>
         )}
@@ -509,7 +585,7 @@ export default function CampaignsPage() {
         {paused.length > 0 && (
           <div className="space-y-3">
             {paused.map((c) => (
-              <PausedCard key={c.id} campaign={c} onCancel={handleCancel} onResume={handleResume} resuming={resumingIds.has(c.id)} />
+              <PausedCard key={c.id} campaign={c} onCancel={handleCancel} onResume={handleResume} resuming={resumingIds.has(c.id)} canControl={canControl} />
             ))}
           </div>
         )}
@@ -518,7 +594,7 @@ export default function CampaignsPage() {
         {scheduled.length > 0 && (
           <div className="space-y-2">
             {scheduled.map((c) => (
-              <ScheduledCard key={c.id} campaign={c} onCancel={handleCancel} />
+              <ScheduledCard key={c.id} campaign={c} onCancel={handleCancel} canControl={canControl} />
             ))}
           </div>
         )}
@@ -527,13 +603,15 @@ export default function CampaignsPage() {
         {drafts.length > 0 && (
           <div>
             <div className="flex items-center gap-2 mb-3">
-              <input
-                type="checkbox"
-                checked={allDraftsSelected}
-                onChange={(e) => toggleSelectMany(draftIds, e.target.checked)}
-                className="rounded border-gray-300 accent-[#3B694C] cursor-pointer"
-                title="Select all drafts"
-              />
+              {canControl && (
+                <input
+                  type="checkbox"
+                  checked={allDraftsSelected}
+                  onChange={(e) => toggleSelectMany(draftIds, e.target.checked)}
+                  className="rounded border-gray-300 accent-[#3B694C] cursor-pointer"
+                  title="Select all drafts"
+                />
+              )}
               <p className="text-[11px] font-bold tracking-wider text-gray-400 uppercase">Drafts</p>
             </div>
             <div className="space-y-2">
@@ -546,29 +624,36 @@ export default function CampaignsPage() {
                     isSel ? "border-[#3B694C] ring-1 ring-[#3B694C] bg-[#F5FAF7]" : "border-dashed border-gray-200"
                   }`}
                 >
-                  <input
-                    type="checkbox"
-                    checked={isSel}
-                    onChange={() => toggleSelect(c.id)}
-                    className="rounded border-gray-300 accent-[#3B694C] cursor-pointer shrink-0"
-                  />
+                  {canControl && (
+                    <input
+                      type="checkbox"
+                      checked={isSel}
+                      onChange={() => toggleSelect(c.id)}
+                      className="rounded border-gray-300 accent-[#3B694C] cursor-pointer shrink-0"
+                    />
+                  )}
                   <div className="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center shrink-0">
                     <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-[14px] font-semibold text-gray-800 truncate">{c.name}</p>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <p className="text-[14px] font-semibold text-gray-800 truncate">{c.name}</p>
+                      <CampaignCategoryBadge category={c.category} />
+                    </div>
                     <p className="text-[12px] text-gray-400">
                       Draft · {c.template?.name ?? "—"} · {c.totalRecipients} recipient{c.totalRecipients !== 1 ? "s" : ""}
                     </p>
                   </div>
-                  <button
-                    onClick={() => router.push(`/campaigns/new?draft=${c.id}`)}
-                    className="text-[12px] font-medium text-[#3B694C] hover:text-[#2f5540] border border-[#3B694C]/20 hover:border-[#3B694C]/40 px-3 py-1.5 rounded-lg transition-colors shrink-0 cursor-pointer"
-                  >
-                    Continue editing
-                  </button>
+                  {canWrite && (
+                    <button
+                      onClick={() => router.push(`/campaigns/new?draft=${c.id}`)}
+                      className="text-[12px] font-medium text-[#3B694C] hover:text-[#2f5540] border border-[#3B694C]/20 hover:border-[#3B694C]/40 px-3 py-1.5 rounded-lg transition-colors shrink-0 cursor-pointer"
+                    >
+                      Continue editing
+                    </button>
+                  )}
                 </div>
                 );
               })}
@@ -585,14 +670,20 @@ export default function CampaignsPage() {
               </svg>
             </div>
             <p className="text-[15px] font-semibold text-gray-700">No campaigns yet</p>
-            <p className="text-[13px] text-gray-400 mt-1 mb-5">Send your first WhatsApp campaign to your contacts.</p>
-            <button
-              onClick={() => router.push("/campaigns/new")}
-              className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5540] px-4 py-2.5 rounded-xl transition-colors cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              New campaign
-            </button>
+            <p className="text-[13px] text-gray-400 mt-1 mb-5">
+              {canWrite
+                ? "Send your first WhatsApp campaign to your contacts."
+                : "No campaigns have been sent yet. An admin or the marketing team can create one."}
+            </p>
+            {canWrite && (
+              <button
+                onClick={() => router.push("/campaigns/new")}
+                className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5540] px-4 py-2.5 rounded-xl transition-colors cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                New campaign
+              </button>
+            )}
           </div>
         )}
 
@@ -604,15 +695,17 @@ export default function CampaignsPage() {
               <table className="w-full text-[13px]">
                 <thead>
                   <tr className="border-b border-gray-100">
-                    <th className="w-10 px-4 py-3">
-                      <input
-                        type="checkbox"
-                        checked={allSentSelected}
-                        onChange={(e) => toggleSelectMany(sentIds, e.target.checked)}
-                        className="rounded border-gray-300 accent-[#3B694C] cursor-pointer align-middle"
-                        title="Select all"
-                      />
-                    </th>
+                    {canControl && (
+                      <th className="w-10 px-4 py-3">
+                        <input
+                          type="checkbox"
+                          checked={allSentSelected}
+                          onChange={(e) => toggleSelectMany(sentIds, e.target.checked)}
+                          className="rounded border-gray-300 accent-[#3B694C] cursor-pointer align-middle"
+                          title="Select all"
+                        />
+                      </th>
+                    )}
                     <th className="text-left px-5 py-3 font-semibold text-gray-500 text-[11px] uppercase tracking-wider">Campaign</th>
                     <th className="text-left px-4 py-3 font-semibold text-gray-500 text-[11px] uppercase tracking-wider">Sent</th>
                     <th className="text-right px-4 py-3 font-semibold text-gray-500 text-[11px] uppercase tracking-wider">Recipients</th>
@@ -630,16 +723,21 @@ export default function CampaignsPage() {
                     const isSel = selectedIds.has(c.id);
                     return (
                       <tr key={c.id} className={`transition-colors cursor-pointer ${isSel ? "bg-[#F5FAF7]" : "hover:bg-gray-50"}`} onClick={() => router.push(`/campaigns/${c.id}`)}>
-                        <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            checked={isSel}
-                            onChange={() => toggleSelect(c.id)}
-                            className="rounded border-gray-300 accent-[#3B694C] cursor-pointer align-middle"
-                          />
-                        </td>
+                        {canControl && (
+                          <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={isSel}
+                              onChange={() => toggleSelect(c.id)}
+                              className="rounded border-gray-300 accent-[#3B694C] cursor-pointer align-middle"
+                            />
+                          </td>
+                        )}
                         <td className="px-5 py-3.5">
-                          <p className="font-medium text-gray-800">{c.name}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium text-gray-800">{c.name}</p>
+                            <CampaignCategoryBadge category={c.category} />
+                          </div>
                           {c.template && (
                             <p className="text-[11px] text-gray-400">{c.template.name}</p>
                           )}

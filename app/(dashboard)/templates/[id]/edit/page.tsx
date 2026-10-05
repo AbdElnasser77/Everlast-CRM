@@ -1,31 +1,31 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Lock, AlertCircle, ArrowLeft } from "lucide-react";
 import { apiGetTemplates } from "@/lib/api";
 import TemplateForm from "@/components/templates/TemplateForm";
 import type { Template } from "@/types";
+import { useCurrentUser } from "@/components/CurrentUserProvider";
+import { PageSpinner } from "@/components/ui/spinner";
 
 export default function EditTemplatePage() {
   const params = useParams();
   const router = useRouter();
-  const [user, setUser] = useState<{ role: string } | null>(null);
+  // Set when arriving from a rejected submit: which field to point at, and why.
+  const searchParams = useSearchParams();
+  const fixField = searchParams.get("fix");
+  const fixReason = searchParams.get("reason");
+  // Access comes from the server's permission list, never from the role
+  // name: see CurrentUserProvider. `ready` is false until /users/me answers.
+  const { ready, can } = useCurrentUser();
+  const allowed = can("template:write");
   const [template, setTemplate] = useState<Template | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem("user");
-      setUser(raw ? JSON.parse(raw) : null);
-    } catch {
-      setUser(null);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!user || user.role !== "ADMIN") return;
+    if (!allowed) return;
     apiGetTemplates()
       .then((res) => {
         const found = res.data.find((t) => String(t.id) === params.id);
@@ -41,13 +41,13 @@ export default function EditTemplatePage() {
       })
       .catch(() => setError("Failed to load template."))
       .finally(() => setLoading(false));
-  }, [user, params.id]);
+  }, [allowed, ready, params.id]);
 
-  if (!user) return null;
+  if (!ready) return <PageSpinner />;
 
-  if (user.role !== "ADMIN") {
+  if (!allowed) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen gap-3">
+      <div className="flex flex-col items-center justify-center min-h-full gap-3">
         <Lock className="w-10 h-10 text-gray-300" />
         <h1 className="text-lg font-semibold text-gray-500">Admin access only</h1>
       </div>
@@ -81,5 +81,5 @@ export default function EditTemplatePage() {
     );
   }
 
-  return <TemplateForm template={template} />;
+  return <TemplateForm template={template} fix={fixReason ? { field: fixField, reason: fixReason } : null} />;
 }

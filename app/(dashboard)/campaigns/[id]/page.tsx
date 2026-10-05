@@ -11,7 +11,13 @@ import {
   SkipForward,
 } from "lucide-react";
 import type { Campaign, CampaignRecipient } from "@/types";
-import { apiGetCampaign } from "@/lib/api";
+import { apiGetCampaign, apiSetCampaignFlow } from "@/lib/api";
+import Link from "next/link";
+import { FlowPicker } from "@/components/flows/FlowPicker";
+import { useCurrentUser } from "@/components/CurrentUserProvider";
+import { useToast } from "@/components/ui/toast";
+import { CampaignReplies } from "@/components/CampaignReplies";
+import CampaignCategoryBadge from "@/components/CampaignCategoryBadge";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -61,6 +67,44 @@ function StatCard({ label, value, sub, color = "text-gray-800" }: { label: strin
       <p className={`text-[28px] font-bold leading-none ${color}`}>{value}</p>
       {sub && <p className="text-[11px] text-gray-400 mt-0.5">{sub}</p>}
       <p className="text-[12px] text-gray-500 mt-2">{label}</p>
+    </div>
+  );
+}
+
+// ── Automation ────────────────────────────────────────────────────────────────
+// The flow can be attached or swapped at any stage: it only acts on replies,
+// so changing it mid-send affects taps from then on.
+function CampaignFlowCard({ campaign, onChanged }: { campaign: Campaign; onChanged: (c: Campaign) => void }) {
+  const { can } = useCurrentUser();
+  const { success, error } = useToast();
+  const [saving, setSaving] = useState(false);
+
+  const change = async (flowId: number | null) => {
+    setSaving(true);
+    try {
+      const res = await apiSetCampaignFlow(campaign.id, flowId);
+      onChanged({ ...campaign, flowId: res.data.flowId ?? null, flow: res.data.flow ?? null });
+      success(flowId ? "Automation attached" : "Automation removed");
+    } catch (err) {
+      error(err instanceof Error ? err.message : "Couldn't change the automation");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-2xl p-5">
+      <FlowPicker
+        template={campaign.template ?? null}
+        flowId={campaign.flowId ?? null}
+        onChange={change}
+        disabled={saving || !can("campaign:write")}
+      />
+      {campaign.flow && (
+        <Link href={`/campaigns/flows/${campaign.flow.id}`} className="inline-block mt-3 text-[12px] font-semibold text-[#3B694C] hover:underline">
+          Open “{campaign.flow.name}” and its responses →
+        </Link>
+      )}
     </div>
   );
 }
@@ -144,6 +188,7 @@ export default function CampaignDetailPage() {
               <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${CAMPAIGN_STATUS_CLASS[campaign.status]}`}>
                 {campaign.status}
               </span>
+              <CampaignCategoryBadge category={campaign.category} />
             </div>
             <p className="text-[13px] text-gray-400 mt-0.5">
               {campaign.template?.name ?? "—"}
@@ -161,6 +206,11 @@ export default function CampaignDetailPage() {
           <StatCard label="Replied" value={campaign.repliedCount ?? 0} sub={pct(campaign.repliedCount ?? 0, campaign.sentCount)} />
           <StatCard label="Failed" value={campaign.failedCount} sub={pct(campaign.failedCount, campaign.totalRecipients)} color={campaign.failedCount > 0 ? "text-red-500" : "text-gray-800"} />
         </div>
+
+        <CampaignFlowCard campaign={campaign} onChanged={setCampaign} />
+
+        {/* Replies — who answered, and whether they've been answered back */}
+        {campaign.status !== "DRAFT" && <CampaignReplies campaignId={campaign.id} />}
 
         {/* Recipient table */}
         <div>

@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { getSocket } from "@/lib/socket";
+import { decidedSince, getTemplatesSeenAt, markTemplatesSeen } from "@/lib/templateUpdates";
 import {
   Plus,
   RefreshCw,
@@ -15,14 +17,18 @@ import {
   apiGetTemplates,
   apiDeleteTemplate,
   apiSubmitTemplate,
+  ApiError,
   apiSyncTemplates,
 } from "@/lib/api";
 import { HeaderPreview, ButtonRow } from "@/components/templates/shared";
+import { CarouselPreview } from "@/components/templates/CarouselEditor";
 import type {
   Template,
   TemplateCategory,
   TemplateStatus,
 } from "@/types";
+import { useCurrentUser } from "@/components/CurrentUserProvider";
+import { PageSpinner } from "@/components/ui/spinner";
 
 // ---------------------------------------------------------------------------
 // Config / Badges
@@ -97,26 +103,41 @@ function CategoryBadge({ category }: { category: TemplateCategory }) {
 // SubmitConfirmModal
 // ---------------------------------------------------------------------------
 
+const FIELD_LABELS: Record<string, string> = {
+  header: "Header", body: "Message body", footer: "Footer", buttons: "Buttons", name: "Name / language",
+};
+
 function SubmitConfirmModal({
   template,
   onConfirm,
   onCancel,
+  onFix,
 }: {
   template: Template;
   onConfirm: () => void;
   onCancel: () => void;
+  onFix: (field: string | null, reason: string) => void;
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Which part of the template the error is about, when the server knows.
+  const [errorField, setErrorField] = useState<string | null>(null);
+  const [rejected, setRejected] = useState(false);
 
   async function handleConfirm() {
     setLoading(true);
     setError(null);
+    setErrorField(null);
+    setRejected(false);
     try {
       await apiSubmitTemplate(template.id);
       onConfirm();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to reach Meta. Please try again.");
+      if (err instanceof ApiError) {
+        setErrorField(err.details?.field ?? null);
+        setRejected(err.code === "META_REJECTED" || err.code === "TEMPLATE_INVALID");
+      }
     } finally {
       setLoading(false);
     }
@@ -140,7 +161,22 @@ function SubmitConfirmModal({
           edit while it&apos;s under review.
         </p>
         {error && (
-          <p className="text-[13px] text-red-500 text-center mb-4">{error}</p>
+          <div className="bg-red-50 border border-red-100 rounded-xl p-3 mb-4 text-left">
+            <p className="text-[12px] font-semibold text-red-700">
+              {rejected ? "Meta can't accept this template" : "Couldn't submit"}
+              {errorField && FIELD_LABELS[errorField] ? ` — ${FIELD_LABELS[errorField]}` : ""}
+            </p>
+            <p className="text-[12px] text-red-600 mt-0.5">{error}</p>
+            {rejected && (
+              <button
+                type="button"
+                onClick={() => onFix(errorField, error)}
+                className="mt-2 text-[12px] font-semibold text-red-700 underline hover:no-underline cursor-pointer"
+              >
+                {errorField && FIELD_LABELS[errorField] ? `Fix ${FIELD_LABELS[errorField].toLowerCase()}` : "Edit template"} →
+              </button>
+            )}
+          </div>
         )}
         <div className="flex gap-3">
           <button
@@ -304,6 +340,9 @@ function TemplateCard({
           </div>
         </div>
 
+        {/* Carousel cards */}
+        {template.cards && template.cards.length > 0 && <CarouselPreview cards={template.cards} />}
+
         {/* CTA buttons */}
         {template.buttons && template.buttons.length > 0 && (
           <div className="mt-1.5 space-y-1.5">
@@ -364,7 +403,10 @@ const STATUS_FILTERS: (TemplateStatus | "ALL")[] = [
 
 export default function TemplatesPage() {
   const router = useRouter();
-  const [user, setUser] = useState<{ role: string } | null>(null);
+  // Access comes from the server's permission list, never from the role
+  // name: see CurrentUserProvider. `ready` is false until /users/me answers.
+  const { ready, can } = useCurrentUser();
+  const allowed = can("template:write");
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -373,17 +415,18 @@ export default function TemplatesPage() {
     "ALL",
   );
 
-  const [submitModal, setSubmitModal] = useState<Template | null>(null);
-  const [deleteModal, setDeleteModal] = useState<Template | null>(null);
+  // Meta decisions since the previous visit, captured once before this visit
+  // marks everything as seen.
+  const [seenBefore] = useState(() => (typeof window === "undefined" ? "" : getTemplatesSeenAt()));
+  const [hideNews, setHideNews] = useState(false);
+  const news = seenBefore ? decidedSince(templates, seenBefore) : [];
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem("user");
-      setUser(raw ? JSON.parse(raw) : null);
-    } catch {
-      setUser(null);
-    }
-  }, []);
+    if (allowed) markTemplatesSeen();
+  }, [allowed]);
+
+  const [submitModal, setSubmitModal] = useState<Template | null>(null);
+  const [deleteModal, setDeleteModal] = useState<Template | null>(null);
 
   const fetchTemplates = useCallback(async () => {
     setLoading(true);
@@ -398,10 +441,18 @@ export default function TemplatesPage() {
     }
   }, [statusFilter]);
 
+  // Cards update live when Meta decides while this page is open.
   useEffect(() => {
-    if (user?.role === "ADMIN") fetchTemplates();
-    else if (user) setLoading(false);
-  }, [user, fetchTemplates]);
+    if (!allowed) return;
+    const socket = getSocket();
+    socket.on("template.status_changed", fetchTemplates);
+    return () => { socket.off("template.status_changed", fetchTemplates); };
+  }, [allowed, fetchTemplates]);
+
+  useEffect(() => {
+    if (allowed) fetchTemplates();
+    else if (ready) setLoading(false);
+  }, [allowed, ready, fetchTemplates]);
 
   async function handleSync() {
     setSyncing(true);
@@ -419,11 +470,11 @@ export default function TemplatesPage() {
     }
   }
 
-  if (!user) return null;
+  if (!ready) return <PageSpinner />;
 
-  if (user.role !== "ADMIN") {
+  if (!allowed) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen gap-3">
+      <div className="flex flex-col items-center justify-center min-h-full gap-3">
         <Lock className="w-10 h-10 text-gray-300" />
         <h1 className="text-lg font-semibold text-gray-500">
           Admin access only
@@ -433,7 +484,7 @@ export default function TemplatesPage() {
   }
 
   return (
-    <div className="p-6 lg:p-8 bg-gray-50 min-h-screen overflow-y-auto">
+    <div className="p-6 lg:p-8 bg-gray-50 min-h-full overflow-y-auto">
       {/* Modals */}
       {submitModal && (
         <SubmitConfirmModal
@@ -443,6 +494,12 @@ export default function TemplatesPage() {
             fetchTemplates();
           }}
           onCancel={() => setSubmitModal(null)}
+          onFix={(field, reason) => {
+            const id = submitModal.id;
+            setSubmitModal(null);
+            const qs = new URLSearchParams({ reason, ...(field ? { fix: field } : {}) });
+            router.push(`/templates/${id}/edit?${qs}`);
+          }}
         />
       )}
       {deleteModal && (
@@ -454,6 +511,23 @@ export default function TemplatesPage() {
           }}
           onCancel={() => setDeleteModal(null)}
         />
+      )}
+
+      {news.length > 0 && !hideNews && (
+        <div className="flex items-start justify-between gap-3 bg-[#EEF6F1] border border-[#3B694C]/20 rounded-xl px-4 py-3 mb-5">
+          <div className="text-[13px] text-gray-700 space-y-0.5">
+            <p className="font-semibold text-[#3B694C]">Since your last visit</p>
+            {news.map((t) => (
+              <p key={t.id}>
+                {t.approvalStatus === "APPROVED" ? "✅" : "❌"} <span className="font-medium">{t.name}</span>{" "}
+                {t.approvalStatus === "APPROVED" ? "was approved — ready to use in campaigns." : `was rejected${t.rejectionReason ? `: ${t.rejectionReason}` : "."}`}
+              </p>
+            ))}
+          </div>
+          <button type="button" onClick={() => setHideNews(true)} className="text-[12px] text-gray-500 hover:text-gray-700 cursor-pointer shrink-0">
+            Dismiss
+          </button>
+        </div>
       )}
 
       {/* Header */}

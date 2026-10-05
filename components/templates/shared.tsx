@@ -31,6 +31,17 @@ export const BUTTON_TYPE_META: Record<TemplateButtonType, { label: string; icon:
 export const OPT_OUT_TEXT = "Reply STOP to opt out";
 export const PLACEHOLDER_RE = /\{\{\s*[a-z0-9_]+\s*\}\}/gi;
 
+// Meta rejects a text header with newlines, emojis or formatting characters
+// (same rule as the API's headerCharError). Placeholders are ignored — the
+// underscore in {{customer_name}} is fine.
+const HEADER_FORBIDDEN_RE = /[\r\n*_~`]|\p{Extended_Pictographic}/u;
+export function headerCharError(text: string): string | null {
+  const bad = text.replace(/\{\{[^{}]*\}\}/g, "").match(HEADER_FORBIDDEN_RE);
+  if (!bad) return null;
+  const what = bad[0] === "\n" || bad[0] === "\r" ? "a new line" : `"${bad[0]}"`;
+  return `Headers can't contain ${what} — Meta doesn't allow emojis or formatting characters (* _ ~ \`) in a header.`;
+}
+
 export function renderPreview(text: string): string {
   let out = text;
   PERSONALIZE_VARS.forEach(({ key }) => {

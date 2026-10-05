@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Lock, Images, FileText, Music, Video as VideoIcon, Trash2, Copy, Check, Pencil, ExternalLink } from "lucide-react";
 import { apiGetMediaLibrary, apiUploadToMediaLibrary, apiUpdateMediaAsset, apiDeleteMediaAsset } from "@/lib/api";
 import type { MediaAsset, MediaAssetType } from "@/types";
+import { useCurrentUser } from "@/components/CurrentUserProvider";
+import { PageSpinner } from "@/components/ui/spinner";
 
 const FILTERS: (MediaAssetType | "ALL")[] = ["ALL", "IMAGE", "VIDEO", "DOCUMENT", "AUDIO"];
 const FILTER_LABELS: Record<MediaAssetType | "ALL", string> = {
@@ -43,7 +45,10 @@ function AssetThumb({ asset }: { asset: MediaAsset }) {
 }
 
 export default function MediaLibraryPage() {
-  const [user, setUser] = useState<{ role: string } | null>(null);
+  // Access comes from the server's permission list, never from the role
+  // name: see CurrentUserProvider. `ready` is false until /users/me answers.
+  const { ready, can } = useCurrentUser();
+  const allowed = can("media:write");
   const [assets, setAssets] = useState<MediaAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<MediaAssetType | "ALL">("ALL");
@@ -60,15 +65,6 @@ export default function MediaLibraryPage() {
 
   const selectedAsset = assets.find((a) => a.id === selectedId) ?? null;
 
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem("user");
-      setUser(raw ? JSON.parse(raw) : null);
-    } catch {
-      setUser(null);
-    }
-  }, []);
-
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -83,9 +79,9 @@ export default function MediaLibraryPage() {
   }, [filter]);
 
   useEffect(() => {
-    if (user?.role === "ADMIN") load();
-    else if (user) setLoading(false);
-  }, [user, load]);
+    if (allowed) load();
+    else if (ready) setLoading(false);
+  }, [allowed, ready, load]);
 
   async function handleFile(file: File | undefined) {
     if (!file) return;
@@ -149,11 +145,11 @@ export default function MediaLibraryPage() {
     }
   }
 
-  if (!user) return null;
+  if (!ready) return <PageSpinner />;
 
-  if (user.role !== "ADMIN") {
+  if (!allowed) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen gap-3">
+      <div className="flex flex-col items-center justify-center min-h-full gap-3">
         <Lock className="w-10 h-10 text-gray-300" />
         <h1 className="text-lg font-semibold text-gray-500">Admin access only</h1>
       </div>
