@@ -9,6 +9,9 @@ import {
   apiGetAuditLog,
 } from "@/lib/api";
 import type { AuditLog, StatsOverview, MessageChartDay, AgentStat } from "@/types";
+import { useCurrentUser } from "@/components/CurrentUserProvider";
+import { PageSpinner } from "@/components/ui/spinner";
+import ClinicDayBoard from "@/components/ClinicDayBoard";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -232,7 +235,12 @@ function AgentPerformanceTable({ agents }: { agents: AgentStat[] }) {
 // ---------------------------------------------------------------------------
 
 export default function DashboardPage() {
-  const [user, setUser] = useState<{ role: string } | null>(null);
+  // Access comes from the server's permission list, never from the role
+  // name: see CurrentUserProvider. `ready` is false until /users/me answers.
+  const { ready, can } = useCurrentUser();
+  const allowed = can("stats:read");
+  const canSeeClinic = can("clinic:read");
+  const [tab, setTab] = useState<"overview" | "clinic">("overview");
   const [overview, setOverview] = useState<StatsOverview | null>(null);
   const [chartDays, setChartDays] = useState<{ label: string; incoming: number; outgoing: number }[]>([]);
   const [agents, setAgents] = useState<AgentStat[]>([]);
@@ -240,16 +248,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem("user");
-      setUser(raw ? JSON.parse(raw) : null);
-    } catch {
-      setUser(null);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (user?.role !== "ADMIN") {
+    if (!allowed) {
       setLoading(false);
       return;
     }
@@ -271,14 +270,14 @@ export default function DashboardPage() {
     }
 
     fetchAll();
-  }, [user]);
+  }, [allowed, ready]);
 
   // ---------------------------------------------------------------------------
   // Loading skeleton
   // ---------------------------------------------------------------------------
-  if (user === null && loading) {
+  if (!ready) {
     return (
-      <div className="min-h-screen bg-gray-50 p-6">
+      <div className="min-h-full bg-gray-50 p-6">
         <div className="animate-pulse space-y-4">
           <div className="h-8 w-48 bg-gray-200 rounded" />
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -291,9 +290,10 @@ export default function DashboardPage() {
     );
   }
 
-  if (user?.role !== "ADMIN") {
+  if (!ready) return <PageSpinner />;
+  if (!allowed) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen gap-3">
+      <div className="flex flex-col items-center justify-center min-h-full gap-3">
         <Lock className="w-10 h-10 text-gray-300" />
         <h1 className="text-lg font-semibold text-gray-500">Admin access only</h1>
       </div>
@@ -303,7 +303,7 @@ export default function DashboardPage() {
   const totalWeek = (overview?.messages.last7Days ?? 0);
 
   return (
-    <div className="p-6 lg:p-8 bg-gray-50 min-h-screen overflow-y-auto">
+    <div className="p-6 lg:p-8 bg-gray-50 min-h-full overflow-y-auto">
       {/* Page header */}
       <div className="flex items-start justify-between">
         <div>
@@ -314,6 +314,29 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {canSeeClinic && (
+        <div className="mt-5 inline-flex bg-white border border-gray-100 rounded-lg p-1 gap-1">
+          {([
+            ["overview", "Overview"],
+            ["clinic", "Clinic day"],
+          ] as const).map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setTab(key)}
+              className={`text-[13px] font-semibold rounded-md px-3.5 py-1.5 transition-colors ${
+                tab === key ? "bg-[#3B694C] text-white" : "text-gray-500 hover:text-gray-800"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {tab === "clinic" && canSeeClinic ? (
+        <ClinicDayBoard />
+      ) : (
+      <>
       {/* Stat cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
         <StatCard
@@ -371,6 +394,8 @@ export default function DashboardPage() {
           <AgentPerformanceTable agents={agents} />
         )}
       </div>
+      </>
+      )}
     </div>
   );
 }
