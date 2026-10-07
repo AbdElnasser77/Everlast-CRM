@@ -28,6 +28,7 @@ import {
   PLACEHOLDER_RE,
   headerCharError,
   renderPreview,
+  WaText,
   CharCount,
   HeaderPreview,
   ButtonRow,
@@ -814,7 +815,7 @@ export default function TemplateForm({
                   {!isCarousel && <HeaderPreview headerType={headerType} header={header} headerMediaUrl={headerMediaUrl} />}
                   <p className="text-[13px] text-white leading-relaxed whitespace-pre-wrap">
                     {body.trim() ? (
-                      renderPreview(body)
+                      <WaText text={renderPreview(body)} />
                     ) : (
                       <span className="text-white/40 italic text-[12px]">
                         Your message will appear here…

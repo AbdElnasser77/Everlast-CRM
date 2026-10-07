@@ -29,6 +29,8 @@ import { describeRule } from "@/components/SegmentBuilder";
 import { useCurrentUser } from "@/components/CurrentUserProvider";
 import { CAMPAIGN_CATEGORIES, CAMPAIGN_CATEGORY_COLORS } from "@/lib/campaignCategories";
 import { FlowPicker } from "@/components/flows/FlowPicker";
+import { HeaderPreview, ButtonRow, WaText, LIMITS } from "@/components/templates/shared";
+import { CarouselPreview } from "@/components/templates/CarouselEditor";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -153,33 +155,40 @@ function StepDot({
 
 // ── WhatsApp Preview Bubble ───────────────────────────────────────────────────
 
+// Built from the same pieces as the template editor's preview (header media,
+// WhatsApp formatting, buttons under the bubble, carousel cards), so what you
+// pick here looks like what the customer receives.
 function WaBubble({ template, sampleName }: { template: Template; sampleName: string }) {
-  const header = resolvePreview(template.header, sampleName);
   const body = resolvePreview(template.body, sampleName);
-  const footer = template.footer;
-  const buttons = template.buttons;
+  const isCarousel = !!template.cards?.length;
+  const buttons = !isCarousel ? template.buttons : null;
 
   return (
-    <div className="bg-[#3B694C] rounded-2xl rounded-tl-sm px-4 py-3 max-w-[280px] shadow-md">
-      {header && (
-        <p className="text-white font-semibold text-[13px] mb-1">{header}</p>
-      )}
-      <p className="text-white text-[13px] leading-relaxed whitespace-pre-wrap">{body}</p>
-      {footer && (
-        <p className="text-white/60 text-[11px] mt-1">{footer}</p>
-      )}
+    <div className="max-w-[300px]">
+      <div className="bg-[#3B694C] rounded-2xl rounded-tl-sm px-4 py-3 shadow-md">
+        {!isCarousel && (
+          <HeaderPreview
+            headerType={template.headerType ?? "NONE"}
+            header={resolvePreview(template.header, sampleName) || null}
+            headerMediaUrl={template.headerMediaUrl ?? null}
+          />
+        )}
+        <p className="text-white text-[13px] leading-relaxed whitespace-pre-wrap break-words">
+          <WaText text={body} />
+        </p>
+        {!isCarousel && template.footer && (
+          <p className="text-white/60 text-[11px] mt-1.5 italic">{template.footer}</p>
+        )}
+        <p className="text-white/40 text-[10px] text-right mt-1">
+          {new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })} ✓✓
+        </p>
+      </div>
       {buttons && buttons.length > 0 && (
-        <div className="mt-2 space-y-1">
-          {buttons.map((b) => (
-            <div key={b.id} className="bg-white/20 rounded-lg px-3 py-1 text-center">
-              <span className="text-white text-[12px] font-medium">{b.title}</span>
-            </div>
-          ))}
+        <div className="mt-1.5 space-y-1.5">
+          {buttons.map((b) => <ButtonRow key={b.id} btn={b} />)}
         </div>
       )}
-      <p className="text-white/40 text-[10px] text-right mt-1">
-        {new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })} ✓✓
-      </p>
+      {isCarousel && <CarouselPreview cards={template.cards!} />}
     </div>
   );
 }
@@ -289,7 +298,7 @@ function Step1({
               Renders for: {sampleName || "Sample Customer"}
             </p>
             <p className="self-start text-[11px] text-gray-400 mt-0.5">
-              {selected.body.length}/1600
+              {selected.body.length}/{LIMITS.body}
             </p>
           </>
         ) : (

@@ -50,6 +50,27 @@ export function renderPreview(text: string): string {
   return out;
 }
 
+// WhatsApp's own formatting — *bold*, _italic_, ~strike~, ```mono``` — so a
+// preview looks like the message on the phone instead of showing the markers.
+// Markers must hug the text (no space just inside) and stay on one line, as
+// in WhatsApp.
+const WA_FORMAT_RE = /(```[^`]+```|\*[^\s*](?:[^*\n]*[^\s*])?\*|_[^\s_](?:[^_\n]*[^\s_])?_|~[^\s~](?:[^~\n]*[^\s~])?~)/g;
+export function WaText({ text }: { text: string }) {
+  const parts = text.split(WA_FORMAT_RE);
+  return (
+    <>
+      {parts.map((p, i) => {
+        if (i % 2 === 0) return p;
+        if (p.startsWith("```")) return <code key={i} className="font-mono text-[0.95em]">{p.slice(3, -3)}</code>;
+        const inner = p.slice(1, -1);
+        if (p[0] === "*") return <strong key={i} className="font-bold">{inner}</strong>;
+        if (p[0] === "_") return <em key={i}>{inner}</em>;
+        return <s key={i}>{inner}</s>;
+      })}
+    </>
+  );
+}
+
 export function CharCount({ val, max }: { val: string; max: number }) {
   const over = val.length > max;
   return (

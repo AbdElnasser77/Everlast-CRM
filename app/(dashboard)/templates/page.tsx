@@ -20,7 +20,7 @@ import {
   ApiError,
   apiSyncTemplates,
 } from "@/lib/api";
-import { HeaderPreview, ButtonRow } from "@/components/templates/shared";
+import { HeaderPreview, ButtonRow, WaText } from "@/components/templates/shared";
 import { CarouselPreview } from "@/components/templates/CarouselEditor";
 import type {
   Template,
@@ -328,7 +328,7 @@ function TemplateCard({
         <div className="bg-[#3B694C] rounded-2xl rounded-br-sm px-3.5 py-3 shadow-sm">
           <HeaderPreview headerType={template.headerType} header={template.header} headerMediaUrl={template.headerMediaUrl} />
           <p className="text-[13px] text-white leading-relaxed whitespace-pre-wrap">
-            {template.body}
+            <WaText text={template.body} />
           </p>
           {template.footer && (
             <p className="text-[11px] text-white/55 italic mt-2 leading-snug">
