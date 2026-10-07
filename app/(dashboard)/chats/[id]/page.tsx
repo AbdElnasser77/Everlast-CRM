@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useState, useEffect, useLayoutEffect, useRef, startTransition, lazy, Suspense } from "react";
+import { Fragment, useState, useEffect, useLayoutEffect, useRef, startTransition, lazy, Suspense } from "react";
 import { createPortal } from "react-dom";
 import {
   ArrowLeft,
@@ -17,6 +17,7 @@ import {
   ChevronDown,
   Trash2,
   Loader2,
+  PanelRight,
 } from "lucide-react";
 import {
   useMessages,
@@ -32,8 +33,12 @@ import {
   apiSendTemplate,
   apiDeleteMessage,
   apiFetchMediaBlob,
+  apiSendTyping,
   ApiError,
 } from "@/lib/api";
+import { ContactPanel } from "@/components/ContactPanel";
+import { MessageMenu } from "@/components/MessageMenu";
+import { WaText } from "@/components/templates/shared";
 import { useCurrentUser } from "@/components/CurrentUserProvider";
 import { useToast } from "@/components/ui/toast";
 import { Spinner } from "@/components/ui/spinner";
@@ -121,6 +126,30 @@ function parseTemplateContent(content: string): {
   return null;
 }
 
+// Day separator label: Today / Yesterday / Mon 6 Oct (/ 2025 when not this year).
+function dayLabel(iso: string): string {
+  const d = new Date(iso);
+  const today = new Date();
+  const startOf = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((startOf(today) - startOf(d)) / 86_400_000);
+  if (diff === 0) return "Today";
+  if (diff === 1) return "Yesterday";
+  return d.toLocaleDateString("en-GB", {
+    weekday: "short", day: "numeric", month: "short",
+    ...(d.getFullYear() !== today.getFullYear() ? { year: "numeric" } : {}),
+  });
+}
+
+// Consecutive messages from the same sender, same day, within 5 minutes read
+// as one group: tighter spacing, one name label, one avatar.
+const GROUP_GAP_MS = 5 * 60 * 1000;
+function sameGroup(a: Message | undefined, b: Message | undefined): boolean {
+  if (!a || !b) return false;
+  if (a.senderType !== b.senderType || String(a.senderId ?? "") !== String(b.senderId ?? "")) return false;
+  const ta = new Date(a.createdAt), tb = new Date(b.createdAt);
+  return ta.toDateString() === tb.toDateString() && Math.abs(tb.getTime() - ta.getTime()) < GROUP_GAP_MS;
+}
+
 function formatMessageTime(iso: string): string {
   return new Date(iso).toLocaleTimeString([], {
     hour: "2-digit",
@@ -131,9 +160,9 @@ function formatMessageTime(iso: string): string {
 function SendingDots() {
   return (
     <span className="flex gap-[3px] items-center h-4 px-1">
-      <span className="w-1.5 h-1.5 rounded-full bg-white/60 animate-bounce [animation-delay:-0.3s]" />
-      <span className="w-1.5 h-1.5 rounded-full bg-white/60 animate-bounce [animation-delay:-0.15s]" />
-      <span className="w-1.5 h-1.5 rounded-full bg-white/60 animate-bounce" />
+      <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:-0.3s]" />
+      <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:-0.15s]" />
+      <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" />
     </span>
   );
 }
@@ -148,34 +177,16 @@ function MessageStatus({
   if (isSending) return <SendingDots />;
   if (status === null) return <SendingDots />;
   if (status === "PENDING")
-    return <span className="text-[11px] text-gray-300">✓</span>;
+    return <span className="text-[11px] text-gray-300" title="Sending">✓</span>;
   if (status === "SENT")
-    return <span className="text-[11px] text-white/60">✓</span>;
+    return <span className="text-[11px] text-gray-500" title="Sent">✓</span>;
   if (status === "DELIVERED")
-    return <span className="text-[11px] text-white/60">✓✓</span>;
+    return <span className="text-[11px] text-gray-500" title="Delivered">✓✓</span>;
   if (status === "READ")
-    return <span className="text-[11px] text-[#60C4FF]">✓✓</span>;
+    return <span className="text-[11px] text-[#2B9FD9]" title="Read">✓✓</span>;
   if (status === "FAILED")
-    return <span className="text-[11px] text-red-300">✕</span>;
-  return <span className="text-[11px] text-white/80">✓</span>;
-}
-
-function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      className={`relative w-9 h-5 rounded-full transition-colors shrink-0 cursor-pointer focus:outline-none ${
-        on ? "bg-[#3B694C]" : "bg-gray-200"
-      }`}
-    >
-      <div
-        className={`absolute top-[3px] w-[14px] h-[14px] rounded-full bg-white shadow-sm transition-all duration-200 ${
-          on ? "left-[19px]" : "left-[3px]"
-        }`}
-      />
-    </button>
-  );
+    return <span className="text-[11px] font-bold text-red-500" title="Not delivered">!</span>;
+  return <span className="text-[11px] text-gray-500">✓</span>;
 }
 
 const AGENT_COLORS = [
@@ -428,7 +439,7 @@ function DocumentMessage({ directSrc, mediaMsgId, isAgent }: { directSrc: string
   return (
     <button type="button" onClick={handleDownload}
       className={`flex items-center gap-2 text-[13px] font-medium underline underline-offset-2 cursor-pointer ${
-        isAgent ? "text-white/90 hover:text-white" : "text-[#3B694C] hover:text-[#2d5239]"
+        isAgent ? "text-[#2f5840] hover:text-[#1f3d2c]" : "text-[#3B694C] hover:text-[#2d5239]"
       }`}
     >
       <Download className="w-4 h-4 shrink-0" />
@@ -440,7 +451,7 @@ function DocumentMessage({ directSrc, mediaMsgId, isAgent }: { directSrc: string
 function MessageContent({ msg, isAgent }: { msg: Message; isAgent: boolean }) {
   if (msg.deletedAt) {
     return (
-      <p className={`text-[13px] italic flex items-center gap-1.5 ${isAgent ? "text-white/60" : "text-gray-400"}`}>
+      <p className="text-[13px] italic flex items-center gap-1.5 text-gray-400">
         <Trash2 className="w-3.5 h-3.5" />
         This message was deleted
       </p>
@@ -473,7 +484,7 @@ function MessageContent({ msg, isAgent }: { msg: Message; isAgent: boolean }) {
   }
 
   return (
-    <p className={`text-[14px] leading-relaxed whitespace-pre-wrap break-words ${isAgent ? "text-white" : "text-gray-900"}`}>
+    <p className="text-[14px] leading-relaxed whitespace-pre-wrap break-words text-[#1F2A24]">
       {msg.content}
     </p>
   );
@@ -911,8 +922,11 @@ export default function ConversationPage() {
     return true;
   }
 
-  const [aiReply, setAiReply] = useState(false);
   const [message, setMessage] = useState("");
+  // WhatsApp-Web-style contact panel on the right (header click / info button).
+  const [showInfo, setShowInfo] = useState(false);
+  // When "typing…" was last sent to the customer for this chat.
+  const customerTypingSentRef = useRef(0);
   const [sending, setSending] = useState(false);
   const [replyingTo, setReplyingTo] = useState<QuotedMessage | null>(null);
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
@@ -1032,7 +1046,27 @@ export default function ConversationPage() {
     setUnreadCount(0);
     setShowScrollDown(false);
     prevLastMsgKeyRef.current = "";
+    isNearBottomRef.current = true; // a newly opened chat starts at its last message
   }, [id]);
+
+  // Images, product cards and video posters load AFTER the first scroll to the
+  // bottom and push the content down — which used to leave a freshly opened
+  // chat sitting above its real last message. While the reader is at the
+  // bottom, every media load keeps it there. (load doesn't bubble, so listen
+  // in the capture phase.) Scrolling up stops this, as it should.
+  useEffect(() => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    const stick = () => {
+      if (isNearBottomRef.current) el.scrollTop = el.scrollHeight;
+    };
+    el.addEventListener("load", stick, true);
+    el.addEventListener("loadedmetadata", stick, true);
+    return () => {
+      el.removeEventListener("load", stick, true);
+      el.removeEventListener("loadedmetadata", stick, true);
+    };
+  }, [id, loading]);
 
   function handleMessagesScroll() {
     const el = messagesContainerRef.current;
@@ -1309,8 +1343,9 @@ export default function ConversationPage() {
   const windowClosed = conversation ? isWindowClosed(conversation.lastCustomerMessageAt, nowTick) : false;
 
   return (
+    <div className="relative flex h-full min-h-0">
     <div
-      className="relative flex flex-col h-full"
+      className="relative flex flex-col h-full flex-1 min-w-0"
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}
@@ -1327,16 +1362,7 @@ export default function ConversationPage() {
       )}
 
       {/* Chat background — tiled, stays fixed while messages scroll */}
-      <div
-        className="absolute inset-0 pointer-events-none z-0"
-        style={{
-          backgroundImage: "url('/chatbackground.png')",
-          backgroundRepeat: "repeat",
-          backgroundSize: "420px auto",
-          opacity: 0.3,
-          backgroundColor: "#f5f4f0",
-        }}
-      />
+      <div className="absolute inset-0 pointer-events-none z-0 bg-[#E7ECE9]" />
 
       {/* Header */}
       <div className="relative z-10 flex items-center gap-3 px-5 py-3 bg-white border-b border-gray-100 shrink-0">
@@ -1347,26 +1373,25 @@ export default function ConversationPage() {
         >
           <ArrowLeft className="w-4 h-4" />
         </button>
-        <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 font-semibold text-[13px] shrink-0">
-          {initials}
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-[14px] text-gray-900 leading-tight">
-            {customer?.name || customer?.phone || "Loading…"}
-          </p>
-          {customer?.name && customer?.phone && (
-            <p className="text-[12px] text-gray-400 leading-tight">
-              {customer.phone}
-            </p>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2 mr-2">
-          <span className="text-[12px] text-gray-400 font-medium">
-            AI auto-reply
+        <button
+          type="button"
+          onClick={() => setShowInfo((v) => !v)}
+          title="Contact info"
+          className="flex-1 min-w-0 flex items-center gap-3 text-left rounded-xl -ml-1 pl-1 py-0.5 hover:bg-gray-50 transition-colors cursor-pointer"
+        >
+          <span className="w-10 h-10 rounded-full bg-[#EEF6F1] flex items-center justify-center text-[#3B694C] font-bold text-[13px] shrink-0">
+            {initials}
           </span>
-          <Toggle on={aiReply} onToggle={() => setAiReply((v) => !v)} />
-        </div>
+          <span className="flex-1 min-w-0">
+            <span className="block font-semibold text-[14px] text-gray-900 leading-tight truncate">
+              {customer?.name || customer?.phone || "Loading…"}
+            </span>
+            <span className="block text-[12px] text-gray-400 leading-tight truncate">
+              {customer?.name && customer?.phone ? `${customer.phone} · ` : ""}Click for contact info
+            </span>
+          </span>
+        </button>
+
 
 
         {/* Lifecycle + owner. Both update live from the server's socket events,
@@ -1379,6 +1404,14 @@ export default function ConversationPage() {
             <AssigneePicker conversationId={id} assignee={conversation.assignedAgent ?? null} />
           </>
         )}
+        <button
+          type="button"
+          onClick={() => setShowInfo((v) => !v)}
+          title={showInfo ? "Hide contact info" : "Contact info"}
+          className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors cursor-pointer shrink-0 ${showInfo ? "bg-[#EEF6F1] text-[#3B694C]" : "text-gray-400 hover:bg-gray-100 hover:text-gray-700"}`}
+        >
+          <PanelRight className="w-4.5 h-4.5" />
+        </button>
       </div>
 
       {/* File preview panel — replaces messages + input when files are queued */}
@@ -1409,7 +1442,7 @@ export default function ConversationPage() {
           <div
             ref={messagesContainerRef}
             onScroll={handleMessagesScroll}
-            className="absolute inset-0 overflow-y-auto overflow-x-hidden px-6 py-5 space-y-3 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-[#3B694C]/20 [&::-webkit-scrollbar-thumb]:rounded-full"
+            className="absolute inset-0 overflow-y-auto overflow-x-hidden px-4 md:px-8 py-4 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-[#3B694C]/20 [&::-webkit-scrollbar-thumb]:rounded-full"
           >
           {loadingMore && (
             <div className="flex justify-center py-2">
@@ -1426,9 +1459,14 @@ export default function ConversationPage() {
             const isSending = mid.startsWith("temp-");
 
             const isMediaMsg = msg.messageType === "AUDIO" || msg.messageType === "VIDEO" || msg.messageType === "STICKER";
+            const prevForGroup = i > 0 ? messages[i - 1] : undefined;
+            const groupStart = !sameGroup(prevForGroup, msg);
+            const groupEnd = !sameGroup(msg, messages[i + 1]);
+            const newDay = !prevForGroup || new Date(prevForGroup.createdAt).toDateString() !== new Date(msg.createdAt).toDateString();
+            const rowGap = newDay ? "mt-1" : groupStart ? "mt-3" : "mt-0.5";
 
-            return msg.senderType === "CUSTOMER" ? (
-              <div key={mid} data-msg-id={mid} className="group/msg flex justify-start items-end gap-1" onDoubleClick={(e) => { window.getSelection()?.removeAllRanges(); highlightEl(e.currentTarget); setReplyingTo({ id: Number(msg.id ?? msg._id), content: msg.content, messageType: msg.messageType, senderType: msg.senderType, mediaUrl: msg.mediaUrl }); }}>
+            const row = msg.senderType === "CUSTOMER" ? (
+              <div key={mid} data-msg-id={mid} className={`group/msg flex justify-start items-end gap-1 ${rowGap}`}>
                 <div className={isMediaMsg ? "" : "max-w-[65%] min-w-0"}>
                   {msg.campaignRecipient?.campaign && (
                     <CampaignReplyTag campaign={msg.campaignRecipient.campaign} linkable={can("campaign:read")} />
@@ -1436,21 +1474,21 @@ export default function ConversationPage() {
                   {isMediaMsg ? (
                     <div>
                       <MessageContent msg={msg} isAgent={false} />
-                      <div className="bg-[#E1E8E3] border border-[#C9D4CD] rounded-xl rounded-tl-sm px-3 py-1 shadow-sm inline-flex mt-1">
-                        <p className="text-[10px] text-gray-600">{formatMessageTime(msg.createdAt)}</p>
+                      <div className="bg-white border border-[#D6DED9] rounded-xl px-2.5 py-0.5 inline-flex mt-1">
+                        <p className="text-[10px] text-gray-400">{formatMessageTime(msg.createdAt)}</p>
                       </div>
                     </div>
                   ) : (
-                    // Tinted rather than white: a white bubble all but disappeared into the
-                    // patterned chat background, making received messages hard to pick out.
-                    <div className="msg-bubble bg-[#E1E8E3] border border-[#C9D4CD] rounded-2xl rounded-tl-sm px-4 pt-2.5 pb-2 shadow-sm">
+                    // White on the plain grey-green canvas: the customer's own words,
+                    // distinct from the team's green and the automation's slate.
+                    <div className={`msg-bubble bg-white border border-[#D6DED9] rounded-2xl ${groupStart ? "rounded-tl-md" : ""} px-3.5 pt-2 pb-1.5 shadow-[0_1px_2px_rgba(16,24,20,0.08)]`}>
                       {msg.quotedMessage && (() => {
                         const qm = msg.quotedMessage;
                         const qImg = !qm.deletedAt && qm.messageType === "IMAGE" ? (qm.mediaUrl ?? qm.content) : null;
                         return (
                           <div onClick={() => scrollToMessage(qm.id)} className="border-l-2 border-[#3B694C]/60 pl-2 mb-2 py-0.5 pr-1 bg-[#3B694C]/5 rounded-r-sm cursor-pointer hover:bg-[#3B694C]/10 transition-colors">
                             <p className="text-[10px] font-semibold text-[#3B694C] leading-tight">
-                              {qm.senderType === "AGENT" ? "You" : customer?.name || "Contact"}
+                              {qm.senderType === "CUSTOMER" ? customer?.name || "Contact" : "You"}
                             </p>
                             {qm.deletedAt ? (
                               <p className="text-[12px] text-gray-400 italic truncate leading-tight">This message was deleted</p>
@@ -1469,7 +1507,7 @@ export default function ConversationPage() {
                         );
                       })()}
                       <MessageContent msg={msg} isAgent={false} />
-                      <p className="text-[10px] text-gray-600 text-right mt-1 -mb-0.5">
+                      <p className="text-[10px] text-gray-400 text-right mt-0.5 -mb-0.5">
                         {formatMessageTime(msg.createdAt)}
                       </p>
                     </div>
@@ -1485,14 +1523,11 @@ export default function ConversationPage() {
                     </div>
                   )}
                 </div>
-                <button
-                  type="button"
-                  title="Reply"
-                  onClick={() => setReplyingTo({ id: Number(msg.id ?? msg._id), content: msg.content, messageType: msg.messageType, senderType: msg.senderType, mediaUrl: msg.mediaUrl })}
-                  className="opacity-0 group-hover/msg:opacity-100 self-center shrink-0 w-7 h-7 rounded-full bg-white border border-gray-200 shadow-sm hover:bg-gray-50 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-all cursor-pointer"
-                >
-                  <CornerUpLeft className="w-3.5 h-3.5" />
-                </button>
+                <MessageMenu
+                  align="left"
+                  onReply={() => setReplyingTo({ id: Number(msg.id ?? msg._id), content: msg.content, messageType: msg.messageType, senderType: msg.senderType, mediaUrl: msg.mediaUrl })}
+                  copyText={msg.messageType === "TEXT" ? msg.content : null}
+                />
               </div>
             ) : (
               (() => {
@@ -1506,11 +1541,28 @@ export default function ConversationPage() {
                       conversation?.assignedAgent ?? null,
                       agentCache,
                     );
-                const prevMsg = i > 0 ? messages[i - 1] : null;
-                const senderChanged =
-                  !prevMsg ||
-                  prevMsg.senderType !== msg.senderType ||
-                  String(prevMsg.senderId) !== String(msg.senderId);
+                const senderChanged = groupStart;
+                const isBot = msg.senderType === "BOT";
+                // Team replies are soft brand green; automation is slate, so a
+                // person can always tell at a glance who actually wrote it.
+                const bubbleTone = isBot ? "bg-[#E1E8F0] border-[#C9D3DF]" : "bg-[#D3EBDC] border-[#B5D8C2]";
+                const nameLabel = (
+                  <p className="text-[11px] font-medium text-gray-500 text-right mb-1 flex items-center justify-end gap-1">
+                    {isBot && <span className="text-[10px] font-semibold uppercase tracking-wide text-[#64748B] bg-[#EEF2F6] border border-[#DCE3EB] rounded px-1">Automation</span>}
+                    {!isBot && agent.name}
+                  </p>
+                );
+                const avatar = groupEnd ? (
+                  <div
+                    className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0 cursor-default select-none"
+                    style={{ backgroundColor: agent.color }}
+                    title={agent.name}
+                  >
+                    {agent.initials}
+                  </div>
+                ) : (
+                  <div className="w-7 shrink-0" />
+                );
 
                 // Template message — special rendering. TEMPLATE is a Meta-approved
                 // template send; INTERACTIVE is an ad-hoc one. Both store the same
@@ -1521,54 +1573,39 @@ export default function ConversationPage() {
                     : null;
                 if (tpl) {
                   return (
-                    <div key={mid} data-msg-id={mid} className="group/msg flex justify-end items-end gap-1 pr-4" onDoubleClick={(e) => { window.getSelection()?.removeAllRanges(); highlightEl(e.currentTarget); setReplyingTo({ id: Number(msg.id ?? msg._id), content: tpl.body, messageType: msg.messageType, senderType: msg.senderType, mediaUrl: null }); }}>
-                      <button
-                        type="button"
-                        title="Reply"
-                        onClick={() => setReplyingTo({ id: Number(msg.id ?? msg._id), content: tpl.body, messageType: msg.messageType, senderType: msg.senderType, mediaUrl: null })}
-                        className="opacity-0 group-hover/msg:opacity-100 self-center shrink-0 w-7 h-7 rounded-full bg-white border border-gray-200 shadow-sm hover:bg-gray-50 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-all cursor-pointer"
-                      >
-                        <CornerUpLeft className="w-3.5 h-3.5" />
-                      </button>
-                      {!isSending && !msg.deletedAt && String(msg.senderId) === String(user?.id) && (
-                        <button
-                          type="button"
-                          title="Delete"
-                          onClick={() => setDeleteTarget({ id: Number(msg.id ?? msg._id) })}
-                          className="opacity-0 group-hover/msg:opacity-100 self-center shrink-0 w-7 h-7 rounded-full bg-white border border-gray-200 shadow-sm hover:bg-red-50 hover:border-red-200 flex items-center justify-center text-gray-400 hover:text-red-500 transition-all cursor-pointer"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
+                    <div key={mid} data-msg-id={mid} className={`group/msg flex justify-end items-end gap-1.5 ${rowGap}`}>
+                      <MessageMenu
+                        onReply={() => setReplyingTo({ id: Number(msg.id ?? msg._id), content: tpl.body, messageType: msg.messageType, senderType: msg.senderType, mediaUrl: null })}
+                        copyText={tpl.body}
+                        onDelete={!isSending && !msg.deletedAt && String(msg.senderId) === String(user?.id) ? () => setDeleteTarget({ id: Number(msg.id ?? msg._id) }) : undefined}
+                      />
                       <div className="max-w-[65%] min-w-0">
-                        {senderChanged && (
-                          <p className="text-[11px] text-gray-400 text-right mb-1">{agent.name}</p>
-                        )}
+                        {senderChanged && nameLabel}
                         {/* Bubble — header / body / footer / timestamp */}
-                        <div className={`msg-bubble ${msg.senderType === "BOT" ? "bg-[#4B5B6B]" : "bg-[#3B694C]"} rounded-2xl rounded-tr-sm px-4 pt-2.5 pb-2 shadow-sm transition-opacity ${isSending ? "opacity-75" : "opacity-100"} ${tpl.buttons?.length ? "rounded-b-none" : ""}`}>
+                        <div className={`msg-bubble ${bubbleTone} border rounded-2xl ${groupStart ? "rounded-tr-md" : ""} px-3.5 pt-2 pb-1.5 shadow-[0_1px_2px_rgba(16,24,20,0.08)] transition-opacity ${isSending ? "opacity-75" : "opacity-100"}`}>
                           {tpl.headerType === "TEXT" && tpl.header && (
-                            <p className="text-[14px] font-bold text-white mb-1 leading-snug">{tpl.header}</p>
+                            <p className="text-[14px] font-bold text-[#1F2A24] mb-1 leading-snug">{tpl.header}</p>
                           )}
                           {tpl.headerType === "IMAGE" && tpl.headerMediaUrl && (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img src={tpl.headerMediaUrl} alt="" className="w-full max-h-48 object-cover rounded-lg mb-1.5" />
                           )}
                           {tpl.headerType === "VIDEO" && tpl.headerMediaUrl && (
-                            <div className="flex items-center gap-2 bg-black/20 rounded-lg px-2.5 py-3 mb-1.5">
-                              <span className="text-[13px] text-white/80">▶ Video attachment</span>
+                            <div className="flex items-center gap-2 bg-black/5 rounded-lg px-2.5 py-3 mb-1.5">
+                              <span className="text-[13px] text-gray-600">▶ Video attachment</span>
                             </div>
                           )}
                           {tpl.headerType === "DOCUMENT" && tpl.headerMediaUrl && (
-                            <a href={tpl.headerMediaUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 bg-black/20 rounded-lg px-2.5 py-3 mb-1.5 hover:bg-black/30 transition-colors">
-                              <span className="text-[13px] text-white/80 truncate">📄 {tpl.headerMediaUrl.split("/").pop() || "Document"}</span>
+                            <a href={tpl.headerMediaUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 bg-black/5 rounded-lg px-2.5 py-3 mb-1.5 hover:bg-black/10 transition-colors">
+                              <span className="text-[13px] text-gray-600 truncate">📄 {tpl.headerMediaUrl.split("/").pop() || "Document"}</span>
                             </a>
                           )}
-                          <p className="text-[14px] text-white leading-relaxed whitespace-pre-wrap break-words">{tpl.body}</p>
+                          <p className="text-[14px] text-[#1F2A24] leading-relaxed whitespace-pre-wrap break-words"><WaText text={tpl.body} /></p>
                           {tpl.footer && (
-                            <p className="text-[11px] text-white/55 italic mt-2 leading-snug">{tpl.footer}</p>
+                            <p className="text-[11px] text-gray-500 italic mt-1.5 leading-snug">{tpl.footer}</p>
                           )}
-                          <div className="flex items-center justify-end gap-1 mt-1 -mb-0.5">
-                            <span className="text-[10px] text-white/60">{formatMessageTime(msg.createdAt)}</span>
+                          <div className="flex items-center justify-end gap-1 mt-0.5 -mb-0.5">
+                            <span className="text-[10px] text-gray-500">{formatMessageTime(msg.createdAt)}</span>
                             <MessageStatus isSending={isSending} status={msg.status} />
                           </div>
                         </div>
@@ -1576,7 +1613,7 @@ export default function ConversationPage() {
                         {tpl.buttons && tpl.buttons.length > 0 && (
                           <div className="space-y-1 mt-1">
                             {tpl.buttons.map((btn) => {
-                              const cls = "flex items-center justify-center gap-1.5 py-2 bg-white border border-gray-200 rounded-xl text-[13px] font-medium text-[#3B694C] shadow-sm";
+                              const cls = "flex items-center justify-center gap-1.5 py-1.5 bg-white border border-[#E5EAE7] rounded-xl text-[13px] font-medium text-[#3B694C]";
                               if (btn.type === "URL" && btn.url) {
                                 return <a key={btn.id} href={btn.url} target="_blank" rel="noreferrer" className={cls}>🔗 {btn.title}</a>;
                               }
@@ -1634,49 +1671,27 @@ export default function ConversationPage() {
                           </div>
                         )}
                       </div>
-                      <div
-                        className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0 cursor-default select-none"
-                        style={{ backgroundColor: agent.color }}
-                      >
-                        {agent.initials}
-                      </div>
+                      {avatar}
                     </div>
                   );
                 }
 
                 // Regular agent message
                 return (
-                  <div key={mid} data-msg-id={mid} className="group/msg flex justify-end items-end gap-1 pr-4" onDoubleClick={(e) => { window.getSelection()?.removeAllRanges(); highlightEl(e.currentTarget); setReplyingTo({ id: Number(msg.id ?? msg._id), content: msg.content, messageType: msg.messageType, senderType: msg.senderType, mediaUrl: msg.mediaUrl ?? (msg.messageType === "IMAGE" ? msg.content : null) }); }}>
-                    <button
-                      type="button"
-                      title="Reply"
-                      onClick={() => setReplyingTo({ id: Number(msg.id ?? msg._id), content: msg.content, messageType: msg.messageType, senderType: msg.senderType, mediaUrl: msg.mediaUrl ?? (msg.messageType === "IMAGE" ? msg.content : null) })}
-                      className="opacity-0 group-hover/msg:opacity-100 self-center shrink-0 w-7 h-7 rounded-full bg-white border border-gray-200 shadow-sm hover:bg-gray-50 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-all cursor-pointer"
-                    >
-                      <CornerUpLeft className="w-3.5 h-3.5" />
-                    </button>
-                    {!isSending && !msg.deletedAt && String(msg.senderId) === String(user?.id) && (
-                      <button
-                        type="button"
-                        title="Delete"
-                        onClick={() => setDeleteTarget({ id: Number(msg.id ?? msg._id) })}
-                        className="opacity-0 group-hover/msg:opacity-100 self-center shrink-0 w-7 h-7 rounded-full bg-white border border-gray-200 shadow-sm hover:bg-red-50 hover:border-red-200 flex items-center justify-center text-gray-400 hover:text-red-500 transition-all cursor-pointer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
+                  <div key={mid} data-msg-id={mid} className={`group/msg flex justify-end items-end gap-1.5 ${rowGap}`}>
+                    <MessageMenu
+                      onReply={() => setReplyingTo({ id: Number(msg.id ?? msg._id), content: msg.content, messageType: msg.messageType, senderType: msg.senderType, mediaUrl: msg.mediaUrl ?? (msg.messageType === "IMAGE" ? msg.content : null) })}
+                      copyText={msg.messageType === "TEXT" ? msg.content : null}
+                      onDelete={!isSending && !msg.deletedAt && String(msg.senderId) === String(user?.id) ? () => setDeleteTarget({ id: Number(msg.id ?? msg._id) }) : undefined}
+                    />
                     <div className={isMediaMsg ? "" : "max-w-[65%] min-w-0"}>
-                      {senderChanged && (
-                        <p className="text-[11px] text-gray-400 text-right mb-1">
-                          {agent.name}
-                        </p>
-                      )}
+                      {senderChanged && nameLabel}
                       {isMediaMsg ? (
                         <div className={`transition-opacity ${isSending ? "opacity-75" : "opacity-100"}`}>
                           <MessageContent msg={msg} isAgent={true} />
                           <div className="flex justify-end mt-1">
-                            <div className="bg-[#3B694C] rounded-xl rounded-tr-sm px-3 py-1 shadow-sm inline-flex items-center gap-1">
-                              <span className="text-[10px] text-white/70">{formatMessageTime(msg.createdAt)}</span>
+                            <div className={`${bubbleTone} border rounded-xl px-2.5 py-0.5 inline-flex items-center gap-1`}>
+                              <span className="text-[10px] text-gray-500">{formatMessageTime(msg.createdAt)}</span>
                               <MessageStatus isSending={isSending} status={msg.status} />
                             </div>
                           </div>
@@ -1684,26 +1699,26 @@ export default function ConversationPage() {
                       ) : (
                         <>
                           <div
-                            className={`msg-bubble bg-[#3B694C] rounded-2xl rounded-tr-sm px-4 pt-2.5 pb-2 shadow-sm transition-opacity ${isSending ? "opacity-75" : "opacity-100"}`}
+                            className={`msg-bubble ${bubbleTone} border rounded-2xl ${groupStart ? "rounded-tr-md" : ""} px-3.5 pt-2 pb-1.5 shadow-[0_1px_2px_rgba(16,24,20,0.08)] transition-opacity ${isSending ? "opacity-75" : "opacity-100"}`}
                           >
                             {msg.quotedMessage && (() => {
                               const qm = msg.quotedMessage;
                               const qImg = !qm.deletedAt && qm.messageType === "IMAGE" ? (qm.mediaUrl ?? qm.content) : null;
                               return (
-                                <div onClick={() => scrollToMessage(qm.id)} className="border-l-2 border-white/50 pl-2 mb-2 py-0.5 pr-1 bg-white/10 rounded-r-sm cursor-pointer hover:bg-white/20 transition-colors">
-                                  <p className="text-[10px] font-semibold text-white/90 leading-tight">
+                                <div onClick={() => scrollToMessage(qm.id)} className="border-l-2 border-[#3B694C]/60 pl-2 mb-2 py-0.5 pr-1 bg-white/60 rounded-r-md cursor-pointer hover:bg-white transition-colors">
+                                  <p className="text-[10px] font-semibold text-[#3B694C] leading-tight">
                                     {qm.senderType === "AGENT" ? "You" : customer?.name || "Contact"}
                                   </p>
                                   {qm.deletedAt ? (
-                                    <p className="text-[12px] text-white/60 italic truncate leading-tight">This message was deleted</p>
+                                    <p className="text-[12px] text-gray-400 italic truncate leading-tight">This message was deleted</p>
                                   ) : qImg ? (
                                     <div className="flex items-center gap-1.5 mt-0.5">
                                       {/* eslint-disable-next-line @next/next/no-img-element */}
                                       <img src={qImg} alt="" className="w-8 h-8 rounded object-cover shrink-0" />
-                                      <span className="text-[12px] text-white/70">Photo</span>
+                                      <span className="text-[12px] text-gray-500">Photo</span>
                                     </div>
                                   ) : (
-                                    <p className="text-[12px] text-white/70 truncate leading-tight">
+                                    <p className="text-[12px] text-gray-500 truncate leading-tight">
                                       {messagePreview(qm)}
                                     </p>
                                   )}
@@ -1711,8 +1726,8 @@ export default function ConversationPage() {
                               );
                             })()}
                             <MessageContent msg={msg} isAgent={true} />
-                            <div className="flex items-center justify-end gap-1 mt-1 -mb-0.5">
-                              <span className="text-[10px] text-white/60">
+                            <div className="flex items-center justify-end gap-1 mt-0.5 -mb-0.5">
+                              <span className="text-[10px] text-gray-500">
                                 {formatMessageTime(msg.createdAt)}
                               </span>
                               <MessageStatus
@@ -1734,22 +1749,30 @@ export default function ConversationPage() {
                         </>
                       )}
                     </div>
-                    <div
-                      className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0 cursor-default select-none"
-                      style={{ backgroundColor: agent.color }}
-                    >
-                      {agent.initials}
-                    </div>
+                    {avatar}
                   </div>
                 );
               })()
+            );
+
+            return (
+              <Fragment key={mid}>
+                {newDay && (
+                  <div className="flex justify-center pt-3 pb-1">
+                    <span className="text-[11px] font-medium text-gray-500 bg-white border border-[#D6DED9] rounded-full px-3 py-0.5 shadow-sm">
+                      {dayLabel(msg.createdAt)}
+                    </span>
+                  </div>
+                )}
+                {row}
+              </Fragment>
             );
           })}
 
           {/* Typing indicator */}
           {typingUsers.length > 0 && (
             <div className="flex justify-end">
-              <div className="bg-[#DCF2E3]/60 border border-[#3B694C]/15 rounded-2xl rounded-tr-sm px-4 py-2.5">
+              <div className="mt-3 bg-[#D3EBDC] border border-[#B5D8C2] rounded-2xl rounded-tr-md px-3.5 py-2">
                 <span className="text-[12px] text-[#3B694C]/60 italic">
                   {typingUsers.join(", ")}{" "}
                   {typingUsers.length === 1 ? "is" : "are"} typing…
@@ -1853,6 +1876,13 @@ export default function ConversationPage() {
                   setMessage(e.target.value);
                   e.target.style.height = "auto";
                   e.target.style.height = `${e.target.scrollHeight}px`;
+
+                  // The customer sees "typing…" while an agent writes a
+                  // reply — refreshed every 20s (WhatsApp shows it for 25s).
+                  if (e.target.value.trim() && Date.now() - customerTypingSentRef.current > 20_000) {
+                    customerTypingSentRef.current = Date.now();
+                    apiSendTyping(id).catch(() => {});
+                  }
 
                   if (user?.username) {
                     emitTypingStart(id, user.username);
@@ -1991,6 +2021,23 @@ export default function ConversationPage() {
         </div>,
         document.body
       )}
+    </div>
+    {showInfo && (
+      // Full-screen over the chat on phones; a side column from md up.
+      <div className="absolute inset-0 z-30 flex md:static md:z-auto">
+        <ContactPanel
+          conversationId={id}
+          refreshKey={messages.length}
+          onClose={() => setShowInfo(false)}
+          onJumpToMessage={(msgId) => {
+            const row = document.querySelector<HTMLElement>(`[data-msg-id="${msgId}"]`);
+            if (!row) return false;
+            scrollToMessage(msgId);
+            return true;
+          }}
+        />
+      </div>
+    )}
     </div>
   );
 }

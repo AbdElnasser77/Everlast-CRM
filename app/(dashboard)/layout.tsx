@@ -31,6 +31,7 @@ import { CurrentUserProvider, useCurrentUser } from "@/components/CurrentUserPro
 import { ToastProvider } from "@/components/ui/toast";
 import DevCostTracker from "@/components/DevCostTracker";
 import TemplateStatusWatcher from "@/components/TemplateStatusWatcher";
+import HandoffNotifier from "@/components/HandoffNotifier";
 
 
 const COLLAPSED_W = "w-14";   // 56px icon rail
@@ -117,7 +118,8 @@ function DashboardShell({ children }: { children: ReactNode }) {
     const forNumber = activeNumberId;
     function fetchUnread() {
       apiGetStatsOverview()
-        .then((res) => setUnread({ numberId: forNumber, count: res.data.unreadMessages }))
+        // Unread CHATS, not messages — the badge works like WhatsApp's.
+        .then((res) => setUnread({ numberId: forNumber, count: res.data.unreadConversations }))
         .catch(() => {});
     }
     fetchUnread();
@@ -396,6 +398,7 @@ function DashboardShell({ children }: { children: ReactNode }) {
     <ToastProvider>
     <>
       {can("template:write") && <TemplateStatusWatcher onCount={setTemplateUpdates} />}
+      {can("conversation:write") && <HandoffNotifier />}
       {/* ══════════════ MOBILE ══════════════ */}
 
       {/* top bar */}

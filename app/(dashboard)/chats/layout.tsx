@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from "react";
 import type { ReactNode } from "react";
 import { LogOut, Clock } from "lucide-react";
 import { useConversations } from "@/hooks/useConversations";
@@ -44,28 +44,6 @@ function formatTime(iso: string): string {
   if (diffDays === 1) return "Yesterday";
   if (diffDays < 7) return d.toLocaleDateString([], { weekday: "short" });
   return d.toLocaleDateString([], { month: "short", day: "numeric" });
-}
-
-function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        onToggle();
-      }}
-      className={`relative w-9 h-5 rounded-full transition-colors shrink-0 cursor-pointer focus:outline-none ${
-        on ? "bg-[#3B694C]" : "bg-gray-200"
-      }`}
-    >
-      <div
-        className={`absolute top-[3px] w-[14px] h-[14px] rounded-full bg-white shadow-sm transition-all duration-200 ${
-          on ? "left-[19px]" : "left-[3px]"
-        }`}
-      />
-    </button>
-  );
 }
 
 function LogoutDrawer({ open, onConfirm, onCancel }: { open: boolean; onConfirm: () => void; onCancel: () => void }) {
@@ -119,7 +97,13 @@ function LogoutDrawer({ open, onConfirm, onCancel }: { open: boolean; onConfirm:
   );
 }
 
-const FILTERS = ["All", "Unread", "Window closed", "AI handling"];
+const FILTERS = ["All", "Unread", "Window closed"];
+
+// Chat list width (desktop): draggable, at most 30% of the window.
+const LIST_DEFAULT_WIDTH = 370;
+const LIST_MIN_WIDTH = 260;
+const LIST_MAX_FRACTION = 0.3;
+const LIST_WIDTH_KEY = "inbox.listWidth";
 
 // Server-side views: who owns the chat, and whether it answers a campaign.
 // The pills below them (FILTERS) only narrow the page already loaded; these go
@@ -174,7 +158,6 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [activeFilter, setActiveFilter] = useState("All");
   const [view, setView] = useState<ConversationView>("all");
-  const [aiStates, setAiStates] = useState<Record<string, boolean>>({});
   const [user, setUser] = useState<User | null>(null);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
@@ -207,19 +190,6 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  useEffect(() => {
-    setAiStates((prev) => {
-      const next = { ...prev };
-      conversations.forEach((c) => {
-        const cid = getId(c);
-        if (cid && !(cid in next)) next[cid] = false;
-      });
-      return next;
-    });
-  }, [conversations]);
-
-  const toggleAi = (id: string) =>
-    setAiStates((prev) => ({ ...prev, [id]: !prev[id] }));
 
   async function handleLogout() {
     document.cookie = "logged_in=; path=/; max-age=0";
@@ -233,10 +203,71 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
     router.push("/login");
   }
 
-  const totalUnread = conversations.reduce(
-    (s, c) => s + (String(c.id ?? c._id) === activeId ? 0 : c.unreadCount),
-    0
-  );
+  // ── Resizable chat list ────────────────────────────────────────────────
+  // Width is applied straight to the element (no re-render while dragging),
+  // kept within [min, 30% of the window], and remembered in this browser.
+  // Below the md breakpoint the list is full-width and not resizable.
+  const asideRef = useRef<HTMLElement>(null);
+  const clampWidth = useCallback((w: number) => {
+    const max = Math.round(window.innerWidth * LIST_MAX_FRACTION);
+    return Math.max(Math.min(LIST_MIN_WIDTH, max), Math.min(w, max));
+  }, []);
+  const applyWidth = useCallback((w: number | null) => {
+    const el = asideRef.current;
+    if (!el) return;
+    if (w === null || window.innerWidth < 768) {
+      el.style.width = "";
+      return;
+    }
+    el.style.width = `${clampWidth(w)}px`;
+  }, [clampWidth]);
+  const storedWidth = useCallback(() => {
+    try {
+      const v = Number(localStorage.getItem(LIST_WIDTH_KEY));
+      return Number.isFinite(v) && v > 0 ? v : LIST_DEFAULT_WIDTH;
+    } catch {
+      return LIST_DEFAULT_WIDTH;
+    }
+  }, []);
+  useLayoutEffect(() => {
+    applyWidth(storedWidth());
+    const onResize = () => applyWidth(storedWidth());
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [applyWidth, storedWidth, userReady, canUseInbox]);
+  const startResize = useCallback((e: React.PointerEvent) => {
+    const el = asideRef.current;
+    if (!el) return;
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = el.getBoundingClientRect().width;
+    let current = startW;
+    const move = (ev: PointerEvent) => {
+      current = clampWidth(startW + ev.clientX - startX);
+      el.style.width = `${current}px`;
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      try { localStorage.setItem(LIST_WIDTH_KEY, String(Math.round(current))); } catch {}
+    };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }, [clampWidth]);
+  const resetWidth = useCallback(() => {
+    try { localStorage.removeItem(LIST_WIDTH_KEY); } catch {}
+    applyWidth(LIST_DEFAULT_WIDTH);
+  }, [applyWidth]);
+
+  // Chats with something unread, not messages — like WhatsApp (and the
+  // sidebar badge). The open chat counts as read.
+  const unreadChats = conversations.filter(
+    (c) => String(c.id ?? c._id) !== activeId && c.unreadCount > 0,
+  ).length;
 
   // Search itself is server-side (see useConversations) since the sidebar
   // only ever holds a page of conversations at a time — filtering a name/phone
@@ -247,7 +278,6 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
   const searched = conversations.filter((c) => {
     if (activeFilter === "Unread") return c.unreadCount > 0;
     if (activeFilter === "Window closed") return isWindowClosed(c.lastCustomerMessageAt);
-    if (activeFilter === "AI handling") return aiStates[getId(c)];
     return true;
   });
 
@@ -272,12 +302,25 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
       <div className="flex flex-1 min-h-0 font-[family-name:var(--font-geist-sans)]">
         {/* Sidebar */}
         <aside
+          ref={asideRef}
           className={`
-            flex flex-col border-r border-gray-100 bg-white
+            relative flex flex-col border-r border-gray-100 bg-white
             w-full md:w-[370px] md:shrink-0
             ${sidebarVisible ? "flex" : "hidden md:flex"}
           `}
         >
+          {/* Drag to resize (desktop). Double-click resets. */}
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize chat list"
+            title="Drag to resize · double-click to reset"
+            onPointerDown={startResize}
+            onDoubleClick={resetWidth}
+            className="hidden md:block absolute top-0 -right-1 z-20 h-full w-2 cursor-col-resize group"
+          >
+            <div className="mx-auto h-full w-px bg-transparent group-hover:bg-[#3B694C]/40 group-active:bg-[#3B694C]/60 transition-colors" />
+          </div>
           {/* Header */}
           <div className="flex items-center gap-2.5 px-4 pt-4 pb-3">
             <Image
@@ -288,9 +331,9 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
               className="shrink-0 [filter:brightness(0)_saturate(100%)_invert(33%)_sepia(50%)_saturate(600%)_hue-rotate(110deg)_brightness(90%)]"
             />
             <span className="font-bold text-[16px] text-gray-900">Inbox</span>
-            {totalUnread > 0 && (
+            {unreadChats > 0 && (
               <span className="text-[12px] font-semibold text-[#3B694C] bg-[#DCF2E3] px-2 py-0.5 rounded-full">
-                {totalUnread} new
+                {unreadChats} unread {unreadChats === 1 ? "chat" : "chats"}
               </span>
             )}
           </div>
@@ -313,7 +356,7 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
           </div>
 
           {/* Views (server-side) */}
-          <div role="tablist" aria-label="Inbox view" className="flex gap-4 px-4 mb-3 border-b border-gray-100 overflow-x-auto">
+          <div role="tablist" aria-label="Inbox view" className="flex gap-4 px-4 mb-3 border-b border-gray-100 overflow-x-auto [scrollbar-width:thin] [scrollbar-color:rgba(59,105,76,0.25)_transparent] [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-[#3B694C]/25 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[#3B694C]/50">
             {VIEWS.map((v) => {
               const active = view === v.value;
               const n = v.count && counts ? counts[v.count] : 0;
@@ -352,7 +395,7 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
                   onClick={() => setActiveFilter(f)}
                   className={`px-3 py-1.5 rounded-full text-[13px] border transition-colors cursor-pointer ${
                     active && f === "Window closed"
-                      ? "bg-red-50 border-red-400 text-red-500 font-semibold"
+                      ? "bg-red-50 border-red-400 text-red-600 font-semibold"
                       : active
                       ? "bg-[#DCF2E3] border-[#3B694C] text-[#3B694C] font-semibold"
                       : "border-gray-200 text-gray-500 hover:bg-gray-50"
@@ -396,21 +439,29 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
                 const displayName = customer?.name || customer?.phone || "Unknown";
                 const initials = getInitials(customer?.name || customer?.phone);
                 const windowClosed = isWindowClosed(c.lastCustomerMessageAt);
+                // Who spoke last, so the preview reads like WhatsApp's.
+                const lastBy = c.lastSenderType === "BOT" ? "⚡ " : c.lastSenderType === "AGENT" ? "You: " : "";
                 return (
                   <Link
                     key={cid || i}
                     href={`/chats/${cid}`}
-                    className={`flex gap-3 px-4 py-3 border-b border-l-[3px] transition-colors ${
-                      isActive
-                        ? "bg-[#DCF2E3] border-l-[#3B694C] border-b-gray-100"
-                        : windowClosed
-                        ? "bg-red-50 border-l-red-400 border-b-red-100 hover:bg-red-100"
-                        : "border-l-transparent border-b-gray-100 hover:border-l-[#3B694C] hover:bg-[#DCF2E3]"
+                    className={`group relative flex gap-3 px-4 py-2.5 border-b border-gray-100 transition-colors ${
+                      isActive ? "bg-[#EEF6F1]" : windowClosed ? "bg-red-50 hover:bg-red-100/70" : unread > 0 ? "bg-white hover:bg-[#F5FAF7]" : "bg-white hover:bg-gray-50"
                     }`}
                   >
+                    {/* Left rail: open chat or unread */}
+                    <span
+                      aria-hidden
+                      className={`absolute left-0 top-2 bottom-2 w-[3px] rounded-r-full ${
+                        isActive ? "bg-[#3B694C]" : windowClosed ? "bg-red-500" : unread > 0 ? "bg-[#3B694C]/70" : "bg-transparent"
+                      }`}
+                    />
+
                     {/* Avatar */}
-                    <div className="relative shrink-0 mt-0.5">
-                      <div className="w-11 h-11 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 font-semibold text-[12px]">
+                    <div className="shrink-0 mt-0.5">
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-[12px] ${
+                        unread > 0 || isActive ? "bg-[#DCF2E3] text-[#2f5840]" : "bg-[#EEF1EF] text-gray-500"
+                      }`}>
                         {initials}
                       </div>
                     </div>
@@ -418,41 +469,40 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
                     {/* Content */}
                     <div className="flex-1 min-w-0">
                       {/* Name + time */}
-                      <div className="flex justify-between items-baseline mb-0.5">
-                        <span className="font-semibold text-[14px] text-gray-900 truncate">
+                      <div className="flex justify-between items-baseline gap-2">
+                        <span className={`text-[14px] truncate ${unread > 0 ? "font-bold text-gray-900" : "font-semibold text-gray-800"}`}>
                           {displayName}
                         </span>
-                        <div className="flex items-center gap-1 ml-2 shrink-0">
-                          {windowClosed && <Clock className="w-3 h-3 text-red-400" />}
-                          <span className={`text-[11.5px] ${windowClosed ? "text-red-400 font-medium" : unread > 0 ? "text-[#3B694C] font-semibold" : "text-gray-400"}`}>
-                            {windowClosed
-                              ? (c.lastCustomerMessageAt ? formatTime(c.lastCustomerMessageAt) : "—")
-                              : (c.lastMessageAt ? formatTime(c.lastMessageAt) : "—")}
-                          </span>
-                        </div>
+                        <span className={`text-[11px] shrink-0 tabular-nums ${unread > 0 ? "text-[#3B694C] font-semibold" : "text-gray-400"}`}>
+                          {c.lastMessageAt ? formatTime(c.lastMessageAt) : "—"}
+                        </span>
                       </div>
 
-                      {/* Preview + unread badge */}
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-[13px] text-gray-400 truncate">
-                          {c.lastMessage}
+                      {/* Preview + unread count */}
+                      <div className="flex justify-between items-center gap-2 mt-0.5">
+                        <span className={`text-[13px] truncate ${unread > 0 ? "text-gray-700" : "text-gray-500"}`}>
+                          {lastBy && <span className="text-gray-400">{lastBy}</span>}
+                          {c.lastMessage || "No messages yet"}
                         </span>
                         {unread > 0 && (
-                          <span className="ml-2 shrink-0 min-w-[20px] h-5 px-1 rounded-full bg-[#3B694C] text-white text-[11px] font-semibold flex items-center justify-center">
-                            {unread}
+                          <span className="shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-[#3B694C] text-white text-[11px] font-semibold flex items-center justify-center tabular-nums">
+                            {unread > 99 ? "99+" : unread}
                           </span>
                         )}
                       </div>
 
-                      {/* AI AUTO-REPLY + toggle, then status and owner */}
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-semibold text-gray-400 tracking-widest uppercase">
-                          AI Auto-Reply
-                        </span>
-                        <Toggle on={!!aiStates[cid]} onToggle={() => toggleAi(cid)} />
-                        <span className="flex-1" />
+                      {/* State line: window, status, owner, AI */}
+                      <div className="flex items-center gap-1.5 mt-1.5 min-h-[20px]">
+                        {windowClosed && (
+                          <span
+                            title="24-hour window closed — only templates can be sent"
+                            className="inline-flex items-center gap-1 text-[10.5px] font-semibold text-red-700 bg-red-100 border border-red-300 rounded px-1.5 py-px"
+                          >
+                            <Clock className="w-3 h-3" /> Window closed
+                          </span>
+                        )}
                         {STATUS_CHIP[c.status] && (
-                          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${STATUS_CHIP[c.status]}`}>
+                          <span className={`text-[10.5px] font-semibold px-1.5 py-px rounded ${STATUS_CHIP[c.status]}`}>
                             {c.status === "PENDING" ? "Pending" : "Resolved"}
                           </span>
                         )}
@@ -466,7 +516,7 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
                             {getInitials(c.assignedAgent.name || c.assignedAgent.username)}
                           </span>
                         ) : c.status !== "RESOLVED" ? (
-                          <span className="text-[10px] font-medium text-amber-600">Unassigned</span>
+                          <span className="text-[10.5px] font-medium text-amber-600">Unassigned</span>
                         ) : null}
                       </div>
                     </div>

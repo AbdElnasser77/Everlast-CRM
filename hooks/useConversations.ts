@@ -7,11 +7,8 @@ import type { Conversation, ConversationView } from "@/types";
 
 const PAGE_SIZE = 50;
 
-// Single source of truth for ordering: unread always pins above read, and
-// each group stays newest-first. Applied at every point the list is built
-// (initial fetch, live refresh, load-more) so no code path can accidentally
-// skip it — sorting only in the render layer left a gap where load-more's
-// appended page could land unread items below already-read ones.
+// Single source of truth for ordering, applied at every point the list is
+// built (initial fetch, live refresh, load-more) so no code path can skip it.
 // WhatsApp order: most recent message first, nothing else. Unread chats used
 // to be pinned above the rest, which made a chat jump down the list the moment
 // you opened it (opening marks it read). Read state never moves a row now —
