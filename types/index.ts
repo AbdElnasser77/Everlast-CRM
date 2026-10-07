@@ -182,6 +182,8 @@ export interface StatsOverview {
   customers: { total: number; newLast7Days: number };
   agents: { online: number; onBreak: number; offline: number };
   unreadMessages: number;
+  // Conversations with at least one unread message (the Inbox badge).
+  unreadConversations: number;
 }
 
 export interface MessageChartDay {
@@ -621,11 +623,21 @@ export interface CampaignReply {
 // ─── Flows (campaign automations) ────────────────────────────────────────────
 // Mirrors everlast-nodejs-crm-api/utils/flowGraph.js, which validates on save.
 
-export type FlowNodeType = "trigger" | "message" | "list" | "carousel" | "question" | "tag" | "assign" | "end";
+export type FlowNodeType = "trigger" | "message" | "list" | "carousel" | "cards" | "question" | "tag" | "assign" | "end";
 export type FlowMediaType = "NONE" | "IMAGE" | "VIDEO" | "DOCUMENT";
 export type FlowInputType = "text" | "number" | "email" | "phone" | "date";
 
 export interface FlowOption { id: string; title: string; description?: string }
+
+/** A card in a Cards step (or a carousel template snapshot, which has only label + buttons). */
+export interface FlowCard {
+  id?: string;
+  label?: string;
+  mediaType?: "IMAGE" | "VIDEO";
+  mediaUrl?: string;
+  body?: string;
+  buttons: { id: string; title: string; type?: "QUICK_REPLY" | "URL"; url?: string }[];
+}
 
 export interface FlowNodeData {
   // trigger: the template its buttons were copied from
@@ -646,8 +658,9 @@ export interface FlowNodeData {
   variable?: string;
   inputType?: FlowInputType;
   errorText?: string;
-  // carousel: snapshot of the template's cards — label + quick replies
-  cards?: { label: string; buttons: { id: string; title: string }[] }[];
+  // carousel: snapshot of the template's cards (label + quick replies).
+  // cards: the product cards themselves (id, media, text, buttons).
+  cards?: FlowCard[];
   // tag
   tag?: string;
   // assign
@@ -698,3 +711,29 @@ export interface FlowRun {
 }
 
 export interface FlowValidationError { nodeId?: string; message: string }
+
+// ─── Contact panel (GET /api/conversations/:id/profile) ──────────────────────
+export interface ConversationProfile {
+  customer: Customer & { id: number };
+  conversation: {
+    id: number;
+    status: string;
+    createdAt: string;
+    lastCustomerMessageAt: string | null;
+    assignedAgent: { id: number; name: string | null; username: string } | null;
+    messageCount: number;
+  };
+  optOut: { optedOutAt: string; source: string } | null;
+  responses: {
+    id: number;
+    flow: { id: number; name: string };
+    status: FlowRunStatus;
+    startedAt: string;
+    completedAt: string | null;
+    answers: Record<string, string>;
+  }[];
+  media: { id: number; messageType: "IMAGE" | "VIDEO" | "DOCUMENT" | "AUDIO"; mediaUrl: string | null; content: string; senderType: string; createdAt: string }[];
+  mediaCounts: Partial<Record<"IMAGE" | "VIDEO" | "DOCUMENT" | "AUDIO", number>>;
+  links: { messageId: number; url: string; senderType: string; createdAt: string }[];
+  campaigns: { id: number; name: string; sentAt: string | null; repliedAt: string | null }[];
+}

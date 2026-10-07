@@ -230,6 +230,17 @@ export function apiGetMessages(conversationId: string, page = 1, limit = 200) {
   );
 }
 
+// Everything the chat's contact panel shows, in one request.
+export function apiGetConversationProfile(conversationId: string) {
+  return apiFetch<{ success: boolean; data: import("@/types").ConversationProfile }>(`/api/conversations/${conversationId}/profile`);
+}
+
+// Shows "typing…" to the customer (and blue-ticks their latest message).
+// The server throttles it; callers can fire it freely while the agent types.
+export function apiSendTyping(conversationId: string) {
+  return apiFetch<{ success: boolean; sent: boolean }>(`/api/conversations/${conversationId}/typing`, { method: "POST" });
+}
+
 export function apiMarkRead(conversationId: string) {
   return apiFetch<{ success: boolean }>(
     `/api/conversations/${conversationId}/read`,
@@ -635,7 +646,14 @@ export function apiCreateCampaign(data: {
 }
 
 // ── Flows (campaign automations) ────────────────────────────────────────────
-type FlowWrite = { name?: string; description?: string | null; isActive?: boolean; graph?: import("@/types").FlowGraph };
+type FlowWrite = {
+  name?: string;
+  description?: string | null;
+  isActive?: boolean;
+  graph?: import("@/types").FlowGraph;
+  // The version the editor loaded; a graph save based on an older one is refused (409 FLOW_CHANGED).
+  baseUpdatedAt?: string;
+};
 
 export function apiGetFlows() {
   return apiFetch<{ success: boolean; data: import("@/types").FlowSummary[] }>("/api/campaigns/flows");

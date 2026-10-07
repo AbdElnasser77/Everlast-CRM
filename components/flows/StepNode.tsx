@@ -2,7 +2,7 @@
 
 import { memo } from "react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
-import { AlertCircle, MessageSquare, List, HelpCircle, Tag, UserRound, Flag, Play, GalleryHorizontal } from "lucide-react";
+import { AlertCircle, MessageSquare, List, HelpCircle, Tag, UserRound, Flag, Play, GalleryHorizontal, Images } from "lucide-react";
 import type { FlowNodeData, FlowNodeType } from "@/types";
 import { STEP_META, outputsOf, previewOf } from "@/lib/flows";
 
@@ -14,6 +14,7 @@ const ICONS: Record<FlowNodeType, React.ComponentType<{ className?: string }>> =
   message: MessageSquare,
   list: List,
   carousel: GalleryHorizontal,
+  cards: Images,
   question: HelpCircle,
   tag: Tag,
   assign: UserRound,

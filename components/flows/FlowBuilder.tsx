@@ -16,7 +16,7 @@ import {
   type IsValidConnection,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Plus, Save, MessageSquare, List, HelpCircle, Tag, UserRound, Flag, FlaskConical, GalleryHorizontal } from "lucide-react";
+import { Plus, Save, MessageSquare, List, HelpCircle, Tag, UserRound, Flag, FlaskConical, GalleryHorizontal, Images } from "lucide-react";
 import type { AssignableUser, FlowGraph, FlowNodeData, FlowNodeType, FlowValidationError, Template } from "@/types";
 import { ADDABLE_STEPS, STEP_META, defaultData, outputsOf, uid } from "@/lib/flows";
 import { StepNode, type StepFlowNode } from "./StepNode";
@@ -28,6 +28,7 @@ const nodeTypes = {
   message: StepNode,
   list: StepNode,
   carousel: StepNode,
+  cards: StepNode,
   question: StepNode,
   tag: StepNode,
   assign: StepNode,
@@ -38,6 +39,7 @@ const PALETTE_ICONS: Partial<Record<FlowNodeType, React.ComponentType<{ classNam
   message: MessageSquare,
   list: List,
   carousel: GalleryHorizontal,
+  cards: Images,
   question: HelpCircle,
   tag: Tag,
   assign: UserRound,

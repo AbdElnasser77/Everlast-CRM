@@ -25,7 +25,8 @@ export const STEP_META: Record<FlowNodeType, StepMeta> = {
   trigger: { label: "Start", hint: "When the customer taps a button on the campaign message", color: "#3B694C" },
   message: { label: "Message", hint: "Send text, an image or video, with up to 3 buttons", color: "#4F72A8" },
   list: { label: "List", hint: "A menu of up to 10 options", color: "#8C7BC0" },
-  carousel: { label: "Carousel", hint: "Swipeable cards from an approved carousel template", color: "#0E8C7A" },
+  carousel: { label: "Carousel template", hint: "An approved carousel template (paid per send)", color: "#0E8C7A" },
+  cards: { label: "Product cards", hint: "Swipeable cards with images and buttons — free in the chat window", color: "#D9466F" },
   question: { label: "Question", hint: "Ask something and save the answer (e.g. a booking date)", color: "#E2A33B" },
   tag: { label: "Tag", hint: "Add a tag to the customer", color: "#4AA7C2" },
   assign: { label: "Hand to agent", hint: "Assign the chat to a person — automation stops", color: "#C8475B" },
@@ -33,7 +34,7 @@ export const STEP_META: Record<FlowNodeType, StepMeta> = {
 };
 
 /** Step types offered in the palette (the Start step is created with the flow). */
-export const ADDABLE_STEPS: FlowNodeType[] = ["message", "list", "carousel", "question", "tag", "assign", "end"];
+export const ADDABLE_STEPS: FlowNodeType[] = ["message", "list", "cards", "carousel", "question", "tag", "assign", "end"];
 
 export const RUN_STATUS_META: Record<FlowRunStatus, { label: string; cls: string }> = {
   ACTIVE: { label: "In progress", cls: "bg-blue-50 text-blue-700" },
@@ -56,6 +57,8 @@ export function defaultData(type: FlowNodeType): FlowNodeData {
       return { text: "", buttonLabel: "View options", rows: [{ id: uid("r"), title: "" }] };
     case "carousel":
       return { templateId: null, cards: [] };
+    case "cards":
+      return { text: "", cards: [newFlowCard(2), newFlowCard(2)] };
     case "question":
       return { text: "", inputType: "text", variable: "" };
     case "tag":
@@ -80,7 +83,15 @@ export function outputsOf(type: FlowNodeType, data: FlowNodeData): [string, stri
       return (data.rows || []).map((r): [string, string] => [`row:${r.id}`, r.title || "Option"]);
     case "carousel": {
       const taps = (data.cards || []).flatMap((c, i) =>
-        c.buttons.map((b): [string, string] => [`card:${i}:${b.id}`, `${c.label} · ${b.title}`]),
+        c.buttons.map((b): [string, string] => [`card:${i}:${b.id}`, `${c.label ?? `Card ${i + 1}`} · ${b.title}`]),
+      );
+      return taps.length ? taps : [["next", "Then"]];
+    }
+    case "cards": {
+      const taps = (data.cards || []).flatMap((c, i) =>
+        c.buttons
+          .filter((b) => b.type !== "URL")
+          .map((b): [string, string] => [`card:${c.id}:${b.id}`, `${flowCardLabel(c, i)} · ${b.title || "Button"}`]),
       );
       return taps.length ? taps : [["next", "Then"]];
     }
@@ -110,6 +121,8 @@ export function previewOf(node: { type: FlowNodeType; data: FlowNodeData }): str
       return d.text || "No text yet";
     case "carousel":
       return d.cards?.length ? `${d.cards.length} cards: ${d.cards.map((c) => c.label).join(", ")}` : "Choose a carousel template";
+    case "cards":
+      return d.cards?.length ? `${d.cards.length} cards: ${d.cards.map((c, i) => flowCardLabel(c, i)).join(", ")}` : "Add some cards";
     case "tag":
       return d.tag ? `Adds “${d.tag}”` : "No tag yet";
     case "assign":
@@ -150,6 +163,28 @@ export function templateStartButtons(t: Pick<Template, "buttons" | "cards">): Fl
   return (t.buttons || [])
     .filter((b) => (b.type || "QUICK_REPLY") === "QUICK_REPLY")
     .map((b) => ({ id: uid("b"), title: b.title }));
+}
+
+// ── Product cards (interactive carousel) ──────────────────────────────────
+export const CARD_LIMITS = { min: 2, max: 10, body: 160, lineBreaks: 2, button: 20 };
+
+/** A new card with `quickReplies` quick-reply buttons (or one link button when 0). */
+export function newFlowCard(quickReplies: number): import("@/types").FlowCard {
+  return {
+    id: uid("card"),
+    mediaType: "IMAGE",
+    mediaUrl: "",
+    body: "",
+    buttons: quickReplies > 0
+      ? Array.from({ length: quickReplies }, (_, j) => ({ id: `b${j}`, type: "QUICK_REPLY" as const, title: j === 0 ? "View offer" : "Book now" }))
+      : [{ id: "b0", type: "URL" as const, title: "Shop now", url: "" }],
+  };
+}
+
+/** The card's name: its first line without WhatsApp formatting. */
+export function flowCardLabel(c: import("@/types").FlowCard, i: number): string {
+  const first = (c.body || "").split("\n")[0].replace(/[*_~`]/g, "").trim();
+  return first || c.label || `Card ${i + 1}`;
 }
 
 export const VARIABLE_RE = /^[a-z_][a-z0-9_]{0,39}$/;

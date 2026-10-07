@@ -3,6 +3,7 @@
 import { Plus, Trash2, X } from "lucide-react";
 import type { AssignableUser, FlowInputType, FlowMediaType, FlowNodeData, FlowNodeType, FlowOption, Template } from "@/types";
 import { BUILT_IN_VARIABLES, FLOW_LIMITS, STEP_META, VARIABLE_RE, carouselSnapshot, templateStartButtons, uid } from "@/lib/flows";
+import { CardsEditor } from "./CardsEditor";
 
 const inputCls =
   "w-full text-[13px] border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#3B694C] focus:ring-2 focus:ring-[#3B694C]/10 bg-white";
@@ -303,6 +304,29 @@ export function StepEditor({ type, data, problems, onChange, onDelete, templates
               value={data.variable}
               onChange={(variable) => set({ variable })}
               help="Stores the chosen option in the responses, e.g. treatment = IV Drip."
+            />
+          </>
+        )}
+
+        {type === "cards" && (
+          <>
+            <Field label="Message above the cards" aside={<Counter value={data.text} max={FLOW_LIMITS.body} />}>
+              <textarea
+                rows={3}
+                className={`${inputCls} resize-y`}
+                value={data.text || ""}
+                placeholder="✨ Discover our Skin & Rejuvenation offers — swipe to see them all 👉"
+                onChange={(e) => set({ text: e.target.value })}
+              />
+              {textHelp}
+            </Field>
+            <Field label="Cards">
+              <CardsEditor cards={data.cards || []} onChange={(cards) => set({ cards })} />
+            </Field>
+            <VariableField
+              value={data.variable}
+              onChange={(variable) => set({ variable })}
+              help="Stores which product was tapped (its first line), e.g. offer = Ulthera Skin Tightening."
             />
           </>
         )}

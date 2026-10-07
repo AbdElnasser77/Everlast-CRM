@@ -78,6 +78,7 @@ export default function FlowEditorPage({ params }: { params: Promise<{ id: strin
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
 
+  const baseUpdatedAt = flow?.updatedAt;
   const save = useCallback(async (g: FlowGraph): Promise<boolean> => {
     if (!name.trim()) {
       error("Give the flow a name first");
@@ -86,7 +87,9 @@ export default function FlowEditorPage({ params }: { params: Promise<{ id: strin
     setSaving(true);
     try {
       if (flowId) {
-        const res = await apiUpdateFlow(flowId, { name, description, graph: g });
+        // baseUpdatedAt: the server refuses this save if the flow changed
+        // elsewhere since this tab loaded it, instead of overwriting it.
+        const res = await apiUpdateFlow(flowId, { name, description, graph: g, baseUpdatedAt });
         setFlow((f) => (f ? { ...f, ...res.data } : f));
         setServerErrors([]);
         setDirty(false);
@@ -100,6 +103,11 @@ export default function FlowEditorPage({ params }: { params: Promise<{ id: strin
       router.replace(`/campaigns/flows/${res.data.id}`);
       return true;
     } catch (err) {
+      if (err instanceof ApiError && err.code === "FLOW_CHANGED") {
+        setServerErrors([{ message: err.message }]);
+        error(err.message);
+        return false;
+      }
       const list = err instanceof ApiError && Array.isArray(err.details?.errors) ? (err.details.errors as FlowValidationError[]) : [];
       setServerErrors(list.length ? list : [{ message: err instanceof Error ? err.message : "Couldn't save" }]);
       error(list.length ? `The flow has ${list.length} problem${list.length > 1 ? "s" : ""} — they're marked on the steps` : err instanceof Error ? err.message : "Couldn't save");
@@ -107,13 +115,14 @@ export default function FlowEditorPage({ params }: { params: Promise<{ id: strin
     } finally {
       setSaving(false);
     }
-  }, [flowId, name, description, router, success, error]);
+  }, [flowId, baseUpdatedAt, name, description, router, success, error]);
 
   const toggleActive = async () => {
     if (!flow) return;
     try {
       const res = await apiUpdateFlow(flow.id, { isActive: !flow.isActive });
-      setFlow({ ...flow, isActive: res.data.isActive });
+      // Keep the new updatedAt too, or the next save would look outdated.
+      setFlow({ ...flow, isActive: res.data.isActive, updatedAt: res.data.updatedAt });
     } catch (err) {
       error(err instanceof Error ? err.message : "Couldn't update the flow");
     }

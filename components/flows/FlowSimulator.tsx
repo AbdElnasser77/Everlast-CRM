@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { RotateCcw, Send, X } from "lucide-react";
 import { parsePhoneNumberFromString } from "libphonenumber-js";
 import type { FlowGraph, FlowNode, FlowOption, Template } from "@/types";
+import { flowCardLabel } from "@/lib/flows";
+import { WaText } from "@/components/templates/shared";
 
 // A dry run of the flow being edited — unsaved changes included. It walks the
 // graph with the same rules as the server's engine (utils/flowEngine.js) but
@@ -11,7 +13,7 @@ import type { FlowGraph, FlowNode, FlowOption, Template } from "@/types";
 // every branch before a real campaign goes out.
 
 type Item =
-  | { kind: "bot"; text?: string; mediaType?: string; mediaUrl?: string; footer?: string; header?: string; buttons?: FlowOption[]; list?: { label: string; rows: FlowOption[] }; cards?: SimCard[] }
+  | { kind: "bot"; nodeId?: string; text?: string; mediaType?: string; mediaUrl?: string; footer?: string; header?: string; buttons?: FlowOption[]; list?: { label: string; rows: FlowOption[] }; cards?: SimCard[] }
   | { kind: "user"; text: string }
   | { kind: "event"; text: string; tone?: "info" | "warn" | "end" };
 
@@ -44,7 +46,14 @@ function interpolate(text: string | undefined, name: string, answers: Record<str
     phone: "+971500000000",
     ...answers,
   };
-  return text.replace(/\{\{\s*([a-z_][a-z0-9_]*)\s*\}\}/gi, (full, k: string) => vars[k.toLowerCase()] ?? full);
+  return text.replace(/\{\{\s*([a-z_][a-z0-9_]*)\s*\}\}/gi, (full, k: string) => {
+    const v = vars[k.toLowerCase()];
+    if (v === undefined) return full;
+    // Same as the server: a collected date reads as "15 Oct 2026".
+    return /^\d{4}-\d{2}-\d{2}$/.test(v)
+      ? new Date(`${v}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })
+      : v;
+  });
 }
 
 // Same rules as the server's parseAnswer.
@@ -103,6 +112,9 @@ export function FlowSimulator({
   const [waiting, setWaiting] = useState<Waiting>({ kind: "start" });
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [input, setInput] = useState("");
+  // After a hand-off the bot stays out: old buttons go to the agent.
+  const [handedOff, setHandedOff] = useState(false);
+  const handedOffRef = useRef(false); // set while walking, applied in settle()
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const trigger = graph.nodes.find((n) => n.type === "trigger");
@@ -130,20 +142,20 @@ export function FlowSimulator({
       const say = (t?: string) => interpolate(t, name, ans);
       switch (n.type) {
         case "message": {
-          out.push({ kind: "bot", text: say(d.text), mediaType: d.mediaType, mediaUrl: d.mediaUrl, footer: d.footer, buttons: d.buttons });
+          out.push({ kind: "bot", nodeId: n.id, text: say(d.text), mediaType: d.mediaType, mediaUrl: d.mediaUrl, footer: d.footer, buttons: d.buttons });
           if (d.buttons && d.buttons.length) return { kind: "buttons", nodeId: n.id, options: d.buttons };
           id = next(n.id, "next");
           break;
         }
         case "list":
-          out.push({ kind: "bot", text: say(d.text), header: d.header ? say(d.header) : undefined, footer: d.footer, list: { label: d.buttonLabel || "Options", rows: d.rows || [] } });
+          out.push({ kind: "bot", nodeId: n.id, text: say(d.text), header: d.header ? say(d.header) : undefined, footer: d.footer, list: { label: d.buttonLabel || "Options", rows: d.rows || [] } });
           return { kind: "list", nodeId: n.id, options: d.rows || [], label: d.buttonLabel || "Options" };
         case "carousel": {
           const tpl = templates.find((t) => t.id === d.templateId);
           const cards: SimCard[] = (d.cards || []).map((c, ci) => {
             const real = tpl?.cards?.[ci];
             return {
-              label: c.label,
+              label: c.label ?? `Card ${ci + 1}`,
               body: real?.body,
               mediaType: real?.mediaType,
               mediaUrl: real?.mediaUrl,
@@ -155,10 +167,24 @@ export function FlowSimulator({
             out.push({ kind: "event", text: "This Carousel step has no template chosen.", tone: "warn" });
             return null;
           }
-          out.push({ kind: "bot", text: tpl ? interpolate(tpl.body, name, ans) : undefined, cards });
+          out.push({ kind: "bot", nodeId: n.id, text: tpl ? interpolate(tpl.body, name, ans) : undefined, cards });
           if (tpl && tpl.approvalStatus !== "APPROVED") {
             out.push({ kind: "event", text: `“${tpl.name}” isn't approved by Meta yet — for real customers this step would fail until it is.`, tone: "warn" });
           }
+          if (cards.some((c) => c.taps.length)) return { kind: "carousel", nodeId: n.id };
+          id = next(n.id, "next");
+          break;
+        }
+        case "cards": {
+          const cards: SimCard[] = (d.cards || []).map((c, ci) => ({
+            label: flowCardLabel(c, ci),
+            body: c.body ? say(c.body) : undefined,
+            mediaType: c.mediaType,
+            mediaUrl: c.mediaUrl,
+            taps: c.buttons.filter((b) => b.type !== "URL").map((b) => ({ id: `${c.id}.${b.id}`, title: b.title })),
+            links: c.buttons.filter((b) => b.type === "URL").map((b) => ({ title: b.title, url: b.url })),
+          }));
+          out.push({ kind: "bot", nodeId: n.id, text: say(d.text), cards });
           if (cards.some((c) => c.taps.length)) return { kind: "carousel", nodeId: n.id };
           id = next(n.id, "next");
           break;
@@ -172,7 +198,8 @@ export function FlowSimulator({
           break;
         case "assign":
           if (d.text) out.push({ kind: "bot", text: say(d.text) });
-          out.push({ kind: "event", text: "Handed to an agent — the chat would now appear in their inbox. Automation stops.", tone: "end" });
+          out.push({ kind: "event", text: "Handed to an agent — the chat would now appear in their inbox. Automation stops; older buttons now go to the agent too.", tone: "end" });
+          handedOffRef.current = true;
           return null;
         case "end":
           if (d.text) out.push({ kind: "bot", text: say(d.text) });
@@ -187,6 +214,10 @@ export function FlowSimulator({
   }
 
   function settle(out: Item[], w: Waiting, ans: Record<string, string>) {
+    if (handedOffRef.current) {
+      handedOffRef.current = false;
+      setHandedOff(true);
+    }
     setItems((prev) => [...prev, ...out]);
     setWaiting(w);
     setAnswers(ans);
@@ -201,32 +232,49 @@ export function FlowSimulator({
       return settle(out, null, answers);
     }
     out.push({ kind: "event", text: option ? `Flow started from “${option.title}”` : "Flow started from a typed reply" });
+    setHandedOff(false);
     const ans = {};
     settle(out, walk(target, ans, out), ans);
   }
 
-  function chooseCard(option: FlowOption, cardLabel: string) {
-    if (!waiting || waiting.kind !== "carousel") return;
-    const n = node(waiting.nodeId);
+  // A tap on an EARLIER message: jump there (same visit), or start a fresh
+  // visit from it if this one ended. Never after a hand-off.
+  function jumpNote(nodeId: string, out: Item[]) {
+    if (waiting && waiting.kind !== "start" && waiting.nodeId === nodeId) return;
+    out.push({
+      kind: "event",
+      text: waiting ? "Tapped an earlier message — jumping there." : "Tapped an earlier message after the visit ended — starting a fresh visit from it.",
+    });
+  }
+
+  function chooseCard(option: FlowOption, cardLabel: string, nodeId: string) {
+    if (handedOff) return;
+    const n = node(nodeId);
     if (!n) return;
-    const [ci, bid] = option.id.split(".");
+    const dot = option.id.lastIndexOf(".");
+    const ci = option.id.slice(0, dot);
+    const bid = option.id.slice(dot + 1);
     const label = `${cardLabel} · ${option.title}`;
+    // Product cards save the product; a carousel template saves card · button.
+    const saved = n.type === "cards" ? cardLabel : label;
     const ans = { ...answers };
-    if (n.data.variable) ans[n.data.variable] = label;
+    if (n.data.variable) ans[n.data.variable] = saved;
     const out: Item[] = [{ kind: "user", text: label }];
-    if (n.data.variable) out.push({ kind: "event", text: `Saved ${n.data.variable} = “${label}”` });
+    jumpNote(n.id, out);
+    if (n.data.variable) out.push({ kind: "event", text: `Saved ${n.data.variable} = “${saved}”` });
     settle(out, walk(next(n.id, `card:${ci}:${bid}`), ans, out), ans);
   }
 
-  function choose(option: FlowOption) {
-    if (!waiting || (waiting.kind !== "buttons" && waiting.kind !== "list")) return;
-    const n = node(waiting.nodeId);
+  function choose(option: FlowOption, nodeId: string) {
+    if (handedOff) return;
+    const n = node(nodeId);
     if (!n) return;
     const ans = { ...answers };
     if (n.data.variable) ans[n.data.variable] = option.title;
     const out: Item[] = [{ kind: "user", text: option.title }];
+    jumpNote(n.id, out);
     if (n.data.variable) out.push({ kind: "event", text: `Saved ${n.data.variable} = “${option.title}”` });
-    const handle = `${waiting.kind === "list" ? "row" : "btn"}:${option.id}`;
+    const handle = `${n.type === "list" ? "row" : "btn"}:${option.id}`;
     settle(out, walk(next(n.id, handle), ans, out), ans);
   }
 
@@ -262,6 +310,7 @@ export function FlowSimulator({
     setAnswers({});
     setInput("");
     setWaiting({ kind: "start" });
+    setHandedOff(false);
     onActiveNode?.(null);
   }
 
@@ -329,7 +378,7 @@ export function FlowSimulator({
               </div>
             );
           }
-          const active = i === items.length - 1 || items.slice(i + 1).every((x) => x.kind === "event");
+          const nodeId = it.nodeId || "";
           return (
             <div key={i} className="max-w-[85%]">
               <div className="bg-white rounded-xl rounded-tl-sm px-3 py-2 shadow-sm">
@@ -340,15 +389,15 @@ export function FlowSimulator({
                     : <div className="bg-gray-100 rounded-lg px-2 py-3 mb-1.5 text-[12px] text-gray-500">{it.mediaType === "VIDEO" ? "▶ Video" : "📄 Document"}</div>
                 )}
                 {it.header && <p className="text-[13px] font-bold text-gray-900 mb-0.5">{it.header}</p>}
-                {it.text ? <p className="text-[13px] text-gray-800 whitespace-pre-wrap break-words">{it.text}</p> : null}
+                {it.text ? <p className="text-[13px] text-gray-800 whitespace-pre-wrap break-words"><WaText text={it.text} /></p> : null}
                 {it.footer && <p className="text-[11px] text-gray-400 mt-1">{it.footer}</p>}
               </div>
               {it.buttons?.map((b) => (
                 <button
                   key={b.id}
                   type="button"
-                  disabled={!active || waiting?.kind !== "buttons"}
-                  onClick={() => choose(b)}
+                  disabled={handedOff}
+                  onClick={() => choose(b, nodeId)}
                   className="mt-1 w-full bg-white rounded-xl py-2 text-[13px] font-medium text-[#3B694C] shadow-sm enabled:hover:bg-[#F5FAF7] disabled:opacity-50"
                 >
                   {b.title || "Button"}
@@ -364,14 +413,14 @@ export function FlowSimulator({
                           // eslint-disable-next-line @next/next/no-img-element
                           ? <img src={c.mediaUrl} alt="" className="w-full h-24 object-cover" />
                           : <div className="h-24 bg-gray-100" />}
-                      <p className="px-2.5 pt-2 text-[12px] text-gray-800 whitespace-pre-wrap line-clamp-4">{c.body || c.label}</p>
+                      <p className="px-2.5 pt-2 text-[12px] text-gray-800 whitespace-pre-wrap line-clamp-4"><WaText text={c.body || c.label} /></p>
                       <div className="p-1.5 space-y-1">
                         {c.taps.map((b) => (
                           <button
                             key={b.id}
                             type="button"
-                            disabled={!active || waiting?.kind !== "carousel"}
-                            onClick={() => chooseCard(b, c.label)}
+                            disabled={handedOff}
+                            onClick={() => chooseCard(b, c.label, nodeId)}
                             className="w-full border border-gray-100 rounded-lg py-1.5 text-[12px] font-medium text-[#3B694C] enabled:hover:bg-[#F5FAF7] disabled:opacity-50"
                           >
                             {b.title}
@@ -394,8 +443,8 @@ export function FlowSimulator({
                     <button
                       key={r.id}
                       type="button"
-                      disabled={!active || waiting?.kind !== "list"}
-                      onClick={() => choose(r)}
+                      disabled={handedOff}
+                      onClick={() => choose(r, nodeId)}
                       className="w-full text-left px-3 py-2 border-b border-gray-50 last:border-0 enabled:hover:bg-[#F5FAF7] disabled:opacity-50"
                     >
                       <span className="block text-[13px] text-gray-800">{r.title || "Option"}</span>

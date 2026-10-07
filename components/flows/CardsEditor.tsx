@@ -1,0 +1,206 @@
+"use client";
+
+import { useRef, useState } from "react";
+import { ChevronDown, ChevronUp, Image as ImageIcon, Plus, Trash2, Upload, Video, X } from "lucide-react";
+import { apiUploadToMediaLibrary } from "@/lib/api";
+import MediaPicker, { ACCEPT_BY_TYPE } from "@/components/MediaPicker";
+import type { FlowCard, MediaAsset } from "@/types";
+import { CARD_LIMITS, flowCardLabel, newFlowCard } from "@/lib/flows";
+
+// WhatsApp's interactive carousel rules (validated again on the server):
+// 2–10 cards; every card the same buttons — 1 or 2 quick replies, or a single
+// link; card text ≤160 characters with ≤2 line breaks; JPEG/PNG images.
+type Layout = "QR1" | "QR2" | "URL";
+const LAYOUTS: { value: Layout; label: string }[] = [
+  { value: "QR2", label: "2 buttons (e.g. View offer + Book now)" },
+  { value: "QR1", label: "1 button" },
+  { value: "URL", label: "A link (opens your website)" },
+];
+
+const layoutOf = (cards: FlowCard[]): Layout => {
+  const b = cards[0]?.buttons || [];
+  return b[0]?.type === "URL" ? "URL" : b.length >= 2 ? "QR2" : "QR1";
+};
+
+function withLayout(card: FlowCard, layout: Layout, template?: FlowCard): FlowCard {
+  if (layout === "URL") {
+    const old = card.buttons.find((b) => b.type === "URL");
+    return { ...card, buttons: [{ id: "b0", type: "URL", title: old?.title ?? template?.buttons[0]?.title ?? "Shop now", url: old?.url ?? "" }] };
+  }
+  const n = layout === "QR2" ? 2 : 1;
+  const qr = card.buttons.filter((b) => b.type !== "URL");
+  return {
+    ...card,
+    buttons: Array.from({ length: n }, (_, j) => ({
+      id: `b${j}`,
+      type: "QUICK_REPLY" as const,
+      title: qr[j]?.title ?? template?.buttons[j]?.title ?? (j === 0 ? "View offer" : "Book now"),
+    })),
+  };
+}
+
+const inputCls = "w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-[13px] text-gray-800 outline-none focus:border-[#3B694C] bg-white";
+
+export function CardsEditor({ cards, onChange }: { cards: FlowCard[]; onChange: (cards: FlowCard[]) => void }) {
+  const layout = layoutOf(cards);
+  const [open, setOpen] = useState<number | null>(0);
+  const [pickerFor, setPickerFor] = useState<number | null>(null);
+  const [uploadingFor, setUploadingFor] = useState<number | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const uploadTarget = useRef<number | null>(null);
+
+  const update = (i: number, patch: Partial<FlowCard>) => onChange(cards.map((c, j) => (j === i ? { ...c, ...patch } : c)));
+  const setButtonTitle = (i: number, j: number, title: string) =>
+    update(i, { buttons: cards[i].buttons.map((b, k) => (k === j ? { ...b, title } : b)) });
+  const setButtonUrl = (i: number, url: string) =>
+    update(i, { buttons: cards[i].buttons.map((b) => (b.type === "URL" ? { ...b, url } : b)) });
+  const move = (i: number, d: -1 | 1) => {
+    const next = [...cards];
+    [next[i], next[i + d]] = [next[i + d], next[i]];
+    onChange(next);
+    setOpen(i + d);
+  };
+
+  async function upload(file: File | undefined) {
+    const i = uploadTarget.current;
+    if (!file || i === null) return;
+    setUploadingFor(i);
+    setUploadError(null);
+    try {
+      const res = await apiUploadToMediaLibrary(file, file.name);
+      update(i, { mediaUrl: res.data.url, mediaType: file.type.startsWith("video") ? "VIDEO" : "IMAGE" });
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploadingFor(null);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <span className="block text-[11px] font-bold tracking-wider uppercase text-gray-400 mb-1.5">Buttons on every card</span>
+        <select
+          className={inputCls}
+          value={layout}
+          onChange={(e) => onChange(cards.map((c) => withLayout(c, e.target.value as Layout, cards[0])))}
+        >
+          {LAYOUTS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
+        </select>
+        <p className="text-[11px] text-gray-400 mt-1">Every card gets the same buttons — WhatsApp&apos;s rule. Each button gets its own branch.</p>
+      </div>
+
+      {cards.map((c, i) => {
+        const isOpen = open === i;
+        const breaks = ((c.body || "").match(/\n/g) || []).length;
+        return (
+          <div key={c.id ?? i} className="border border-gray-200 rounded-xl overflow-hidden">
+            <button type="button" onClick={() => setOpen(isOpen ? null : i)} className="w-full flex items-center gap-2 px-2.5 py-2 bg-gray-50/70 text-left">
+              <span className="w-9 h-9 rounded-md overflow-hidden bg-gray-100 shrink-0 flex items-center justify-center">
+                {c.mediaUrl && c.mediaType !== "VIDEO" ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={c.mediaUrl} alt="" className="w-full h-full object-cover" />
+                ) : c.mediaUrl ? <Video className="w-4 h-4 text-gray-400" /> : <ImageIcon className="w-4 h-4 text-gray-300" />}
+              </span>
+              <span className="flex-1 min-w-0 text-[12px] font-semibold text-gray-700 truncate">{i + 1}. {flowCardLabel(c, i)}</span>
+              {isOpen ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+            </button>
+
+            {isOpen && (
+              <div className="p-2.5 space-y-2.5 border-t border-gray-100">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button type="button" onClick={() => setPickerFor(i)} className="flex items-center gap-1 text-[12px] font-semibold text-[#3B694C] border border-[#3B694C]/30 bg-[#EEF6F1] px-2.5 py-1.5 rounded-lg hover:bg-[#DCF2E3]">
+                    <ImageIcon className="w-3.5 h-3.5" /> Library
+                  </button>
+                  <button
+                    type="button"
+                    disabled={uploadingFor !== null}
+                    onClick={() => { uploadTarget.current = i; fileRef.current?.click(); }}
+                    className="flex items-center gap-1 text-[12px] font-semibold text-gray-600 border border-gray-200 px-2.5 py-1.5 rounded-lg hover:bg-gray-50 disabled:opacity-60"
+                  >
+                    <Upload className="w-3.5 h-3.5" /> {uploadingFor === i ? "Uploading…" : "Upload"}
+                  </button>
+                  {c.mediaUrl && (
+                    <button type="button" onClick={() => update(i, { mediaUrl: "" })} className="flex items-center gap-1 text-[12px] text-gray-400 hover:text-red-500 px-1">
+                      <X className="w-3.5 h-3.5" /> Remove image
+                    </button>
+                  )}
+                </div>
+
+                <div>
+                  <textarea
+                    rows={3}
+                    value={c.body || ""}
+                    onChange={(e) => update(i, { body: e.target.value })}
+                    placeholder={"*Ulthera Skin Tightening*\n~3,500 AED~ *From 2,911 AED*"}
+                    className={`${inputCls} resize-none font-normal`}
+                  />
+                  <div className="flex justify-between text-[11px] mt-0.5">
+                    <span className={breaks > CARD_LIMITS.lineBreaks ? "text-red-500" : "text-gray-400"}>
+                      {breaks}/{CARD_LIMITS.lineBreaks} line breaks · *bold* ~strike~
+                    </span>
+                    <span className={(c.body || "").length > CARD_LIMITS.body ? "text-red-500 font-semibold" : "text-gray-400"}>
+                      {(c.body || "").length}/{CARD_LIMITS.body}
+                    </span>
+                  </div>
+                </div>
+
+                {c.buttons.map((b, j) => (
+                  <div key={b.id} className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-semibold text-gray-500 w-16 shrink-0">{b.type === "URL" ? "🔗 Link" : `Button ${j + 1}`}</span>
+                      <input value={b.title} maxLength={CARD_LIMITS.button} onChange={(e) => setButtonTitle(i, j, e.target.value)} className={inputCls} />
+                    </div>
+                    {b.type === "URL" && (
+                      <input value={b.url || ""} onChange={(e) => setButtonUrl(i, e.target.value)} placeholder="https://everlastwellness.store/…" className={`${inputCls} font-mono`} />
+                    )}
+                  </div>
+                ))}
+
+                <div className="flex items-center gap-1 pt-1">
+                  <button type="button" disabled={i === 0} onClick={() => move(i, -1)} className="text-[12px] text-gray-500 px-2 py-1 rounded-md hover:bg-gray-50 disabled:opacity-30">↑ Move up</button>
+                  <button type="button" disabled={i === cards.length - 1} onClick={() => move(i, 1)} className="text-[12px] text-gray-500 px-2 py-1 rounded-md hover:bg-gray-50 disabled:opacity-30">↓ Move down</button>
+                  <button
+                    type="button"
+                    disabled={cards.length <= CARD_LIMITS.min}
+                    onClick={() => { onChange(cards.filter((_, k) => k !== i)); setOpen(null); }}
+                    className="ml-auto flex items-center gap-1 text-[12px] text-gray-400 hover:text-red-500 px-2 py-1 rounded-md disabled:opacity-30"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Remove card
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {cards.length < CARD_LIMITS.max && (
+        <button
+          type="button"
+          onClick={() => { onChange([...cards, withLayout(newFlowCard(2), layout, cards[0])]); setOpen(cards.length); }}
+          className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-[#3B694C] hover:underline"
+        >
+          <Plus className="w-3.5 h-3.5" /> Add card ({cards.length}/{CARD_LIMITS.max})
+        </button>
+      )}
+      {uploadError && <p className="text-[12px] text-red-600">{uploadError}</p>}
+
+      <input
+        ref={fileRef}
+        type="file"
+        accept={`${ACCEPT_BY_TYPE.IMAGE},${ACCEPT_BY_TYPE.VIDEO}`}
+        className="hidden"
+        onChange={(e) => { upload(e.target.files?.[0]); e.target.value = ""; }}
+      />
+      {pickerFor !== null && (
+        <MediaPicker
+          mediaType="IMAGE"
+          onCancel={() => setPickerFor(null)}
+          onSelect={(asset: MediaAsset) => { update(pickerFor, { mediaUrl: asset.url, mediaType: "IMAGE" }); setPickerFor(null); }}
+        />
+      )}
+    </div>
+  );
+}
