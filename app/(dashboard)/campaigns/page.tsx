@@ -15,6 +15,9 @@ import {
   Loader2,
   Trash2,
   Workflow,
+  Hourglass,
+  Send,
+  AlertCircle,
 } from "lucide-react";
 import type { Campaign, CampaignCategory } from "@/types";
 import {
@@ -24,7 +27,9 @@ import {
   apiPauseCampaign,
   apiResumeCampaign,
   apiBulkDeleteCampaigns,
+  apiSubmitCampaign,
   } from "@/lib/api";
+import { useCampaignReview } from "@/components/CampaignApprovalDialogs";
 import { getSocket } from "@/lib/socket";
 import { useToast } from "@/components/ui/toast";
 import { useCurrentUser } from "@/components/CurrentUserProvider";
@@ -61,14 +66,60 @@ function initials(name: string | null): string {
   return name.split(" ").slice(0, 2).map((w) => w[0]).join("").toUpperCase();
 }
 
+function formatClock(iso: string): string {
+  return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+}
+
+function personName(p: { name: string | null; username: string } | null | undefined): string {
+  return p ? p.name || p.username : "someone";
+}
+
 const STAT_COLORS: Record<string, string> = {
   COMPLETED: "bg-green-50 text-green-700",
   RUNNING: "bg-blue-50 text-blue-700",
   PAUSED: "bg-orange-50 text-orange-600",
   SCHEDULED: "bg-amber-50 text-amber-700",
+  PENDING_APPROVAL: "bg-amber-50 text-amber-700",
   CANCELLED: "bg-gray-100 text-gray-500",
   DRAFT: "bg-gray-100 text-gray-500",
 };
+
+// The short label on a paused card. RATE_LIMIT and CONNECTION resume by
+// themselves at resumeAt; the rest wait for a person.
+const PAUSE_LABELS: Partial<Record<NonNullable<Campaign["pauseReason"]>, string>> = {
+  QUIET_HOURS: "Quiet hours",
+  RATE_LIMIT: "Slowed down",
+  CONNECTION: "Connection lost",
+  TEMPLATE_UNAVAILABLE: "Template unavailable",
+  QUALITY: "Quality dropped",
+};
+
+// The sentence after "N / M sent —" explaining why, and what happens next.
+function pauseExplanation(c: Campaign): string {
+  const detail = c.pauseDetail ? ` (${c.pauseDetail})` : "";
+  switch (c.pauseReason) {
+    case "QUIET_HOURS":
+      return "paused for quiet hours, resumes automatically when they end.";
+    case "SEND_ERROR":
+      return `paused because Meta refused the send${detail}. Fix it, then Resume — nobody left was marked failed.`;
+    case "NUMBER_INACTIVE":
+      return "paused because the WhatsApp number can't send.";
+    case "RATE_LIMIT":
+      return c.resumeAt
+        ? `Meta asked us to slow down — resumes by itself at ${formatClock(c.resumeAt)}.`
+        : "Meta asked us to slow down — resumes by itself shortly.";
+    case "CONNECTION":
+      return c.resumeAt
+        ? `couldn't reach WhatsApp — retrying at ${formatClock(c.resumeAt)}.`
+        : "couldn't reach WhatsApp — retrying shortly.";
+    case "TEMPLATE_UNAVAILABLE":
+      return `paused because the template can't be used${detail}. Resume once it's available again.`;
+    case "QUALITY":
+      return `number quality dropped${detail}. Sending stopped to protect the number — Resume once it recovers.`;
+    default:
+      return "paused before completing.";
+  }
+}
 
 // ── Running Campaign Card ─────────────────────────────────────────────────────
 
@@ -145,10 +196,15 @@ function RunningCard({
           { label: "Delivered", value: campaign.deliveredCount ?? 0 },
           { label: "Read", value: campaign.readCount ?? 0 },
           { label: "Replied", value: campaign.repliedCount ?? 0 },
+          { label: "Booked", value: campaign.bookedCount ?? 0 },
           { label: "Failed", value: failedCount },
         ].map(({ label, value }) => (
-          <div key={label} className="flex flex-col">
-            <span className="text-[22px] font-bold text-gray-800 leading-none">{value}</span>
+          <div
+            key={label}
+            className="flex flex-col"
+            title={label === "Booked" ? `${value} booked of ${campaign.repliedCount ?? 0} replied` : undefined}
+          >
+            <span className={`text-[22px] font-bold leading-none ${label === "Booked" && value > 0 ? "text-[#3B694C]" : "text-gray-800"}`}>{value}</span>
             <span className="text-[11px] text-gray-400 mt-0.5">{label}</span>
           </div>
         ))}
@@ -182,7 +238,7 @@ function PausedCard({
         <div className="flex items-center gap-2.5">
           <Pause className="w-3.5 h-3.5 text-orange-500" />
           <span className="text-[11px] font-bold tracking-wider text-orange-600 uppercase">
-            {campaign.pauseReason === "QUIET_HOURS" ? "Quiet hours" : "Paused"}
+            {(campaign.pauseReason && PAUSE_LABELS[campaign.pauseReason]) ?? "Paused"}
           </span>
           <span className="text-[13px] font-semibold text-gray-800">{name}</span>
           <CampaignCategoryBadge category={campaign.category} />
@@ -214,14 +270,7 @@ function PausedCard({
         />
       </div>
       <div className="text-[12px] text-gray-500">
-        {done} / {totalRecipients} sent —{" "}
-        {campaign.pauseReason === "QUIET_HOURS"
-          ? "paused for quiet hours, resumes automatically when they end."
-          : campaign.pauseReason === "SEND_ERROR"
-          ? `paused because Meta refused the send${campaign.pauseDetail ? ` (${campaign.pauseDetail})` : ""}. Fix it, then Resume — nobody left was marked failed.`
-          : campaign.pauseReason === "NUMBER_INACTIVE"
-          ? "paused because the WhatsApp number can't send."
-          : "paused before completing."}
+        {done} / {totalRecipients} sent — {pauseExplanation(campaign)}
       </div>
     </div>
   );
@@ -256,6 +305,77 @@ function ScheduledCard({ campaign, onCancel, canControl }: { campaign: Campaign;
   );
 }
 
+// ── Awaiting Approval Card ────────────────────────────────────────────────────
+
+// Submitted by someone without campaign:send. Approving is the send, so only
+// reviewers get the buttons; everyone else sees that it is waiting.
+function PendingApprovalCard({
+  campaign,
+  canReview,
+  busy,
+  onOpen,
+  onApprove,
+  onReject,
+}: {
+  campaign: Campaign;
+  canReview: boolean;
+  busy: boolean;
+  onOpen: () => void;
+  onApprove: () => void;
+  onReject: () => void;
+}) {
+  return (
+    <div className="bg-white border border-amber-200 rounded-2xl p-4 flex items-center gap-4">
+      <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center shrink-0">
+        <Hourglass className="w-4 h-4 text-amber-500" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <button
+            onClick={onOpen}
+            className="text-[14px] font-semibold text-gray-800 truncate hover:underline cursor-pointer"
+          >
+            {campaign.name}
+          </button>
+          <CampaignCategoryBadge category={campaign.category} />
+        </div>
+        <p className="text-[12px] text-gray-400">
+          {campaign.template?.name ?? "—"} · {campaign.totalRecipients} recipient{campaign.totalRecipients !== 1 ? "s" : ""} ·{" "}
+          {campaign.scheduledAt ? `Proposed ${formatDateTime(campaign.scheduledAt)}` : "Sends when approved"}
+        </p>
+        <p className="text-[11px] text-gray-400 mt-0.5">
+          Submitted by {personName(campaign.submittedBy)}
+          {campaign.submittedAt && ` · ${formatDateTime(campaign.submittedAt)}`}
+        </p>
+      </div>
+      {canReview ? (
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={onReject}
+            disabled={busy}
+            className="text-[12px] font-medium text-red-500 hover:text-red-600 border border-red-200 hover:border-red-300 px-3 py-1.5 rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Reject
+          </button>
+          <button
+            onClick={onApprove}
+            disabled={busy}
+            className="flex items-center gap-1 text-[12px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5540] px-3 py-1.5 rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            Approve
+          </button>
+        </div>
+      ) : (
+        <span className="inline-flex items-center gap-1 text-[11px] font-medium bg-amber-50 text-amber-700 px-2.5 py-1 rounded-full shrink-0">
+          <Clock className="w-3 h-3" />
+          Waiting for an admin
+        </span>
+      )}
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function CampaignsPage() {
@@ -274,9 +394,13 @@ export default function CampaignsPage() {
   // From the server's permission list (see CurrentUserProvider), so the page
   // shows exactly the actions the API will accept. Two separate capabilities:
   // building campaigns, and stopping or removing them.
-  const { ready: userReady, can } = useCurrentUser();
+  const { ready: userReady, can, me } = useCurrentUser();
   const canWrite = can("campaign:write");
   const canControl = can("campaign:control");
+  // Sending and approving are the same capability: without it, a finished
+  // draft is submitted for an admin to approve instead of sent.
+  const canSend = can("campaign:send");
+  const [submittingIds, setSubmittingIds] = useState<Set<number>>(new Set());
 
   const load = useCallback(() => {
     apiGetCampaigns()
@@ -284,6 +408,8 @@ export default function CampaignsPage() {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
+
+  const review = useCampaignReview(load);
 
   // Lightweight poll target — only queries active (RUNNING/PAUSED) campaigns'
   // counters, not the full history + delivered/read/replied joins that
@@ -344,12 +470,20 @@ export default function CampaignsPage() {
     socket.on("campaign.completed", refresh);
     socket.on("campaign.cancelled", refresh);
     socket.on("campaign.paused", refresh);
+    // Approval moves: a draft enters/leaves "Awaiting approval", or an approval
+    // starts the send — keep every open copy of this page in step.
+    socket.on("campaign.submitted", refresh);
+    socket.on("campaign.approved", refresh);
+    socket.on("campaign.rejected", refresh);
     return () => {
       socket.off("campaign.started", refresh);
       socket.off("campaign.progress", onProgress);
       socket.off("campaign.completed", refresh);
       socket.off("campaign.cancelled", refresh);
       socket.off("campaign.paused", refresh);
+      socket.off("campaign.submitted", refresh);
+      socket.off("campaign.approved", refresh);
+      socket.off("campaign.rejected", refresh);
     };
   }, [load]);
 
@@ -404,6 +538,29 @@ export default function CampaignsPage() {
     }
   };
 
+  // The server re-checks the template and number here, so a 409 (template
+  // paused, number inactive…) comes back with a message worth showing as is.
+  const handleSubmitForApproval = async (id: number) => {
+    setSubmittingIds((prev) => new Set(prev).add(id));
+    try {
+      await apiSubmitCampaign(id);
+      toast.success("Submitted for approval");
+      load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't submit campaign.");
+    } finally {
+      setSubmittingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  };
+
+  // Without campaign:send, the server only lets you change or submit drafts
+  // you created — offer exactly that.
+  const mayEditDraft = (c: Campaign) => canWrite && (canSend || c.createdById === me?.id);
+
   const toggleSelect = (id: number) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -429,7 +586,7 @@ export default function CampaignsPage() {
   const handleExport = () => {
     const completed = visible.filter((c) => c.status === "COMPLETED");
     const rows = [
-      ["Name", "Status", "Category", "Recipients", "Sent", "Failed", "Delivered", "Read", "Replied", "Started", "Completed"],
+      ["Name", "Status", "Category", "Recipients", "Sent", "Failed", "Delivered", "Read", "Replied", "Booked", "Started", "Completed"],
       ...completed.map((c) => [
         c.name,
         c.status,
@@ -440,6 +597,7 @@ export default function CampaignsPage() {
         c.deliveredCount ?? 0,
         c.readCount ?? 0,
         c.repliedCount ?? 0,
+        c.bookedCount ?? 0,
         c.startedAt ? new Date(c.startedAt).toISOString() : "",
         c.completedAt ? new Date(c.completedAt).toISOString() : "",
       ]),
@@ -457,6 +615,7 @@ export default function CampaignsPage() {
   const running = visible.filter((c) => c.status === "RUNNING");
   const paused = visible.filter((c) => c.status === "PAUSED");
   const scheduled = visible.filter((c) => c.status === "SCHEDULED");
+  const pending = visible.filter((c) => c.status === "PENDING_APPROVAL");
   const drafts = visible.filter((c) => c.status === "DRAFT");
   const sent = visible.filter((c) => c.status === "COMPLETED" || c.status === "CANCELLED");
 
@@ -519,6 +678,7 @@ export default function CampaignsPage() {
             <p className="text-[13px] text-gray-400 mt-0.5">
               {sent.filter(c => c.status === "COMPLETED").length} sent
               {paused.length > 0 && ` · ${paused.length} paused`}
+              {pending.length > 0 && ` · ${pending.length} awaiting approval`}
               {scheduled.length > 0 && ` · ${scheduled.length} scheduled`}
               {drafts.length > 0 && ` · ${drafts.length} draft${drafts.length > 1 ? "s" : ""}`}
             </p>
@@ -572,6 +732,28 @@ export default function CampaignsPage() {
           </div>
         )}
 
+        {/* Awaiting approval — first, since for an admin it's the to-do list */}
+        {pending.length > 0 && (
+          <div>
+            <p className="text-[11px] font-bold tracking-wider text-amber-600 uppercase mb-3">
+              Awaiting approval · {pending.length}
+            </p>
+            <div className="space-y-2">
+              {pending.map((c) => (
+                <PendingApprovalCard
+                  key={c.id}
+                  campaign={c}
+                  canReview={canSend}
+                  busy={review.reviewing}
+                  onOpen={() => router.push(`/campaigns/${c.id}`)}
+                  onApprove={() => review.startApprove(c)}
+                  onReject={() => review.startReject(c)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Running */}
         {running.length > 0 && (
           <div className="space-y-3">
@@ -617,13 +799,21 @@ export default function CampaignsPage() {
             <div className="space-y-2">
               {drafts.map((c) => {
                 const isSel = selectedIds.has(c.id);
+                // Rejected = an admin sent it back; the reason stays until it's resubmitted.
+                const rejected = !!c.rejectionReason;
+                const editable = mayEditDraft(c);
                 return (
                 <div
                   key={c.id}
-                  className={`bg-white border rounded-2xl p-4 flex items-center gap-4 transition-colors ${
-                    isSel ? "border-[#3B694C] ring-1 ring-[#3B694C] bg-[#F5FAF7]" : "border-dashed border-gray-200"
+                  className={`bg-white border rounded-2xl transition-colors ${
+                    isSel
+                      ? "border-[#3B694C] ring-1 ring-[#3B694C] bg-[#F5FAF7]"
+                      : rejected
+                      ? "border-red-200"
+                      : "border-dashed border-gray-200"
                   }`}
                 >
+                <div className="p-4 flex items-center gap-4">
                   {canControl && (
                     <input
                       type="checkbox"
@@ -643,17 +833,46 @@ export default function CampaignsPage() {
                       <CampaignCategoryBadge category={c.category} />
                     </div>
                     <p className="text-[12px] text-gray-400">
-                      Draft · {c.template?.name ?? "—"} · {c.totalRecipients} recipient{c.totalRecipients !== 1 ? "s" : ""}
+                      {rejected ? "Sent back" : "Draft"} · {c.template?.name ?? "—"} · {c.totalRecipients} recipient{c.totalRecipients !== 1 ? "s" : ""}
+                      {c.scheduledAt && ` · Proposed ${formatDateTime(c.scheduledAt)}`}
                     </p>
                   </div>
-                  {canWrite && (
-                    <button
-                      onClick={() => router.push(`/campaigns/new?draft=${c.id}`)}
-                      className="text-[12px] font-medium text-[#3B694C] hover:text-[#2f5540] border border-[#3B694C]/20 hover:border-[#3B694C]/40 px-3 py-1.5 rounded-lg transition-colors shrink-0 cursor-pointer"
-                    >
-                      Continue editing
-                    </button>
+                  {editable && (
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => router.push(`/campaigns/new?draft=${c.id}`)}
+                        className="text-[12px] font-medium text-[#3B694C] hover:text-[#2f5540] border border-[#3B694C]/20 hover:border-[#3B694C]/40 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                      >
+                        {rejected && !canSend ? "Edit & resubmit" : "Continue editing"}
+                      </button>
+                      {/* Straight to review, for a draft that's already finished.
+                          Admins send from the wizard instead. */}
+                      {!canSend && (
+                        <button
+                          onClick={() => handleSubmitForApproval(c.id)}
+                          disabled={submittingIds.has(c.id) || c.totalRecipients === 0}
+                          title={c.totalRecipients === 0 ? "Add recipients before submitting" : undefined}
+                          className="flex items-center gap-1 text-[12px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5540] px-3 py-1.5 rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {submittingIds.has(c.id) ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+                          {rejected ? "Resubmit" : "Submit"}
+                        </button>
+                      )}
+                    </div>
                   )}
+                </div>
+                {rejected && (
+                  <div className="mx-4 mb-4 -mt-1 flex items-start gap-2 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5">
+                    <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                    <div className="text-[12px] text-red-700 min-w-0">
+                      <p className="font-semibold">
+                        Rejected by {personName(c.reviewedBy)}
+                        {c.reviewedAt && <span className="font-normal text-red-500"> · {formatDateTime(c.reviewedAt)}</span>}
+                      </p>
+                      <p className="mt-0.5 whitespace-pre-wrap break-words">{c.rejectionReason}</p>
+                    </div>
+                  </div>
+                )}
                 </div>
                 );
               })}
@@ -712,6 +931,7 @@ export default function CampaignsPage() {
                     <th className="text-right px-4 py-3 font-semibold text-gray-500 text-[11px] uppercase tracking-wider">Delivered</th>
                     <th className="text-right px-4 py-3 font-semibold text-gray-500 text-[11px] uppercase tracking-wider">Read</th>
                     <th className="text-right px-4 py-3 font-semibold text-gray-500 text-[11px] uppercase tracking-wider">Replied</th>
+                    <th className="text-right px-4 py-3 font-semibold text-gray-500 text-[11px] uppercase tracking-wider">Booked</th>
                     <th className="text-right px-4 py-3 font-semibold text-gray-500 text-[11px] uppercase tracking-wider">Failed</th>
                     <th className="text-right px-5 py-3 font-semibold text-gray-500 text-[11px] uppercase tracking-wider">Status</th>
                   </tr>
@@ -767,6 +987,17 @@ export default function CampaignsPage() {
                           {c.sentCount > 0 && (
                             <span className="text-gray-400 text-[11px] ml-1">
                               · {Math.round(replyRate * 100)}%
+                            </span>
+                          )}
+                        </td>
+                        <td
+                          className="px-4 py-3.5 text-right whitespace-nowrap"
+                          title={`${c.bookedCount ?? 0} booked of ${c.repliedCount ?? 0} replied`}
+                        >
+                          <span className={(c.bookedCount ?? 0) > 0 ? "text-[#3B694C] font-semibold" : "text-gray-700"}>{c.bookedCount ?? 0}</span>
+                          {(c.repliedCount ?? 0) > 0 && (
+                            <span className="text-gray-400 text-[11px] ml-1">
+                              of {c.repliedCount} replied
                             </span>
                           )}
                         </td>
@@ -872,6 +1103,9 @@ export default function CampaignsPage() {
         </div>,
         document.body
       )}
+
+      {/* Approve / reject / over-limit confirm */}
+      {review.dialogs}
     </div>
   );
 }

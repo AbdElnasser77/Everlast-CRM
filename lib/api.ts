@@ -262,6 +262,10 @@ export function apiSendMessage(
   mediaUrl?: string,
   messageType: import("@/types").Message["messageType"] = "TEXT",
   quotedMessageId?: number | null,
+  // clientMessageId: the same id on a retry/double-click returns the first send
+  // instead of sending twice. confirmOtherOwner: "reply anyway" in a chat a
+  // colleague owns.
+  opts: { clientMessageId?: string; confirmOtherOwner?: boolean } = {},
 ) {
   return apiFetch<SendMessageResponse>("/api/messages/send", {
     method: "POST",
@@ -271,6 +275,7 @@ export function apiSendMessage(
       messageType,
       ...(mediaUrl ? { mediaUrl } : {}),
       ...(quotedMessageId ? { quotedMessageId } : {}),
+      ...opts,
     }),
   });
 }
@@ -313,12 +318,14 @@ export function apiDeleteMediaAsset(id: number) {
   return apiFetch<{ success: boolean; message: string }>(`/api/media-library/${id}`, { method: "DELETE" });
 }
 
-export function apiAssignConversation(conversationId: string, agentId: number | null) {
+// `seen`: the owner this screen showed. If someone changed it since, the
+// server refuses (409 ASSIGNMENT_CHANGED) instead of silently overwriting.
+export function apiAssignConversation(conversationId: string, agentId: number | null, seen?: { agentId: number | null }) {
   return apiFetch<{ success: boolean }>(
     `/api/conversations/${conversationId}/assign`,
     {
       method: "PUT",
-      body: JSON.stringify({ agentId }),
+      body: JSON.stringify({ agentId, ...(seen ? { expectedAgentId: seen.agentId } : {}) }),
     }
   );
 }
@@ -722,8 +729,46 @@ export function apiBulkDeleteCampaigns(ids: number[]) {
   );
 }
 
-export function apiSendCampaignNow(id: number) {
-  return apiFetch<{ success: boolean }>(`/api/campaigns/${id}/send`, { method: "POST" });
+// confirmOverLimit: send even though the campaign needs more people than the
+// number's Meta daily limit has left (the first try answers 409
+// OVER_MESSAGING_LIMIT with the numbers in `details`).
+export function apiSendCampaignNow(id: number, opts: { confirmOverLimit?: boolean } = {}) {
+  return apiFetch<{ success: boolean; message?: string }>(`/api/campaigns/${id}/send`, {
+    method: "POST",
+    body: JSON.stringify(opts),
+  });
+}
+
+// ── Approval: marketing submits, an admin approves or rejects ──
+export function apiSubmitCampaign(id: number) {
+  return apiFetch<import("@/types").CampaignResponse>(`/api/campaigns/${id}/submit`, { method: "POST" });
+}
+
+export function apiApproveCampaign(id: number, opts: { confirmOverLimit?: boolean } = {}) {
+  return apiFetch<{ success: boolean; message?: string }>(`/api/campaigns/${id}/approve`, {
+    method: "POST",
+    body: JSON.stringify(opts),
+  });
+}
+
+export function apiRejectCampaign(id: number, reason: string) {
+  return apiFetch<{ success: boolean }>(`/api/campaigns/${id}/reject`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+// Across all numbers, for the sidebar badge. Admins only (campaign:send).
+export function apiGetPendingApprovals() {
+  return apiFetch<{ success: boolean; data: import("@/types").PendingApproval[]; total: number }>(
+    "/api/campaigns/pending-approval",
+    {},
+    { numberScoped: false },
+  );
+}
+
+export function apiGetCampaignCapacity(id: number) {
+  return apiFetch<{ success: boolean; data: import("@/types").CampaignCapacity }>(`/api/campaigns/${id}/capacity`);
 }
 
 // Sends one template to one number for a pre-flight check. Creates no
@@ -754,6 +799,232 @@ export function apiPauseCampaign(id: number) {
 
 export function apiResumeCampaign(id: number) {
   return apiFetch<{ success: boolean }>(`/api/campaigns/${id}/resume`, { method: "POST" });
+}
+
+// ── Settings (admin only) ──
+export function apiGetSettings() {
+  return apiFetch<{ success: boolean; data: import("@/types").WorkspaceSettings }>("/api/settings", {}, { numberScoped: false });
+}
+
+export function apiSaveQuietHours(value: Omit<import("@/types").QuietHoursSetting, "source">) {
+  return apiFetch<{ success: boolean; data: import("@/types").QuietHoursSetting }>(
+    "/api/settings/quietHours",
+    { method: "PUT", body: JSON.stringify(value) },
+    { numberScoped: false },
+  );
+}
+
+export function apiSaveCampaignSafety(value: import("@/types").CampaignSafetySetting) {
+  return apiFetch<{ success: boolean; data: import("@/types").CampaignSafetySetting }>(
+    "/api/settings/campaignSafety",
+    { method: "PUT", body: JSON.stringify(value) },
+    { numberScoped: false },
+  );
+}
+
+export function apiGetAdminNumbers() {
+  return apiFetch<{ success: boolean; data: import("@/types").AdminWhatsAppNumber[]; tokenKeys: string[] }>(
+    "/api/settings/numbers",
+    {},
+    { numberScoped: false },
+  );
+}
+
+export function apiCreateNumber(data: { label: string; phoneNumberId: string; wabaId: string; tokenEnvKey: string; sendConcurrency?: number }) {
+  return apiFetch<{ success: boolean; data: import("@/types").AdminWhatsAppNumber }>(
+    "/api/settings/numbers",
+    { method: "POST", body: JSON.stringify(data) },
+    { numberScoped: false },
+  );
+}
+
+export function apiUpdateNumber(
+  id: number,
+  data: Partial<{ label: string; isActive: boolean; isDefault: boolean; sendConcurrency: number; tokenEnvKey: string }>,
+) {
+  return apiFetch<{ success: boolean; data: import("@/types").AdminWhatsAppNumber }>(
+    `/api/settings/numbers/${id}`,
+    { method: "PUT", body: JSON.stringify(data) },
+    { numberScoped: false },
+  );
+}
+
+export function apiCheckNumberQuality() {
+  return apiFetch<{
+    success: boolean;
+    data: { numberId: number; qualityRating?: string | null; metaStatus?: string | null; held?: boolean; campaignsPaused?: number; error?: boolean }[];
+  }>("/api/settings/numbers/check-quality", { method: "POST" }, { numberScoped: false });
+}
+
+export function apiUpdateMyProfile(name: string) {
+  return apiFetch<{ success: boolean; data: { id: number; name: string | null; username: string } }>(
+    "/api/users/me",
+    { method: "PUT", body: JSON.stringify({ name }) },
+    { numberScoped: false },
+  );
+}
+
+// ── Chat outcome, bookings, notes (agents and supervisors) ──
+export function apiSetConversationOutcome(
+  conversationId: number,
+  body:
+    | { outcome: "BOOKED"; appointments: import("@/types").AppointmentInput[] }
+    | { outcome: "BOOKED"; booking: { appointmentAt: string; service?: string; note?: string } }
+    | { outcome: "FOLLOW_UP"; followUpAt: string }
+    | { outcome: "NOT_INTERESTED" | "NO_ANSWER" | null },
+) {
+  return apiFetch<{ success: boolean; data: import("@/types").ConversationOutcomeState }>(
+    `/api/conversations/${conversationId}/outcome`,
+    { method: "PUT", body: JSON.stringify(body) },
+  );
+}
+
+export function apiCancelBooking(conversationId: number, bookingId: number) {
+  return apiFetch<{ success: boolean; data: import("@/types").ConversationOutcomeState }>(
+    `/api/conversations/${conversationId}/bookings/${bookingId}/cancel`,
+    { method: "POST" },
+  );
+}
+
+export function apiGetConversationNotes(conversationId: number) {
+  return apiFetch<{ success: boolean; data: import("@/types").ConversationNote[] }>(`/api/conversations/${conversationId}/notes`);
+}
+
+export function apiAddConversationNote(conversationId: number, body: string) {
+  return apiFetch<{ success: boolean; data: import("@/types").ConversationNote }>(
+    `/api/conversations/${conversationId}/notes`,
+    { method: "POST", body: JSON.stringify({ body }) },
+  );
+}
+
+export function apiDeleteConversationNote(conversationId: number, noteId: number) {
+  return apiFetch<{ success: boolean }>(`/api/conversations/${conversationId}/notes/${noteId}`, { method: "DELETE" });
+}
+
+// ── Booking requests (the agents' booking queue, for the line in view) ──
+export function apiGetBookingRequests(params: {
+  status?: "open" | import("@/types").BookingRequestStatus | "all";
+  mine?: boolean;
+  search?: string;
+  page?: number;
+  limit?: number;
+} = {}) {
+  const q = new URLSearchParams();
+  if (params.status) q.set("status", params.status);
+  if (params.mine) q.set("mine", "1");
+  if (params.search) q.set("search", params.search);
+  if (params.page) q.set("page", String(params.page));
+  if (params.limit) q.set("limit", String(params.limit));
+  return apiFetch<{
+    success: boolean;
+    data: import("@/types").BookingRequest[];
+    pagination: { total: number; page: number; limit: number; totalPages: number };
+  }>(`/api/booking-requests?${q}`);
+}
+
+export function apiGetBookingRequestCounts() {
+  return apiFetch<{ success: boolean; data: import("@/types").BookingRequestCounts }>("/api/booking-requests/counts");
+}
+
+export function apiGetBookingRequest(id: number) {
+  return apiFetch<{ success: boolean; data: import("@/types").BookingRequest }>(`/api/booking-requests/${id}`);
+}
+
+// Take it. A colleague's request answers 409 REQUEST_CLAIMED (details.claimedBy)
+// unless force: true.
+export function apiClaimBookingRequest(id: number, opts: { force?: boolean } = {}) {
+  return apiFetch<{ success: boolean; data: import("@/types").BookingRequest }>(`/api/booking-requests/${id}/claim`, {
+    method: "POST",
+    body: JSON.stringify(opts),
+  });
+}
+
+// Record the appointment(s) booked in Dok32 (1–10). Also works on an already
+// BOOKED request (the patient added something).
+export function apiBookRequest(id: number, appointments: import("@/types").AppointmentInput[]) {
+  return apiFetch<{ success: boolean; data: import("@/types").BookingRequest }>(`/api/booking-requests/${id}/book`, {
+    method: "POST",
+    body: JSON.stringify({ appointments }),
+  });
+}
+
+// Close without an appointment. reason OTHER needs a note.
+export function apiNotBookedRequest(id: number, reason: import("@/types").NotBookedReason, note?: string) {
+  return apiFetch<{ success: boolean; data: import("@/types").BookingRequest }>(`/api/booking-requests/${id}/not-booked`, {
+    method: "POST",
+    body: JSON.stringify({ reason, note }),
+  });
+}
+
+export function apiReopenBookingRequest(id: number) {
+  return apiFetch<{ success: boolean; data: import("@/types").BookingRequest }>(`/api/booking-requests/${id}/reopen`, { method: "POST" });
+}
+
+// The patient asked to book in chat: open a request (it starts IN_PROGRESS, yours).
+export function apiCreateBookingRequest(conversationId: number, body: { service?: string; preferredDate?: string; note?: string } = {}) {
+  return apiFetch<{ success: boolean; data: import("@/types").BookingRequest }>(`/api/conversations/${conversationId}/booking-requests`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+// ── Supervision (team:supervise). Across all numbers; numberId narrows. ──
+export function apiGetSupervisionOverview(numberId?: number) {
+  const q = numberId ? `?numberId=${numberId}` : "";
+  return apiFetch<{ success: boolean; data: import("@/types").SupervisionOverview }>(
+    `/api/supervision/overview${q}`, {}, { numberScoped: false },
+  );
+}
+
+export function apiGetSupervisionConversations(params: {
+  filter?: import("@/types").SupervisionFilter;
+  agentId?: number | "unassigned";
+  numberId?: number;
+  search?: string;
+  page?: number;
+  limit?: number;
+}) {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null && v !== "") q.set(k, String(v));
+  return apiFetch<{
+    success: boolean;
+    data: import("@/types").SupervisionConversation[];
+    slaMinutes: number;
+    pagination: { total: number; page: number; limit: number; totalPages: number };
+  }>(`/api/supervision/conversations?${q}`, {}, { numberScoped: false });
+}
+
+export function apiGetSupervisionTimeline(conversationId: number) {
+  return apiFetch<{ success: boolean; data: import("@/types").SupervisionTimeline }>(
+    `/api/supervision/conversations/${conversationId}`, {}, { numberScoped: false },
+  );
+}
+
+// The live feed. after = only what happened since (poll with the newest `at`).
+export function apiGetSupervisionActivity(params: { after?: string; limit?: number; numberId?: number } = {}) {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null && v !== "") q.set(k, String(v));
+  return apiFetch<{ success: boolean; data: import("@/types").SupervisionActivity[]; serverTime: string }>(
+    `/api/supervision/activity?${q}`, {}, { numberScoped: false },
+  );
+}
+
+export function apiGetSupervisionBookings(params: { from?: string; to?: string; agentId?: number; status?: "BOOKED" | "CANCELLED" | "all"; numberId?: number } = {}) {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null && v !== "") q.set(k, String(v));
+  return apiFetch<{
+    success: boolean;
+    data: (import("@/types").Booking & { customer: { id: number; name: string | null; phone: string }; conversation: { id: number; whatsappNumberId: number } })[];
+  }>(`/api/supervision/bookings?${q}`, {}, { numberScoped: false });
+}
+
+// Server rules: newPassword ≥ 8 characters; 401 if currentPassword is wrong.
+export function apiChangeMyPassword(currentPassword: string, newPassword: string) {
+  return apiFetch<{ success: boolean; message?: string }>(
+    "/api/users/me/password",
+    { method: "PUT", body: JSON.stringify({ currentPassword, newPassword }) },
+    { numberScoped: false },
+  );
 }
 
 // WhatsApp number health
@@ -799,10 +1070,14 @@ export function apiCreateConversation(customerId: number) {
   );
 }
 
-export function apiSendTemplate(conversationId: string, templateId: number) {
+export function apiSendTemplate(
+  conversationId: string,
+  templateId: number,
+  opts: { clientMessageId?: string; confirmOtherOwner?: boolean } = {},
+) {
   return apiFetch<{ success: boolean; data: import("@/types").Message }>(
     `/api/templates/conversations/${conversationId}/send-template`,
-    { method: "POST", body: JSON.stringify({ templateId }) }
+    { method: "POST", body: JSON.stringify({ templateId, ...opts }) }
   );
 }
 

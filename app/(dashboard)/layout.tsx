@@ -6,10 +6,11 @@ import { useState, useEffect, useRef, startTransition } from "react";
 import type { ReactNode } from "react";
 import {
   MessageSquare,
+  Eye,
+  CalendarCheck,
   Megaphone,
   Contact,
   LayoutDashboard,
-  UsersRound,
   Settings,
   ClipboardList,
   LayoutTemplate,
@@ -23,7 +24,7 @@ import {
   LogOut,
 } from "lucide-react";
 import { getSocket, disconnectSocket } from "@/lib/socket";
-import { apiLogout, apiGetStatsOverview } from "@/lib/api";
+import { apiLogout, apiGetStatsOverview, apiGetPendingApprovals, apiGetBookingRequestCounts } from "@/lib/api";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { WhatsAppNumberProvider, useActiveNumber } from "@/components/WhatsAppNumberProvider";
 import { NumberSwitcher } from "@/components/NumberSwitcher";
@@ -74,6 +75,13 @@ function DashboardShell({ children }: { children: ReactNode }) {
   const unreadCount = unread.numberId === activeNumberId ? unread.count : 0;
   // Templates Meta approved/rejected since this browser last opened /templates.
   const [templateUpdates, setTemplateUpdates] = useState(0);
+  // Booking requests nobody has picked up yet, on the line in view — tagged
+  // with that line like `unread`, so a count from the previous line never shows.
+  const [newRequests, setNewRequests] = useState<{ numberId: string | null; count: number }>({ numberId: null, count: 0 });
+  const newRequestCount = newRequests.numberId === activeNumberId ? newRequests.count : 0;
+  // Campaigns waiting for an admin's approval, across every number.
+  const [pendingApprovals, setPendingApprovals] = useState(0);
+  const canApprove = can("campaign:send");
   const [contactsOpen, setContactsOpen] = useState(pathname.startsWith("/customers"));
 
   // Keep the Contacts sub-menu expanded whenever the user is on one of its pages.
@@ -132,6 +140,50 @@ function DashboardShell({ children }: { children: ReactNode }) {
     };
   }, [activeNumberId]);
 
+  // The Bookings badge: new requests on this line, refreshed when one is
+  // created or changes, and every minute.
+  const canBook = can("conversation:write");
+  useEffect(() => {
+    if (!canBook) return;
+    const forNumber = activeNumberId;
+    function fetchRequests() {
+      apiGetBookingRequestCounts()
+        .then((res) => setNewRequests({ numberId: forNumber, count: res.data.new }))
+        .catch(() => {});
+    }
+    fetchRequests();
+    const timer = setInterval(fetchRequests, 60_000);
+    const socket = getSocket();
+    const events = ["booking_request.created", "booking_request.updated"];
+    events.forEach((e) => socket.on(e, fetchRequests));
+    return () => {
+      clearInterval(timer);
+      events.forEach((e) => socket.off(e, fetchRequests));
+    };
+  }, [canBook, activeNumberId]);
+
+  // Only admins approve, so only they get the badge. Counted across all numbers
+  // (a submission on another line must not go unseen), refreshed on the
+  // submit / approve / reject events of the line in view and every minute for
+  // the others.
+  useEffect(() => {
+    if (!canApprove) return;
+    function fetchPending() {
+      apiGetPendingApprovals()
+        .then((res) => setPendingApprovals(res.total))
+        .catch(() => {});
+    }
+    fetchPending();
+    const timer = setInterval(fetchPending, 60_000);
+    const socket = getSocket();
+    const events = ["campaign.submitted", "campaign.approved", "campaign.rejected"];
+    events.forEach((e) => socket.on(e, fetchPending));
+    return () => {
+      clearInterval(timer);
+      events.forEach((e) => socket.off(e, fetchPending));
+    };
+  }, [canApprove]);
+
   // Auto-close on navigation
   useEffect(() => {
     startTransition(() => {
@@ -150,9 +202,13 @@ function DashboardShell({ children }: { children: ReactNode }) {
   // may read conversations for context elsewhere, but the inbox is for replying.
   const navBeforeContacts = [
     { href: "/chats",            icon: MessageSquare,   label: "Inbox",        enabled: true,  badge: unreadCount > 0 ? unreadCount : undefined, perm: "conversation:write" as const },
+    // Patients who want to book: the queue agents book from (in Dok32).
+    { href: "/bookings",         icon: CalendarCheck,   label: "Bookings",     enabled: true,  badge: newRequestCount > 0 ? newRequestCount : undefined, perm: "conversation:write" as const },
+    // Every agent's chats, who is waiting, booking progress (supervisors, admins).
+    { href: "/supervision",      icon: Eye,             label: "Supervision",  enabled: true,  perm: "team:supervise" as const },
   ].filter((i) => can(i.perm));
   const navAfterContacts = [
-    { href: "/campaigns",        icon: Megaphone,       label: "Campaigns",    enabled: true, perm: "campaign:read" as const },
+    { href: "/campaigns",        icon: Megaphone,       label: "Campaigns",    enabled: true, perm: "campaign:read" as const, badge: canApprove && pendingApprovals > 0 ? pendingApprovals : undefined },
   ].filter((i) => can(i.perm));
   const showContacts = can("contact:read");
   const contactsActive = isActive("/customers");
@@ -163,12 +219,13 @@ function DashboardShell({ children }: { children: ReactNode }) {
   // MARKETING sees most of them too.
   const adminNav = [
     { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard",     perm: "stats:read" as const },
-    { href: "/team",      icon: UsersRound,      label: "Team & Access", perm: "user:read" as const },
     { href: "/templates", icon: LayoutTemplate,  label: "Templates",     perm: "template:write" as const, badge: templateUpdates > 0 ? templateUpdates : undefined },
     { href: "/media-library", icon: Images,      label: "Media Library", perm: "media:write" as const },
     { href: "/number-health", icon: ShieldCheck, label: "Number Health", perm: "stats:read" as const },
     { href: "/audit",     icon: ClipboardList,   label: "Audit Log",     perm: "audit:read" as const },
-    { href: "/settings",  icon: Settings,        label: "Settings",      perm: "number:write" as const },
+    // Users, WhatsApp numbers, quiet hours, campaign safety, my account.
+    // Admin only; Team & Access lives here now (/team redirects).
+    { href: "/settings",  icon: Settings,        label: "Settings",      perm: "settings:write" as const },
   ].filter((i) => can(i.perm));
 
   /* ── desktop nav item: icon + label that fades in on expand ── */

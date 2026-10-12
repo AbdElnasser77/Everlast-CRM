@@ -28,6 +28,8 @@ export type Permission =
   | "user:read" | "user:write"
   | "stats:read" | "audit:read" | "clinic:read"
   | "number:read" | "number:use_any" | "number:write"
+  | "settings:write"
+  | "team:supervise"
   | "dev:tools";
 
 /** Whatever shape the caller has on hand — /users/me, or a cached login user. */

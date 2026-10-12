@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState, useRef, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Check, ArrowLeft, Loader2, Search, ChevronRight, ChevronLeft, Lock, Send, AlertCircle, ShieldCheck, Clock } from "lucide-react";
-import type { Template, Customer, Conversation, ContactList, Segment, CampaignCategory } from "@/types";
+import type { Template, Customer, Conversation, ContactList, Segment, CampaignCategory, CampaignCapacity } from "@/types";
 import {
   apiGetTemplates,
   apiGetCampaign,
@@ -12,6 +12,7 @@ import {
   apiCreateCampaign,
   apiUpdateCampaign,
   apiSendCampaignNow,
+  apiSubmitCampaign,
   apiGetLists,
   apiGetListMemberIds,
   apiGetSegments,
@@ -31,6 +32,7 @@ import { CAMPAIGN_CATEGORIES, CAMPAIGN_CATEGORY_COLORS } from "@/lib/campaignCat
 import { FlowPicker } from "@/components/flows/FlowPicker";
 import { HeaderPreview, ButtonRow, WaText, LIMITS } from "@/components/templates/shared";
 import { CarouselPreview } from "@/components/templates/CarouselEditor";
+import { OverLimitDialog, overLimitDetails } from "@/components/CampaignApprovalDialogs";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -886,6 +888,9 @@ function Step3({
   onSubmit,
   submitting,
   tier,
+  canSend,
+  initialScheduledAt,
+  rejectionReason,
 }: {
   template: Template;
   segmentAudience: Segment | null;
@@ -901,10 +906,29 @@ function Step3({
   onSubmit: (scheduledAt?: string) => void;
   submitting: boolean;
   tier: string | null | undefined;
+  // Without campaign:send the final step submits for approval instead of
+  // sending, and the schedule becomes a proposed send time.
+  canSend: boolean;
+  // A draft's saved (proposed) time, so reopening it doesn't lose it.
+  initialScheduledAt: string | null;
+  // Set when an admin sent this draft back.
+  rejectionReason: string | null;
 }) {
-  const [sendMode, setSendMode] = useState<"now" | "later">("now");
-  const [schedDate, setSchedDate] = useState("");
-  const [schedTime, setSchedTime] = useState("");
+  // Pre-filled from the draft in the device's timezone, the same one the
+  // picker below defaults to. Only a future time is worth keeping.
+  const [initialSched] = useState(() => {
+    if (!initialScheduledAt || new Date(initialScheduledAt).getTime() <= Date.now()) return null;
+    const p = Object.fromEntries(
+      new Intl.DateTimeFormat("en-CA", {
+        year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+      }).formatToParts(new Date(initialScheduledAt)).map(({ type, value }) => [type, value]),
+    );
+    return { date: `${p.year}-${p.month}-${p.day}`, time: `${p.hour}:${p.minute}` };
+  });
+  const [sendMode, setSendMode] = useState<"now" | "later">(initialSched ? "later" : "now");
+  const [schedDate, setSchedDate] = useState(initialSched?.date ?? "");
+  const [schedTime, setSchedTime] = useState(initialSched?.time ?? "");
   const [schedTz, setSchedTz] = useState("Asia/Dubai");
   const [quietHours, setQuietHours] = useState<QuietHours | null>(null);
 
@@ -950,7 +974,8 @@ function Step3({
 
   // The server refuses a schedule inside quiet hours; this says so up front.
   const scheduleInQuiet = !!scheduledAt && isQuietAt(new Date(scheduledAt), quietHours);
-  const nowInQuiet = sendMode === "now" && isQuietAt(new Date(), quietHours);
+  // Only meaningful for a send that starts now; an approval can come any time.
+  const nowInQuiet = canSend && sendMode === "now" && isQuietAt(new Date(), quietHours);
   const applyFirstAllowedTime = () => {
     if (!scheduledAt) return;
     const open = nextOpenAfter(new Date(scheduledAt), quietHours);
@@ -965,7 +990,7 @@ function Step3({
   };
 
   const startDisplay = sendMode === "now"
-    ? "Now"
+    ? canSend ? "Now" : "When approved"
     : scheduledAt
     ? new Date(scheduledAt).toLocaleString("en-US", { timeZone: schedTz, month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
     : "—";
@@ -978,8 +1003,24 @@ function Step3({
     <div className="flex-1 flex overflow-hidden">
       {/* Main */}
       <div className="flex-1 overflow-y-auto p-6 space-y-5">
-        <h2 className="text-[18px] font-bold text-gray-900">Review &amp; schedule</h2>
-        <p className="text-[13px] text-gray-500">Double-check everything before sending.</p>
+        <h2 className="text-[18px] font-bold text-gray-900">{canSend ? "Review & schedule" : "Review & submit"}</h2>
+        <p className="text-[13px] text-gray-500">
+          {canSend
+            ? "Double-check everything before sending."
+            : "Double-check everything, then submit it for an admin to approve. Approving is what sends it."}
+        </p>
+
+        {/* Why the last submission came back */}
+        {rejectionReason && (
+          <div className="flex items-start gap-2 bg-red-50 border border-red-100 rounded-xl p-3">
+            <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+            <div className="text-[12px] text-red-700 min-w-0">
+              <p className="font-semibold">An admin sent this back</p>
+              <p className="mt-0.5 whitespace-pre-wrap break-words">{rejectionReason}</p>
+              {!canSend && <p className="mt-1 text-red-500">Fix it, then submit again.</p>}
+            </div>
+          </div>
+        )}
 
         {/* Campaign name */}
         <div>
@@ -1091,7 +1132,9 @@ function Step3({
 
         {/* When to send */}
         <div className="bg-white border border-gray-200 rounded-2xl p-5">
-          <p className="text-[10px] font-bold tracking-widest text-gray-400 uppercase mb-3">When to send</p>
+          <p className="text-[10px] font-bold tracking-widest text-gray-400 uppercase mb-3">
+            {canSend ? "When to send" : "Proposed send time"}
+          </p>
           <div className="flex gap-2 mb-4">
             <button
               type="button"
@@ -1102,7 +1145,7 @@ function Step3({
                   : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
               }`}
             >
-              Send now
+              {canSend ? "Send now" : "As soon as approved"}
             </button>
             <button
               type="button"
@@ -1113,7 +1156,7 @@ function Step3({
                   : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-gray-800"
               }`}
             >
-              Schedule for later
+              {canSend ? "Schedule for later" : "Propose a time"}
             </button>
           </div>
           {sendMode === "later" && (
@@ -1143,6 +1186,11 @@ function Step3({
               <svg className="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20M12 2a14.5 14.5 0 0 1 0 20M2 12h20"/></svg>
               Time is in <span className="font-medium text-gray-500">{schedTz.replace(/_/g, " ")}</span> — auto-detected from your device
             </p>
+            {!canSend && (
+              <p className="text-[11px] text-gray-400">
+                If it&apos;s approved after this time, it sends straight away instead.
+              </p>
+            )}
             {scheduleInQuiet && quietHours && (
               <div className="flex items-start gap-2 bg-red-50 border border-red-100 rounded-xl p-3">
                 <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
@@ -1183,8 +1231,11 @@ function Step3({
             { label: "Recipients", value: String(count) },
             { label: "Template", value: template.name },
             { label: "Estimated runtime", value: `≈ ${formatDuration(estimatedSecondsMin)}–${formatDuration(estimatedSecondsMax)}` },
-            { label: "Start", value: startDisplay },
-            { label: "ETA finish", value: etaFinishMin === etaFinishMax ? etaFinishMin : `${etaFinishMin} – ${etaFinishMax}` },
+            { label: canSend ? "Start" : "Proposed start", value: startDisplay },
+            // No finish time to estimate until someone approves it.
+            ...(canSend || sendMode === "later"
+              ? [{ label: "ETA finish", value: etaFinishMin === etaFinishMax ? etaFinishMin : `${etaFinishMin} – ${etaFinishMax}` }]
+              : []),
             { label: "Per-message cost", value: `$${rate.toFixed(4)}` },
             { label: "Estimated total", value: `$${estimatedCost}` },
           ].map(({ label, value }) => (
@@ -1206,13 +1257,20 @@ function Step3({
         <TestSendBox template={template} />
 
         <div className="mt-auto space-y-2">
+          {!canSend && (
+            <p className="text-[11px] text-gray-400 leading-relaxed">
+              An admin reviews it before anything goes out. You can&apos;t edit it while it waits.
+            </p>
+          )}
           <button
             onClick={() => onSubmit(scheduledAt)}
             disabled={submitting || !campaignName.trim() || !category || scheduleInQuiet || (sendMode === "later" && (!schedDate || !schedTime))}
             className="w-full py-3 rounded-xl text-[14px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5540] disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2 cursor-pointer"
           >
             {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
-            {sendMode === "now"
+            {!canSend
+              ? "Submit for approval"
+              : sendMode === "now"
               ? "Send now"
               : schedDate && schedTime
               ? `Schedule for ${new Date(`${schedDate}T${schedTime}`).toLocaleDateString("en-US", { month: "short", day: "numeric" })} · ${new Date(`${schedDate}T${schedTime}`).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`
@@ -1237,15 +1295,15 @@ function NewCampaignLoading() {
 }
 
 export default function NewCampaignPage() {
-  // Building a campaign is ADMIN-only server-side, so a direct visit to this
-  // URL has to be turned away here too — otherwise an agent fills in the whole
-  // three-step wizard and only discovers it on the 403 at save/send.
-  // The wizard ends in a send, so it needs both building and sending
-  // permission. Read from the server's permission list, never the role name.
+  // A direct visit has to be turned away here too — otherwise someone without
+  // access fills in the whole three-step wizard and only discovers it on the
+  // 403 at save. Building needs campaign:write; the last step then sends
+  // (campaign:send) or submits for approval (everyone else). Read from the
+  // server's permission list, never the role name.
   const { ready, can } = useCurrentUser();
   const access: "checking" | "granted" | "denied" = !ready
     ? "checking"
-    : can("campaign:write", "campaign:send")
+    : can("campaign:write")
       ? "granted"
       : "denied";
 
@@ -1255,8 +1313,8 @@ export default function NewCampaignPage() {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-3">
         <Lock className="w-10 h-10 text-gray-300" />
-        <h1 className="text-lg font-semibold text-gray-500">Admin access only</h1>
-        <p className="text-[13px] text-gray-400">Only admins can create and send campaigns.</p>
+        <h1 className="text-lg font-semibold text-gray-500">No access</h1>
+        <p className="text-[13px] text-gray-400">Only admins and the marketing team can create campaigns.</p>
       </div>
     );
   }
@@ -1316,6 +1374,14 @@ function NewCampaignContent() {
   const [submitting, setSubmitting] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
   const [loadingDraft, setLoadingDraft] = useState(!!draftIdParam);
+  const { can } = useCurrentUser();
+  const canSend = can("campaign:send");
+  // From the loaded draft: its proposed time, and why it was sent back (if it was).
+  const [draftScheduledAt, setDraftScheduledAt] = useState<string | null>(null);
+  const [rejectionReason, setRejectionReason] = useState<string | null>(null);
+  // Set when Send now answered OVER_MESSAGING_LIMIT; confirming retries the
+  // send alone — the campaign is already saved.
+  const [overLimit, setOverLimit] = useState<{ campaignId: number; capacity: CampaignCapacity } | null>(null);
   // undefined = not loaded yet / unknown; null = Meta reported no tier.
   const [tier, setTier] = useState<string | null | undefined>(undefined);
 
@@ -1336,6 +1402,8 @@ function NewCampaignContent() {
         setCampaignName(c.name);
         setCategory(c.category);
         setFlowId(c.flowId ?? null);
+        setDraftScheduledAt(c.scheduledAt ?? null);
+        setRejectionReason(c.rejectionReason ?? null);
         if (c.template) {
           setSelectedTemplate(c.template as unknown as Template);
         }
@@ -1520,7 +1588,9 @@ function NewCampaignContent() {
         : { name: baseName, templateId: selectedTemplate.id, recipientIds: [...selectedIds], scheduledAt, flowId, ...(category && { category }) };
       let campaignId: number;
       if (draftCampaignId) {
-        await apiUpdateCampaign(draftCampaignId, payload);
+        // null, not undefined: switching back to "now" has to clear a time
+        // saved earlier, or approval would still schedule it for then.
+        await apiUpdateCampaign(draftCampaignId, { ...payload, scheduledAt: scheduledAt ?? null });
         campaignId = draftCampaignId;
       } else {
         const res = await apiCreateCampaign(payload);
@@ -1529,10 +1599,47 @@ function NewCampaignContent() {
         // create a second one.
         setDraftCampaignId(campaignId);
       }
+      // No campaign:send — the server kept it a DRAFT (proposed time and all);
+      // hand it to an admin. A failure here (no recipients, template paused…)
+      // leaves the saved draft for the retry above to update.
+      if (!canSend) {
+        await apiSubmitCampaign(campaignId);
+        toast.success("Submitted for approval");
+        router.push("/campaigns");
+        return;
+      }
       if (!scheduledAt) {
-        await apiSendCampaignNow(campaignId);
+        try {
+          await apiSendCampaignNow(campaignId);
+        } catch (err) {
+          const capacity = overLimitDetails(err);
+          if (!capacity) throw err;
+          setOverLimit({ campaignId, capacity });
+          return;
+        }
       }
       toast.success(scheduledAt ? "Campaign scheduled." : "Campaign is sending now.");
+      router.push("/campaigns");
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : canSend
+          ? "Failed to send campaign. Please try again."
+          : "Couldn't submit campaign. Please try again."
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const confirmOverLimitSend = async () => {
+    if (!overLimit) return;
+    setSubmitting(true);
+    try {
+      await apiSendCampaignNow(overLimit.campaignId, { confirmOverLimit: true });
+      setOverLimit(null);
+      toast.success("Campaign is sending now.");
       router.push("/campaigns");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to send campaign. Please try again.");
@@ -1636,6 +1743,9 @@ function NewCampaignContent() {
                 onSubmit={handleSubmit}
                 submitting={submitting}
                 tier={tier}
+                canSend={canSend}
+                initialScheduledAt={draftScheduledAt}
+                rejectionReason={rejectionReason}
               />
             )}
           </>
@@ -1661,6 +1771,16 @@ function NewCampaignContent() {
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>
+      )}
+
+      {overLimit && (
+        <OverLimitDialog
+          capacity={overLimit.capacity}
+          actionLabel="Send anyway"
+          busy={submitting}
+          onCancel={() => setOverLimit(null)}
+          onConfirm={confirmOverLimitSend}
+        />
       )}
     </div>
   );

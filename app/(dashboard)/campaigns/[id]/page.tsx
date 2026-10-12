@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -9,6 +9,8 @@ import {
   Clock,
   AlertCircle,
   SkipForward,
+  Hourglass,
+  Pencil,
 } from "lucide-react";
 import type { Campaign, CampaignRecipient } from "@/types";
 import { apiGetCampaign, apiSetCampaignFlow } from "@/lib/api";
@@ -18,6 +20,8 @@ import { useCurrentUser } from "@/components/CurrentUserProvider";
 import { useToast } from "@/components/ui/toast";
 import { CampaignReplies } from "@/components/CampaignReplies";
 import CampaignCategoryBadge from "@/components/CampaignCategoryBadge";
+import { useCampaignReview } from "@/components/CampaignApprovalDialogs";
+import { getSocket } from "@/lib/socket";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -26,6 +30,10 @@ function formatDateTime(iso: string): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) +
     " · " +
     d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+}
+
+function personName(p: { name: string | null; username: string } | null | undefined): string | null {
+  return p ? p.name || p.username : null;
 }
 
 function pct(num: number, denom: number): string {
@@ -43,6 +51,7 @@ const STATUS_ICON: Record<string, React.ReactNode> = {
   FAILED: <AlertCircle className="w-3.5 h-3.5 text-red-500" />,
   SKIPPED: <SkipForward className="w-3.5 h-3.5 text-gray-400" />,
   PENDING: <Clock className="w-3.5 h-3.5 text-amber-400" />,
+  SENDING: <Clock className="w-3.5 h-3.5 text-blue-500 animate-pulse" />,
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -50,6 +59,7 @@ const STATUS_LABEL: Record<string, string> = {
   FAILED: "Failed",
   SKIPPED: "Skipped",
   PENDING: "Pending",
+  SENDING: "Sending",
 };
 
 const STATUS_CLASS: Record<string, string> = {
@@ -57,6 +67,7 @@ const STATUS_CLASS: Record<string, string> = {
   FAILED: "bg-red-50 text-red-600",
   SKIPPED: "bg-gray-100 text-gray-500",
   PENDING: "bg-amber-50 text-amber-600",
+  SENDING: "bg-blue-50 text-blue-600",
 };
 
 // ── Stat Card ─────────────────────────────────────────────────────────────────
@@ -119,8 +130,10 @@ export default function CampaignDetailPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
+  const { can, me } = useCurrentUser();
+  const canSend = can("campaign:send");
 
-  useEffect(() => {
+  const load = useCallback(() => {
     apiGetCampaign(Number(id))
       .then((res) => {
         setCampaign(res.data);
@@ -129,6 +142,29 @@ export default function CampaignDetailPage() {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [id]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // Another admin may approve or reject while this page is open, or the
+  // submitter may resubmit — reload when it's this campaign.
+  useEffect(() => {
+    const socket = getSocket();
+    const onReview = (data: { campaignId: number }) => {
+      if (data.campaignId === Number(id)) load();
+    };
+    socket.on("campaign.submitted", onReview);
+    socket.on("campaign.approved", onReview);
+    socket.on("campaign.rejected", onReview);
+    return () => {
+      socket.off("campaign.submitted", onReview);
+      socket.off("campaign.approved", onReview);
+      socket.off("campaign.rejected", onReview);
+    };
+  }, [id, load]);
+
+  const review = useCampaignReview(load);
 
   if (loading) {
     return (
@@ -151,14 +187,18 @@ export default function CampaignDetailPage() {
   const sentR = recipients.filter((r) => r.status === "SENT");
   const failedR = recipients.filter((r) => r.status === "FAILED");
   const skippedR = recipients.filter((r) => r.status === "SKIPPED");
-  const pendingR = recipients.filter((r) => r.status === "PENDING");
+  // Rows a send loop has claimed but not finished count as pending here.
+  const pendingR = recipients.filter((r) => r.status === "PENDING" || r.status === "SENDING");
 
   const filtered = recipients.filter((r) => {
     const matchSearch =
       !search ||
       r.customer?.name?.toLowerCase().includes(search.toLowerCase()) ||
       r.customer?.phone?.includes(search);
-    const matchStatus = statusFilter === "ALL" || r.status === statusFilter;
+    const matchStatus =
+      statusFilter === "ALL" ||
+      r.status === statusFilter ||
+      (statusFilter === "PENDING" && r.status === "SENDING");
     return matchSearch && matchStatus;
   });
 
@@ -166,9 +206,21 @@ export default function CampaignDetailPage() {
     COMPLETED: "bg-green-50 text-green-700",
     RUNNING: "bg-blue-50 text-blue-700",
     SCHEDULED: "bg-amber-50 text-amber-700",
+    PENDING_APPROVAL: "bg-amber-50 text-amber-700",
+    PAUSED: "bg-orange-50 text-orange-600",
     CANCELLED: "bg-gray-100 text-gray-500",
     DRAFT: "bg-gray-100 text-gray-500",
   };
+
+  const pending = campaign.status === "PENDING_APPROVAL";
+  // Back in DRAFT with the reviewer's reason, until it's resubmitted.
+  const rejected = campaign.status === "DRAFT" && !!campaign.rejectionReason;
+  // Without campaign:send the server only allows editing your own drafts.
+  const mayEdit = can("campaign:write") && (canSend || campaign.createdById === me?.id);
+  const submitter = personName(campaign.submittedBy);
+  const reviewer = personName(campaign.reviewedBy);
+  // A review on anything past PENDING_APPROVAL that isn't a sent-back draft is an approval.
+  const approved = !!campaign.reviewedAt && !rejected && !pending && campaign.status !== "DRAFT";
 
   return (
     <div className="flex-1 overflow-y-auto bg-[#f9f9f8]">
@@ -186,7 +238,7 @@ export default function CampaignDetailPage() {
             <div className="flex items-center gap-2.5 flex-wrap">
               <h1 className="text-[20px] font-bold text-gray-900 truncate">{campaign.name}</h1>
               <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${CAMPAIGN_STATUS_CLASS[campaign.status]}`}>
-                {campaign.status}
+                {pending ? "AWAITING APPROVAL" : rejected ? "SENT BACK" : campaign.status}
               </span>
               <CampaignCategoryBadge category={campaign.category} />
             </div>
@@ -194,16 +246,103 @@ export default function CampaignDetailPage() {
               {campaign.template?.name ?? "—"}
               {campaign.startedAt && ` · Started ${formatDateTime(campaign.startedAt)}`}
               {campaign.completedAt && ` · Completed ${formatDateTime(campaign.completedAt)}`}
+              {!!campaign.skippedCount && ` · ${campaign.skippedCount} skipped (opted out or over the per-patient limit)`}
             </p>
+            {/* Approval trail */}
+            {(campaign.submittedAt || approved) && (
+              <p className="text-[12px] text-gray-400 mt-0.5">
+                {campaign.submittedAt && (
+                  <>Submitted{submitter && <> by <span className="text-gray-600 font-medium">{submitter}</span></>} · {formatDateTime(campaign.submittedAt)}</>
+                )}
+                {campaign.submittedAt && approved && " · "}
+                {approved && (
+                  <>Approved{reviewer && <> by <span className="text-gray-600 font-medium">{reviewer}</span></>} · {formatDateTime(campaign.reviewedAt!)}</>
+                )}
+              </p>
+            )}
           </div>
         </div>
 
+        {/* Awaiting approval */}
+        {pending && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center gap-4">
+            <div className="w-9 h-9 rounded-xl bg-white flex items-center justify-center shrink-0">
+              <Hourglass className="w-4 h-4 text-amber-500" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[14px] font-semibold text-amber-800">
+                {canSend ? "This campaign is waiting for your approval" : "Waiting for approval"}
+              </p>
+              <p className="text-[12px] text-amber-700 mt-0.5">
+                {campaign.totalRecipients} recipient{campaign.totalRecipients !== 1 ? "s" : ""} ·{" "}
+                {campaign.scheduledAt ? `proposed for ${formatDateTime(campaign.scheduledAt)}` : "sends as soon as it's approved"}
+                {!canSend && " — an admin will approve it or send it back."}
+              </p>
+            </div>
+            {canSend && (
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => review.startReject(campaign)}
+                  disabled={review.reviewing}
+                  className="text-[13px] font-medium text-red-500 hover:text-red-600 bg-white border border-red-200 hover:border-red-300 px-4 py-2 rounded-xl transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Reject
+                </button>
+                <button
+                  onClick={() => review.startApprove(campaign)}
+                  disabled={review.reviewing}
+                  className="flex items-center gap-1.5 text-[13px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5540] px-4 py-2 rounded-xl transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  Approve
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Sent back by a reviewer */}
+        {rejected && (
+          <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-start gap-4">
+            <div className="w-9 h-9 rounded-xl bg-white flex items-center justify-center shrink-0">
+              <XCircle className="w-4 h-4 text-red-500" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[14px] font-semibold text-red-700">
+                Rejected{reviewer && ` by ${reviewer}`}
+                {campaign.reviewedAt && <span className="font-normal text-red-500 text-[12px]"> · {formatDateTime(campaign.reviewedAt)}</span>}
+              </p>
+              <p className="text-[13px] text-red-700 mt-1 whitespace-pre-wrap break-words">{campaign.rejectionReason}</p>
+            </div>
+            {mayEdit && (
+              <button
+                onClick={() => router.push(`/campaigns/new?draft=${campaign.id}`)}
+                className="flex items-center gap-1.5 text-[13px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5540] px-4 py-2 rounded-xl transition-colors shrink-0 cursor-pointer"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+                {canSend ? "Edit" : "Edit & resubmit"}
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Stat cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-3">
           <StatCard label="Total sent" value={campaign.sentCount} sub={pct(campaign.sentCount, campaign.totalRecipients) + " of recipients"} />
           <StatCard label="Delivered" value={campaign.deliveredCount ?? 0} sub={pct(campaign.deliveredCount ?? 0, campaign.sentCount)} />
           <StatCard label="Read" value={campaign.readCount ?? 0} sub={pct(campaign.readCount ?? 0, campaign.sentCount)} />
           <StatCard label="Replied" value={campaign.repliedCount ?? 0} sub={pct(campaign.repliedCount ?? 0, campaign.sentCount)} />
+          <StatCard
+            label="Booking requests"
+            value={campaign.bookingRequestsCount ?? 0}
+            sub={(campaign.repliedCount ?? 0) > 0 ? `${pct(campaign.bookingRequestsCount ?? 0, campaign.repliedCount ?? 0)} of replies` : undefined}
+          />
+          <StatCard
+            label="Booked"
+            value={campaign.bookedCount ?? 0}
+            sub={`${campaign.bookedCount ?? 0} booked of ${campaign.repliedCount ?? 0} replied`}
+            color={(campaign.bookedCount ?? 0) > 0 ? "text-[#3B694C]" : "text-gray-800"}
+          />
           <StatCard label="Failed" value={campaign.failedCount} sub={pct(campaign.failedCount, campaign.totalRecipients)} color={campaign.failedCount > 0 ? "text-red-500" : "text-gray-800"} />
         </div>
 
@@ -301,6 +440,9 @@ export default function CampaignDetailPage() {
         </div>
 
       </div>
+
+      {/* Approve / reject / over-limit confirm */}
+      {review.dialogs}
     </div>
   );
 }

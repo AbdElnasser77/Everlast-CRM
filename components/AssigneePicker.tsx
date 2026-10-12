@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, UserMinus, UserRound } from "lucide-react";
-import { apiAssignConversation, apiGetAssignableUsers } from "@/lib/api";
+import { ApiError, apiAssignConversation, apiGetAssignableUsers } from "@/lib/api";
 import { useCurrentUser } from "@/components/CurrentUserProvider";
 import { useToast } from "@/components/ui/toast";
 import { Spinner } from "@/components/ui/spinner";
@@ -67,8 +67,14 @@ export function AssigneePicker({ conversationId, assignee }: { conversationId: s
     if ((assignee?.id ?? null) === agentId) return;
     setSaving(true);
     try {
-      await apiAssignConversation(conversationId, agentId);
+      await apiAssignConversation(conversationId, agentId, { agentId: assignee?.id ?? null });
     } catch (err) {
+      // A colleague reassigned it a moment ago: nothing was overwritten, and
+      // the header already shows the new owner (live update).
+      if (err instanceof ApiError && err.code === "ASSIGNMENT_CHANGED") {
+        toast.info(err.message);
+        return;
+      }
       toast.error(err instanceof Error ? err.message : "Couldn't change the assignee");
     } finally {
       setSaving(false);

@@ -65,6 +65,9 @@ import {
 import { isWindowClosed } from "@/lib/messagingWindow";
 import { AssigneePicker } from "@/components/AssigneePicker";
 import { ConversationStatusControl } from "@/components/ConversationStatusControl";
+import { ConversationOutcomeControl } from "@/components/ConversationOutcomeControl";
+import { BookingRequestBanner } from "@/components/bookings/BookingRequestBanner";
+import type { InboxConversation } from "@/lib/chatOutcome";
 
 /** The server refused a send because the 24-hour window is closed. */
 function isWindowClosedError(err: unknown): boolean {
@@ -681,6 +684,8 @@ function TemplatePickerModal({
   agentName,
   onClose,
   onSent,
+  beforeSend,
+  guardedSend,
 }: {
   conversationId: string;
   category: "GENERAL" | "RE_ENGAGEMENT";
@@ -688,7 +693,14 @@ function TemplatePickerModal({
   agentName: string;
   onClose: () => void;
   onSent: () => void;
+  /** Asks "reply anyway?" when a colleague owns the chat; false = cancelled. */
+  beforeSend: () => Promise<boolean>;
+  /** Sends, re-asking once if the server says a colleague owns the chat. */
+  guardedSend: <T>(send: (confirmOtherOwner: boolean) => Promise<T>) => Promise<T>;
 }) {
+  // One id for this template send: a double click returns the first send.
+  const clientIdRef = useRef(crypto.randomUUID());
+  const sendingRef = useRef(false);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loadingTpls, setLoadingTpls] = useState(true);
   const [selected, setSelected] = useState<Template | null>(null);
@@ -727,11 +739,19 @@ function TemplatePickerModal({
   );
 
   async function handleSend() {
-    if (!selected) return;
+    if (!selected || sendingRef.current) return;
+    sendingRef.current = true;
+    if (!(await beforeSend())) {
+      sendingRef.current = false;
+      return;
+    }
     setSending(true);
     setError(null);
     try {
-      await apiSendTemplate(conversationId, selected.id);
+      const templateId = selected.id;
+      await guardedSend((confirmOtherOwner) =>
+        apiSendTemplate(conversationId, templateId, { clientMessageId: clientIdRef.current, confirmOtherOwner }),
+      );
       onSent();
       onClose();
     } catch (err) {
@@ -744,6 +764,7 @@ function TemplatePickerModal({
         setError(msg);
       }
     } finally {
+      sendingRef.current = false;
       setSending(false);
     }
   }
@@ -923,6 +944,13 @@ export default function ConversationPage() {
   }
 
   const [message, setMessage] = useState("");
+  // A send in flight. A ref, not state: two Enter presses inside one render
+  // both saw `sending === false` and sent the message twice.
+  const sendingRef = useRef(false);
+  // "This chat is assigned to <name> — reply anyway?" (asked once per chat).
+  const [ownerPrompt, setOwnerPrompt] = useState<string | null>(null);
+  const ownerPromptResolve = useRef<((ok: boolean) => void) | null>(null);
+  const ownerOkRef = useRef<string | null>(null);
   // WhatsApp-Web-style contact panel on the right (header click / info button).
   const [showInfo, setShowInfo] = useState(false);
   // When "typing…" was last sent to the customer for this chat.
@@ -1140,9 +1168,52 @@ export default function ConversationPage() {
     highlightEl(row);
   }
 
+  function askReplyAnyway(name: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      ownerPromptResolve.current = resolve;
+      setOwnerPrompt(name);
+    });
+  }
+  function answerOwnerPrompt(ok: boolean) {
+    const resolve = ownerPromptResolve.current;
+    ownerPromptResolve.current = null;
+    setOwnerPrompt(null);
+    resolve?.(ok);
+  }
+  // True when this person may send here now: free chats and their own chats
+  // straight away; a colleague's chat after one "reply anyway" per chat.
+  async function confirmOwnership(): Promise<boolean> {
+    const owner = conversation?.assignedAgent;
+    if (!owner || String(owner.id) === String(user?.id) || ownerOkRef.current === id) return true;
+    const ok = await askReplyAnyway(owner.name || owner.username);
+    if (ok) ownerOkRef.current = id;
+    return ok;
+  }
+  // Sends; if the server says a colleague owns the chat (this screen was out of
+  // date), asks once and retries with the same message id — never a duplicate.
+  async function guardedSend<T>(send: (confirmOtherOwner: boolean) => Promise<T>): Promise<T> {
+    try {
+      return await send(ownerOkRef.current === id);
+    } catch (err) {
+      if (err instanceof ApiError && err.code === "ASSIGNED_TO_OTHER") {
+        const owner = (err.details as { assignee?: { name?: string | null; username: string } | null } | undefined)?.assignee;
+        if (await askReplyAnyway(owner ? owner.name || owner.username : "a colleague")) {
+          ownerOkRef.current = id;
+          return await send(true);
+        }
+      }
+      throw err;
+    }
+  }
+
   async function handleSend() {
     const text = message.trim();
-    if (!text || sending) return;
+    if (!text || sendingRef.current) return;
+    sendingRef.current = true;
+    if (!(await confirmOwnership())) {
+      sendingRef.current = false;
+      return;
+    }
     setMessage("");
     if (textareaRef.current) textareaRef.current.style.height = "auto";
     setSending(true);
@@ -1154,6 +1225,8 @@ export default function ConversationPage() {
     // Stop typing indicator on send
     handleTypingStop();
 
+    // Runs on Send, not during render — the purity rule misreads this handler.
+    // eslint-disable-next-line react-hooks/purity
     const tempId = `temp-${Date.now()}`;
     const optimistic: Message = {
       _id: tempId,
@@ -1171,7 +1244,10 @@ export default function ConversationPage() {
     appendOptimistic(optimistic);
 
     try {
-      const res = await apiSendMessage(id, text, undefined, "TEXT", quotedMsg?.id ?? undefined);
+      const clientMessageId = crypto.randomUUID();
+      const res = await guardedSend((confirmOtherOwner) =>
+        apiSendMessage(id, text, undefined, "TEXT", quotedMsg?.id ?? undefined, { clientMessageId, confirmOtherOwner }),
+      );
       // Backend may use `id` or `_id` — handle both
       const realId =
         ((res.data as Record<string, unknown>)._id as string) ??
@@ -1186,6 +1262,7 @@ export default function ConversationPage() {
         confirmOptimistic(tempId, { ...optimistic, status: "FAILED" });
       }
     } finally {
+      sendingRef.current = false;
       setSending(false);
     }
   }
@@ -1235,6 +1312,12 @@ export default function ConversationPage() {
   }
 
   async function handleSendPending(files: File[], captions: string[]) {
+    if (sendingRef.current) return;
+    sendingRef.current = true;
+    if (!(await confirmOwnership())) {
+      sendingRef.current = false;
+      return;
+    }
     setPendingFiles([]);
     handleTypingStop();
     setSending(true);
@@ -1291,7 +1374,10 @@ export default function ConversationPage() {
       // 1. Send caption text first (if present)
       if (textTempId && textMsg) {
         try {
-          const res = await apiSendMessage(id, textMsg.content);
+          const clientMessageId = crypto.randomUUID();
+          const res = await guardedSend((confirmOtherOwner) =>
+            apiSendMessage(id, textMsg.content, undefined, "TEXT", undefined, { clientMessageId, confirmOtherOwner }),
+          );
           const realId =
             ((res.data as Record<string, unknown>)._id as string) ??
             String((res.data as Record<string, unknown>).id);
@@ -1306,7 +1392,10 @@ export default function ConversationPage() {
       // 2. Then send the media file
       try {
         const { url, messageType } = await apiUploadMedia(file);
-        const res = await apiSendMessage(id, "", url, messageType);
+        const clientMessageId = crypto.randomUUID();
+        const res = await guardedSend((confirmOtherOwner) =>
+          apiSendMessage(id, "", url, messageType, undefined, { clientMessageId, confirmOtherOwner }),
+        );
         const realId =
           ((res.data as Record<string, unknown>)._id as string) ??
           String((res.data as Record<string, unknown>).id);
@@ -1318,6 +1407,7 @@ export default function ConversationPage() {
       }
     }
 
+    sendingRef.current = false;
     setSending(false);
   }
 
@@ -1394,13 +1484,18 @@ export default function ConversationPage() {
 
 
 
-        {/* Lifecycle + owner. Both update live from the server's socket events,
+        {/* Lifecycle, outcome and owner. All update live from the server's socket events,
             which patch the conversation list this header reads from. */}
         {conversation && (
           <>
             <div className="hidden md:block">
               <ConversationStatusControl conversationId={id} status={conversation.status} />
             </div>
+            <ConversationOutcomeControl
+              conversationId={id}
+              outcome={(conversation as InboxConversation).outcome ?? null}
+              followUpAt={(conversation as InboxConversation).followUpAt ?? null}
+            />
             <AssigneePicker conversationId={id} assignee={conversation.assignedAgent ?? null} />
           </>
         )}
@@ -1413,6 +1508,9 @@ export default function ConversationPage() {
           <PanelRight className="w-4.5 h-4.5" />
         </button>
       </div>
+
+      {/* The chat's open booking request, if any: what they asked for, and Book / Couldn't book */}
+      <BookingRequestBanner conversationId={id} patient={customer?.name || (customer?.phone ? `+${customer.phone}` : null)} />
 
       {/* File preview panel — replaces messages + input when files are queued */}
       {pendingFiles.length > 0 && (
@@ -1979,6 +2077,8 @@ export default function ConversationPage() {
           agentName={user?.username ?? "Agent"}
           onClose={() => setTemplatePickerOpen(false)}
           onSent={() => setTemplatePickerOpen(false)}
+          beforeSend={confirmOwnership}
+          guardedSend={guardedSend}
         />
       )}
       {reengagementOpen && (
@@ -1989,7 +2089,28 @@ export default function ConversationPage() {
           agentName={user?.username ?? "Agent"}
           onClose={() => setReengagementOpen(false)}
           onSent={() => setReengagementOpen(false)}
+          beforeSend={confirmOwnership}
+          guardedSend={guardedSend}
         />
+      )}
+      {ownerPrompt && createPortal(
+        <div className="fixed inset-0 z-[9999] bg-black/40 flex items-center justify-center px-4" onClick={() => answerOwnerPrompt(false)}>
+          <div role="alertdialog" aria-modal="true" className="bg-white rounded-2xl shadow-2xl w-[400px] max-w-full p-6" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-[15px] font-bold text-gray-900 mb-1.5">This chat is assigned to {ownerPrompt}</h3>
+            <p className="text-[13px] text-gray-500 mb-5">
+              {ownerPrompt} is handling this customer. Your reply will go out in their chat, and they&apos;ll see it. You won&apos;t be asked again for this chat.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button type="button" autoFocus onClick={() => answerOwnerPrompt(false)} className="px-4 py-2 rounded-xl text-[13px] font-medium text-gray-600 hover:bg-gray-50 cursor-pointer">
+                Cancel
+              </button>
+              <button type="button" onClick={() => answerOwnerPrompt(true)} className="px-4 py-2 rounded-xl text-[13px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5840] cursor-pointer">
+                Reply anyway
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
       )}
       {deleteTarget && createPortal(
         <div className="fixed inset-0 z-[9999] bg-black/40 flex items-center justify-center px-4" onClick={() => !deletingMsg && setDeleteTarget(null)}>

@@ -1,21 +1,38 @@
 "use client";
 
 // The chat's contact panel — WhatsApp Web's "Contact info", for the CRM:
-// who this is, what they booked through a flow, notes and tags the team can
-// edit mid-conversation, the chat's media/docs/links, and the campaigns they
-// received. Opened from the chat header.
+// who this is, how the chat ended up (outcome, bookings), what they asked for
+// through a flow, notes and tags the team can edit mid-conversation, the chat's
+// media/docs/links, and the campaigns they received. Opened from the chat header.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import {
   X, Search, Pencil, Check, Copy, CalendarCheck2, StickyNote, Tag, Image as ImageIcon, FileText, Link2,
   Megaphone, ShieldOff, Video, Music, ChevronRight, Loader2, ArrowLeft, ExternalLink,
+  Flag, Hourglass, MessageSquareText, Lock, Trash2, CalendarPlus, Workflow, Plus,
 } from "lucide-react";
-import { apiGetConversationProfile, apiSearchMessages, apiUpdateCustomer } from "@/lib/api";
-import type { ConversationProfile, Message } from "@/types";
+import {
+  apiAddConversationNote, apiCancelBooking, apiCreateBookingRequest, apiDeleteConversationNote, apiGetConversationProfile,
+  apiSearchMessages, apiUpdateCustomer,
+} from "@/lib/api";
+import type { Booking, BookingRequest, ConversationNote, Message } from "@/types";
 import { RUN_STATUS_META } from "@/lib/flows";
+import { getSocket } from "@/lib/socket";
 import { useCurrentUser } from "@/components/CurrentUserProvider";
+import { useActiveNumber } from "@/components/WhatsAppNumberProvider";
 import { useToast } from "@/components/ui/toast";
+import { AppointmentCard, RequestStatusChip, RequestedDetails } from "@/components/bookings/RequestParts";
+import { NewRequestDialog } from "@/components/bookings/NewRequestDialog";
+import { useRequestActions } from "@/components/bookings/useRequestActions";
+import {
+  isOpenRequest, notBookedLabel, notifyRequestChanged, onRequestChanged, requestAge, requestService, requestSource,
+} from "@/lib/bookingRequests";
+import {
+  OUTCOME_CHIP, OUTCOME_LABEL, OVERDUE_CHIP, WAIT_AMBER_MIN, WAIT_RED_MIN, type ProfileWithOutcome,
+  fmtElapsed, fmtWhen, isOverdue, personName, sortBookings,
+} from "@/lib/chatOutcome";
 
 const fmtDate = (iso: string | null | undefined) =>
   iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—";
@@ -25,6 +42,10 @@ const fmtDateTime = (iso: string) =>
 const fmtAnswer = (v: string) =>
   /^\d{4}-\d{2}-\d{2}$/.test(v) ? new Date(`${v}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) : v;
 const pretty = (key: string) => key.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+const initialsOf = (p: { name?: string | null; username: string } | null) =>
+  personName(p).split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? "").join("") || "?";
+
+const NOTE_MAX = 2000;
 
 // The answers a booking is made of, in reading order; anything else follows.
 const BOOKING_KEYS = ["offer", "preferred_date", "preferred_time", "contact_number"];
@@ -57,10 +78,16 @@ export function ContactPanel({
   /** Scrolls the chat to a message; false when it isn't loaded (older). */
   onJumpToMessage: (messageId: number) => boolean;
 }) {
-  const { can } = useCurrentUser();
+  const { can, me } = useCurrentUser();
   const canEdit = can("contact:write");
+  // Working the chat: cancelling its bookings, writing notes.
+  const canWork = can("conversation:write");
+  // Supervisors may remove anyone's note; everyone else only their own (the server decides).
+  const canSupervise = can("team:supervise");
+  const { numbers } = useActiveNumber();
   const toast = useToast();
-  const [profile, setProfile] = useState<ConversationProfile | null>(null);
+  const chatId = Number(conversationId);
+  const [profile, setProfile] = useState<ProfileWithOutcome | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
 
@@ -75,6 +102,21 @@ export function ContactPanel({
   const [newTag, setNewTag] = useState("");
   const [saving, setSaving] = useState(false);
 
+  // Chat notes (staff-only), and the booking / note waiting on a "really?".
+  const [noteDraft, setNoteDraft] = useState("");
+  const [addingNote, setAddingNote] = useState(false);
+  const [confirm, setConfirm] = useState<{ kind: "booking"; booking: Booking } | { kind: "note"; note: ConversationNote } | null>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
+  const [newRequest, setNewRequest] = useState(false);
+  const requestActions = useRequestActions(() => setReload((n) => n + 1), profile?.customer.name || null);
+
+  // For "waiting 12m" and overdue follow-ups.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+
   // Search + media views
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState("");
@@ -87,7 +129,8 @@ export function ContactPanel({
     apiGetConversationProfile(conversationId)
       .then((res) => {
         if (cancelled) return;
-        setProfile(res.data);
+        // The shared type predates outcomes, bookings and notes; see ProfileWithOutcome.
+        setProfile(res.data as unknown as ProfileWithOutcome);
         setError(null);
         const c = res.data.customer;
         setForm({ name: c.name || "", email: c.email || "", chartNumber: c.chartNumber || "", nationality: c.nationality || "" });
@@ -96,6 +139,22 @@ export function ContactPanel({
       .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : "Couldn't load contact info"); });
     return () => { cancelled = true; };
   }, [conversationId, refreshKey, reload]);
+
+  // Outcome / booking / note changes — ours or a colleague's — reload the panel.
+  useEffect(() => {
+    const socket = getSocket();
+    const onChange = (p: { conversationId?: number | string }) => {
+      if (String(p?.conversationId) === conversationId) setReload((n) => n + 1);
+    };
+    const events = ["conversation.outcome", "conversation.note", "booking_request.created", "booking_request.updated"];
+    events.forEach((e) => socket.on(e, onChange));
+    // Our own change from the chat banner or the outcome menu.
+    const off = onRequestChanged((id) => { if (id === conversationId) setReload((n) => n + 1); });
+    return () => {
+      events.forEach((e) => socket.off(e, onChange));
+      off();
+    };
+  }, [conversationId]);
 
   useEffect(() => {
     if (!searching || query.trim().length < 2) return;
@@ -126,11 +185,63 @@ export function ContactPanel({
     }
   }, [profile, toast]);
 
+  async function addNote() {
+    const body = noteDraft.trim();
+    if (!body || addingNote) return;
+    setAddingNote(true);
+    try {
+      const res = await apiAddConversationNote(chatId, body);
+      setNoteDraft("");
+      setProfile((p) => (p ? { ...p, notes: [...p.notes.filter((n) => n.id !== res.data.id), res.data] } : p));
+      toast.success("Note added");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't add the note");
+    } finally {
+      setAddingNote(false);
+    }
+  }
+
+  async function confirmAction() {
+    if (!confirm) return;
+    setConfirmBusy(true);
+    try {
+      if (confirm.kind === "booking") {
+        await apiCancelBooking(chatId, confirm.booking.id);
+        toast.success("Booking cancelled");
+        notifyRequestChanged(chatId);
+      } else {
+        const id = confirm.note.id;
+        await apiDeleteConversationNote(chatId, id);
+        setProfile((p) => (p ? { ...p, notes: p.notes.filter((n) => n.id !== id) } : p));
+        toast.success("Note deleted");
+      }
+      setConfirm(null);
+      setReload((n) => n + 1);
+    } catch (err) {
+      // e.g. a 403 on someone else's note — the server's own words.
+      toast.error(err instanceof Error ? err.message : "Couldn't do that");
+    } finally {
+      setConfirmBusy(false);
+    }
+  }
+
   const jump = (messageId: number) => {
     if (!onJumpToMessage(messageId)) toast.info("That message is further up — scroll up in the chat to load it.");
   };
 
-  const bookings = useMemo(() => (profile?.responses || []).filter((r) => r.answers.preferred_date || r.answers.contact_number), [profile]);
+  // Flow runs that became a booking request show under Booking requests; the rest
+  // (booking answers that didn't, or just browsing) under Flow answers.
+  const requestRunIds = useMemo(() => new Set((profile?.bookingRequests || []).map((r) => r.flowRunId).filter((x): x is number => x != null)), [profile]);
+  const bookings = useMemo(() => (profile?.responses || []).filter((r) => !requestRunIds.has(r.id) && (r.answers.preferred_date || r.answers.contact_number)), [profile, requestRunIds]);
+  // Open ones first (oldest on top: they've waited longest), then the rest newest first.
+  const chatRequests = useMemo(() => {
+    const t = (r: BookingRequest) => new Date(r.createdAt).getTime();
+    return [...(profile?.bookingRequests || [])].sort((a, b) => {
+      const ao = isOpenRequest(a) ? 0 : 1;
+      const bo = isOpenRequest(b) ? 0 : 1;
+      return ao - bo || (ao === 0 ? t(a) - t(b) : t(b) - t(a));
+    });
+  }, [profile]);
   const otherResponses = useMemo(() => (profile?.responses || []).filter((r) => !(r.answers.preferred_date || r.answers.contact_number)), [profile]);
 
   if (error) {
@@ -186,6 +297,15 @@ export function ContactPanel({
 
   const imagesAndVideos = profile.media.filter((m) => m.messageType === "IMAGE" || m.messageType === "VIDEO");
   const docs = profile.media.filter((m) => m.messageType === "DOCUMENT" || m.messageType === "AUDIO");
+  const conv = profile.conversation;
+  const outcomeOverdue = conv.outcome === "FOLLOW_UP" && isOverdue(conv.followUpAt, now);
+  const waitingMin = conv.awaitingReplySince && conv.status !== "RESOLVED" ? (now - new Date(conv.awaitingReplySince).getTime()) / 60_000 : null;
+  const allBookings = sortBookings(profile.bookings || [], now);
+  const liveCount = allBookings.filter((b) => b.status === "BOOKED").length;
+  const lineLabel = (id: number) => numbers.find((n) => n.id === id)?.label ?? `Line #${id}`;
+  // Newest first — the latest word on this chat is what a colleague needs.
+  const chatNotes = [...(profile.notes || [])].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
   const mediaTotal = (profile.mediaCounts.IMAGE || 0) + (profile.mediaCounts.VIDEO || 0) + (profile.mediaCounts.DOCUMENT || 0) + (profile.mediaCounts.AUDIO || 0) + profile.links.length;
 
   return (
@@ -270,10 +390,101 @@ export function ContactPanel({
           )}
         </div>
 
-        {/* Bookings */}
-        <Section icon={CalendarCheck2} title="Booking requests" aside={bookings.length ? <span className="text-[11px] text-gray-400">{bookings.length}</span> : undefined}>
+        {/* Outcome — how this chat ended up, and who said so */}
+        <Section icon={Flag} title="Outcome">
+          {conv.outcome ? (
+            <>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className={`text-[12px] font-semibold px-2 py-0.5 rounded-full border ${outcomeOverdue ? OVERDUE_CHIP : OUTCOME_CHIP[conv.outcome]}`}>
+                  {outcomeOverdue ? "Follow up overdue" : OUTCOME_LABEL[conv.outcome]}
+                </span>
+                {conv.outcome === "FOLLOW_UP" && conv.followUpAt && (
+                  <span className={`text-[12px] ${outcomeOverdue ? "text-red-600 font-semibold" : "text-gray-700"}`}>
+                    {outcomeOverdue ? "was due" : "due"} {fmtWhen(conv.followUpAt)}
+                  </span>
+                )}
+              </div>
+              <p className="mt-1.5 text-[11px] text-gray-400">
+                Set by {personName(conv.outcomeBy)}{conv.outcomeAt ? ` · ${fmtDateTime(conv.outcomeAt)}` : ""}
+              </p>
+            </>
+          ) : (
+            <Empty text={canWork ? "No outcome yet. Set it from the chat header once you know how it went." : "No outcome yet."} />
+          )}
+          {waitingMin !== null && (
+            <p className={`mt-2 inline-flex items-center gap-1 text-[11px] font-semibold ${waitingMin >= WAIT_RED_MIN ? "text-red-600" : waitingMin >= WAIT_AMBER_MIN ? "text-amber-700" : "text-gray-500"}`}>
+              <Hourglass className="w-3 h-3" /> Waiting for a reply · {fmtElapsed(waitingMin * 60_000)}
+            </p>
+          )}
+        </Section>
+
+        {/* Bookings — appointments the team recorded, on any line */}
+        <Section icon={CalendarCheck2} title="Bookings" aside={liveCount ? <span className="text-[11px] text-gray-400">{liveCount}</span> : undefined}>
+          {allBookings.length === 0 ? (
+            <Empty text={canWork ? "No bookings yet. Use Outcome → Booked… in the chat header to record one." : "No bookings yet."} />
+          ) : (
+            <div className="space-y-2">
+              {allBookings.map((b) => {
+                const cancelled = b.status === "CANCELLED";
+                const thisChat = b.conversationId === chatId;
+                return (
+                  <AppointmentCard
+                    key={b.id}
+                    booking={b}
+                    now={now}
+                    footer={
+                      <>
+                        Booked by {personName(b.createdBy)} · {lineLabel(b.whatsappNumberId)}{thisChat ? "" : " · another chat"}
+                        {cancelled && b.cancelledAt ? ` · cancelled ${fmtDateTime(b.cancelledAt)}` : ""}
+                      </>
+                    }
+                    action={!cancelled && thisChat && canWork ? (
+                      <button
+                        type="button"
+                        onClick={() => setConfirm({ kind: "booking", booking: b })}
+                        className="mt-2 text-[11px] font-semibold text-red-600 hover:text-red-700 hover:underline cursor-pointer"
+                      >
+                        Cancel booking
+                      </button>
+                    ) : undefined}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </Section>
+
+        {/* Booking requests: this chat's "wants to book", from the flow or an agent */}
+        <Section
+          icon={CalendarPlus}
+          title="Booking requests"
+          aside={
+            <span className="flex items-center gap-2">
+              {chatRequests.length > 0 && <span className="text-[11px] text-gray-400">{chatRequests.length}</span>}
+              {canWork && (
+                <button type="button" onClick={() => setNewRequest(true)} title="New booking request" className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-[#3B694C] hover:underline cursor-pointer">
+                  <Plus className="w-3 h-3" /> New
+                </button>
+              )}
+            </span>
+          }
+        >
+          {chatRequests.length === 0 ? (
+            <Empty text={canWork ? "No booking requests. The booking flow opens one, or use New when the patient asks in chat." : "No booking requests."} />
+          ) : (
+            <div className="space-y-2">
+              {chatRequests.map((r) => (
+                <ChatRequestCard key={r.id} req={r} now={now} meId={me?.id ?? null} canWork={canWork} actions={requestActions} />
+              ))}
+            </div>
+          )}
+        </Section>
+
+        {/* Flow answers that didn't become a booking request */}
+        {(bookings.length > 0 || otherResponses.length > 0) && (
+        <Section icon={Workflow} title="Flow answers" aside={bookings.length ? <span className="text-[11px] text-gray-400">{bookings.length}</span> : undefined}>
           {bookings.length === 0 ? (
-            <p className="text-[12px] text-gray-400">No bookings yet. Requests made through a flow appear here.</p>
+            <p className="text-[12px] text-gray-400">No booking answers outside the requests above.</p>
           ) : (
             <div className="space-y-2">
               {bookings.map((r) => {
@@ -306,9 +517,10 @@ export function ContactPanel({
             </p>
           )}
         </Section>
+        )}
 
-        {/* Notes */}
-        <Section icon={StickyNote} title="Notes">
+        {/* Patient notes — on the contact record, so every chat with them shows them */}
+        <Section icon={StickyNote} title="Patient notes">
           <textarea
             value={notes}
             disabled={!canEdit}
@@ -329,6 +541,70 @@ export function ContactPanel({
                 Save note
               </button>
             </div>
+          )}
+        </Section>
+
+        {/* Chat notes — a staff-only timeline for this chat */}
+        <Section icon={MessageSquareText} title="Chat notes" aside={chatNotes.length ? <span className="text-[11px] text-gray-400">{chatNotes.length}</span> : undefined}>
+          <p className="-mt-1.5 mb-3 flex items-center gap-1 text-[11px] text-gray-400">
+            <Lock className="w-3 h-3" /> Only your team sees these — never sent to the patient.
+          </p>
+          {canWork && (
+            <form className="mb-3" onSubmit={(e) => { e.preventDefault(); addNote(); }}>
+              <textarea
+                value={noteDraft}
+                onChange={(e) => setNoteDraft(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); addNote(); } }}
+                rows={2}
+                maxLength={NOTE_MAX}
+                placeholder="Add a note for the team — e.g. called back, will confirm Thursday…"
+                className="w-full resize-y border border-gray-200 rounded-lg px-2.5 py-2 text-[13px] outline-none focus:border-[#3B694C]"
+              />
+              <div className="flex items-center justify-end gap-2 mt-1.5">
+                {noteDraft.length > NOTE_MAX - 200 && (
+                  <span className="text-[11px] text-gray-400 tabular-nums">{noteDraft.length}/{NOTE_MAX}</span>
+                )}
+                <button
+                  type="submit"
+                  disabled={!noteDraft.trim() || addingNote}
+                  className="text-[12px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5840] px-3 py-1 rounded-lg disabled:opacity-40"
+                >
+                  {addingNote ? "Adding…" : "Add note"}
+                </button>
+              </div>
+            </form>
+          )}
+          {chatNotes.length === 0 ? (
+            <Empty text="No notes on this chat yet." />
+          ) : (
+            <ul className="space-y-3">
+              {chatNotes.map((n) => {
+                const mine = !!me && n.author?.id === me.id;
+                return (
+                  <li key={n.id} className="group flex gap-2.5">
+                    <span className={`w-6 h-6 rounded-full text-[10px] font-bold flex items-center justify-center shrink-0 ${mine ? "bg-[#3B694C] text-white" : "bg-gray-100 text-gray-500"}`}>
+                      {initialsOf(n.author)}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[11px] text-gray-400">
+                        <span className="font-semibold text-gray-700">{mine ? "You" : personName(n.author)}</span> · {fmtDateTime(n.createdAt)}
+                      </p>
+                      <p className="text-[13px] text-gray-700 whitespace-pre-wrap break-words">{n.body}</p>
+                    </div>
+                    {(mine || canSupervise) && (
+                      <button
+                        type="button"
+                        title="Delete note"
+                        onClick={() => setConfirm({ kind: "note", note: n })}
+                        className="w-6 h-6 rounded-full flex items-center justify-center text-gray-300 hover:bg-red-50 hover:text-red-500 shrink-0 md:opacity-0 md:group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </Section>
 
@@ -429,7 +705,154 @@ export function ContactPanel({
           )}
         </Section>
       </div>
+
+      {requestActions.dialogs}
+      {newRequest && (
+        <NewRequestDialog
+          onCancel={() => setNewRequest(false)}
+          onSave={async (body) => {
+            try {
+              await apiCreateBookingRequest(chatId, body);
+              setNewRequest(false);
+              toast.success("Booking request opened. It's yours.");
+              notifyRequestChanged(chatId);
+              return null;
+            } catch (err) {
+              return err instanceof Error ? err.message : "Couldn't open the request";
+            }
+          }}
+        />
+      )}
+      {confirm && (
+        <ConfirmDialog
+          title={confirm.kind === "booking" ? "Cancel this booking?" : "Delete this note?"}
+          body={
+            confirm.kind === "booking"
+              ? `${fmtWhen(confirm.booking.appointmentAt)}${confirm.booking.service ? ` · ${confirm.booking.service}` : ""}. It stays in the history as cancelled. If it's this chat's only booking, the chat's outcome is cleared.`
+              : "It's removed for the whole team. This can't be undone."
+          }
+          confirmLabel={confirm.kind === "booking" ? "Cancel booking" : "Delete"}
+          busy={confirmBusy}
+          onCancel={() => setConfirm(null)}
+          onConfirm={confirmAction}
+        />
+      )}
     </PanelShell>
+  );
+}
+
+/** One of this chat's booking requests: what they asked, who has it, its appointments, and what to do next. */
+function ChatRequestCard({ req: r, now, meId, canWork, actions }: {
+  req: BookingRequest;
+  now: number;
+  meId: number | null;
+  canWork: boolean;
+  actions: ReturnType<typeof useRequestActions>;
+}) {
+  const open = isOpenRequest(r);
+  const age = requestAge(r);
+  const mine = meId != null && r.claimedById === meId;
+  const someoneElse = r.claimedById != null && !mine;
+  const claiming = actions.busy?.id === r.id && actions.busy.action === "claim";
+  const reopening = actions.busy?.id === r.id && actions.busy.action === "reopen";
+  const appts = sortBookings(r.bookings || [], now);
+  const btn = "inline-flex items-center gap-1 text-[11.5px] font-semibold px-2.5 py-1 rounded-lg transition-colors cursor-pointer disabled:opacity-60";
+  return (
+    <div className={`rounded-xl border p-3 ${open ? "border-[#3B694C]/25 bg-[#F5FAF7]" : "border-gray-200 bg-white"}`}>
+      <div className="flex items-start gap-2">
+        <p className="flex-1 text-[13px] font-bold text-gray-900">{requestService(r) || "Booking request"}</p>
+        <RequestStatusChip status={r.status} />
+      </div>
+      <p className="mt-0.5 text-[11px] text-gray-400">{requestSource(r)} · {fmtDateTime(r.createdAt)}</p>
+      <div className="mt-2">
+        <RequestedDetails requested={r.requested} empty="Nothing collected yet. Ask the patient what they'd like." />
+      </div>
+      {r.note && <p className="mt-1.5 text-[12px] text-gray-600 whitespace-pre-wrap break-words">{r.note}</p>}
+
+      <p className="mt-2 text-[11px] text-gray-500 flex flex-wrap items-center gap-x-2 gap-y-1">
+        {open ? (
+          <>
+            {age && (
+              <span className={`inline-flex items-center gap-1 font-semibold border rounded px-1.5 py-px tabular-nums ${age.tone}`}>
+                <Hourglass className="w-3 h-3" /> waiting {age.label}
+              </span>
+            )}
+            <span>{mine ? "You're handling it" : r.claimedBy ? `${personName(r.claimedBy)} is handling it` : "Nobody has taken it yet"}</span>
+          </>
+        ) : r.status === "BOOKED" ? (
+          <span>Booked by {personName(r.handledBy)}{r.handledAt ? ` · ${fmtDateTime(r.handledAt)}` : ""}</span>
+        ) : (
+          <span>
+            <span className="font-semibold text-gray-600">{notBookedLabel(r.notBookedReason)}</span> · by {personName(r.handledBy)}
+            {r.handledAt ? ` · ${fmtDateTime(r.handledAt)}` : ""}
+          </span>
+        )}
+      </p>
+      {r.status === "NOT_BOOKED" && r.notBookedNote && (
+        <p className="mt-1 text-[12px] text-gray-500 whitespace-pre-wrap break-words">{r.notBookedNote}</p>
+      )}
+
+      {appts.length > 0 && (
+        <ul className="mt-2 space-y-1 border-t border-gray-100 pt-2">
+          {appts.map((b) => (
+            <li key={b.id} className={`text-[12px] ${b.status === "CANCELLED" ? "text-gray-400 line-through" : "text-gray-700"}`}>
+              <span className="font-semibold">{fmtWhen(b.appointmentAt)}</span>
+              {b.service ? ` · ${b.service}` : ""}
+              {b.doctor ? ` · ${b.doctor}` : ""}
+              {b.dok32Ref ? <span className="text-gray-400"> · Dok32 {b.dok32Ref}</span> : null}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {canWork && (
+        <div className="mt-2.5 flex flex-wrap gap-1.5">
+          {open && (r.status === "NEW" || someoneElse) && (
+            <button type="button" onClick={() => actions.claim(r)} disabled={claiming} className={`${btn} text-[#3B694C] border border-[#3B694C]/30 bg-white hover:bg-[#EEF6F1]`}>
+              {claiming && <Loader2 className="w-3 h-3 animate-spin" />} {someoneElse ? "Take over" : "Take it"}
+            </button>
+          )}
+          {(open || r.status === "BOOKED") && (
+            <button type="button" onClick={() => actions.book(r)} className={`${btn} text-white bg-[#3B694C] hover:bg-[#2f5840]`}>
+              {r.status === "BOOKED" ? "Add appointment" : "Book"}
+            </button>
+          )}
+          {open && (
+            <button type="button" onClick={() => actions.notBooked(r)} className={`${btn} text-gray-600 border border-gray-200 bg-white hover:bg-gray-50`}>
+              Couldn&apos;t book
+            </button>
+          )}
+          {r.status === "NOT_BOOKED" && (
+            <button type="button" onClick={() => actions.reopen(r)} disabled={reopening} className={`${btn} text-[#3B694C] border border-[#3B694C]/30 bg-white hover:bg-[#EEF6F1]`}>
+              {reopening && <Loader2 className="w-3 h-3 animate-spin" />} Reopen
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ConfirmDialog({ title, body, confirmLabel, busy, onCancel, onConfirm }: {
+  title: string; body: string; confirmLabel: string; busy: boolean; onCancel: () => void; onConfirm: () => void;
+}) {
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] bg-black/40 flex items-center justify-center px-4" onClick={() => !busy && onCancel()}>
+      <div role="alertdialog" aria-modal="true" className="bg-white rounded-2xl shadow-2xl w-[380px] max-w-full p-6" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-[15px] font-bold text-gray-900 mb-1.5">{title}</h3>
+        <p className="text-[13px] text-gray-500 mb-5">{body}</p>
+        <div className="flex justify-end gap-2">
+          <button type="button" autoFocus onClick={onCancel} disabled={busy} className="px-4 py-2 rounded-xl text-[13px] font-medium text-gray-600 hover:bg-gray-50 transition-colors cursor-pointer disabled:opacity-50">
+            Keep it
+          </button>
+          <button type="button" onClick={onConfirm} disabled={busy} className="px-4 py-2 rounded-xl text-[13px] font-semibold text-white bg-red-500 hover:bg-red-600 transition-colors cursor-pointer disabled:opacity-60 flex items-center gap-1.5">
+            {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 

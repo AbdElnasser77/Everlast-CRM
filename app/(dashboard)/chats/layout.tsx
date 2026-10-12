@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from "react";
 import type { ReactNode } from "react";
-import { LogOut, Clock } from "lucide-react";
+import { LogOut, Clock, Hourglass } from "lucide-react";
 import { useConversations } from "@/hooks/useConversations";
 import { disconnectSocket, getSocket } from "@/lib/socket";
 import { apiGetConversationCounts, apiLogout } from "@/lib/api";
@@ -15,6 +15,7 @@ import { homePathFor } from "@/lib/permissions";
 import { ConversationsContext } from "@/components/ConversationsContext";
 import type { ConversationCounts, ConversationView, User } from "@/types";
 import { isWindowClosed } from "@/lib/messagingWindow";
+import { OUTCOME_CHIP, OUTCOME_LABEL, OVERDUE_CHIP, fmtElapsed, fmtWhen, isOverdue, waitTone, type InboxConversation } from "@/lib/chatOutcome";
 
 function getId(c: import("@/types").Conversation): string {
   const raw = c.id ?? c._id;
@@ -165,6 +166,12 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
   const { conversations, loading, loadingMore, hasMore, loadMore, markRead, search, setSearch } =
     useConversations({ view, pinnedId: activeId });
   const counts = useConversationCounts();
+  // Drives the rows' waiting timers and overdue follow-ups.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
   const { ready: userReady, can, me } = useCurrentUser();
   const canUseInbox = can("conversation:write");
   // /chats is the app's default landing (the site root, and proxy.ts after
@@ -441,6 +448,13 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
                 const windowClosed = isWindowClosed(c.lastCustomerMessageAt);
                 // Who spoke last, so the preview reads like WhatsApp's.
                 const lastBy = c.lastSenderType === "BOT" ? "⚡ " : c.lastSenderType === "AGENT" ? "You: " : "";
+                // The patient wrote and nobody has answered yet (resolved chats don't count).
+                const row = c as InboxConversation;
+                const waitingMs = row.awaitingReplySince && c.status !== "RESOLVED"
+                  ? now - new Date(row.awaitingReplySince).getTime()
+                  : null;
+                const outcome = row.outcome ?? null;
+                const followUpOverdue = outcome === "FOLLOW_UP" && isOverdue(row.followUpAt, now);
                 return (
                   <Link
                     key={cid || i}
@@ -491,7 +505,7 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
                         )}
                       </div>
 
-                      {/* State line: window, status, owner, AI */}
+                      {/* State line: window, status, outcome, owner — and how long the patient has waited */}
                       <div className="flex items-center gap-1.5 mt-1.5 min-h-[20px]">
                         {windowClosed && (
                           <span
@@ -506,6 +520,18 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
                             {c.status === "PENDING" ? "Pending" : "Resolved"}
                           </span>
                         )}
+                        {outcome && (
+                          <span
+                            title={
+                              outcome === "FOLLOW_UP" && row.followUpAt
+                                ? `Follow up ${followUpOverdue ? "was due" : "due"} ${fmtWhen(row.followUpAt)}`
+                                : `Outcome: ${OUTCOME_LABEL[outcome]}`
+                            }
+                            className={`min-w-0 truncate text-[10.5px] font-semibold px-1.5 py-px rounded border ${followUpOverdue ? OVERDUE_CHIP : OUTCOME_CHIP[outcome]}`}
+                          >
+                            {OUTCOME_LABEL[outcome]}
+                          </span>
+                        )}
                         {c.assignedAgent ? (
                           <span
                             title={`Assigned to ${c.assignedAgent.name || c.assignedAgent.username}`}
@@ -518,6 +544,14 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
                         ) : c.status !== "RESOLVED" ? (
                           <span className="text-[10.5px] font-medium text-amber-600">Unassigned</span>
                         ) : null}
+                        {waitingMs !== null && (
+                          <span
+                            title={`Waiting for a reply since ${fmtWhen(row.awaitingReplySince!)}`}
+                            className={`ml-auto shrink-0 whitespace-nowrap inline-flex items-center gap-1 text-[10.5px] font-semibold border rounded px-1.5 py-px tabular-nums ${waitTone(waitingMs)}`}
+                          >
+                            <Hourglass className="w-3 h-3" /> waiting {fmtElapsed(waitingMs)}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </Link>

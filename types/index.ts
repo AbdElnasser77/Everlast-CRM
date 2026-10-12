@@ -314,7 +314,7 @@ export interface MediaAssetResponse {
   data: MediaAsset;
 }
 
-export type UserRole = "ADMIN" | "MARKETING" | "AGENT";
+export type UserRole = "ADMIN" | "MARKETING" | "AGENT" | "SUPERVISOR";
 
 export interface AgentUser {
   id: number;
@@ -347,10 +347,21 @@ export interface UserResponse {
   data: AgentUser;
 }
 
-export type CampaignStatus = "DRAFT" | "SCHEDULED" | "RUNNING" | "PAUSED" | "COMPLETED" | "CANCELLED";
+export type CampaignStatus = "DRAFT" | "PENDING_APPROVAL" | "SCHEDULED" | "RUNNING" | "PAUSED" | "COMPLETED" | "CANCELLED";
 export type CampaignCategory = "PROMOTION" | "SEASONAL" | "EVENT" | "AWARENESS" | "FOLLOW_UP" | "ANNOUNCEMENT" | "OTHER";
-export type CampaignPauseReason = "MANUAL" | "QUIET_HOURS" | "NUMBER_INACTIVE" | "SEND_ERROR";
-export type CampaignRecipientStatus = "PENDING" | "SENT" | "FAILED" | "SKIPPED";
+export type CampaignPauseReason =
+  | "MANUAL"
+  | "QUIET_HOURS"
+  | "NUMBER_INACTIVE"
+  | "SEND_ERROR"
+  // Meta's throughput limit / no answer from Meta: resumed automatically at resumeAt.
+  | "RATE_LIMIT"
+  | "CONNECTION"
+  // Template deleted, or paused/disabled by Meta. Needs a person.
+  | "TEMPLATE_UNAVAILABLE"
+  // The number's Meta quality rating dropped (Settings → Campaign safety).
+  | "QUALITY";
+export type CampaignRecipientStatus = "PENDING" | "SENDING" | "SENT" | "FAILED" | "SKIPPED";
 
 export interface Campaign {
   id: number;
@@ -362,18 +373,34 @@ export interface Campaign {
   pauseReason?: CampaignPauseReason | null;
   // Why it paused, e.g. Meta's error for SEND_ERROR.
   pauseDetail?: string | null;
+  // When an automatic pause (RATE_LIMIT / CONNECTION) resumes by itself.
+  resumeAt?: string | null;
   scheduledAt?: string | null;
   startedAt?: string | null;
   completedAt?: string | null;
   sentCount: number;
   failedCount: number;
+  // Opted out, or over the per-patient campaign limit, when their turn came.
+  skippedCount?: number;
   totalRecipients: number;
   deliveredCount?: number;
   readCount?: number;
   repliedCount?: number;
+  // Appointments booked from this campaign's booking requests.
+  bookedCount?: number;
+  bookingRequestsCount?: number;
   createdById: number;
   createdAt: string;
   updatedAt: string;
+  // Approval trail: marketing submits, an admin approves (sends / schedules)
+  // or rejects with a reason (back to DRAFT, reason kept until resubmitted).
+  submittedById?: number | null;
+  submittedBy?: { id: number; name: string | null; username: string } | null;
+  submittedAt?: string | null;
+  reviewedById?: number | null;
+  reviewedBy?: { id: number; name: string | null; username: string } | null;
+  reviewedAt?: string | null;
+  rejectionReason?: string | null;
   recipients?: CampaignRecipient[];
   // The automation answering this campaign's template buttons.
   flowId?: number | null;
@@ -736,4 +763,336 @@ export interface ConversationProfile {
   mediaCounts: Partial<Record<"IMAGE" | "VIDEO" | "DOCUMENT" | "AUDIO", number>>;
   links: { messageId: number; url: string; senderType: string; createdAt: string }[];
   campaigns: { id: number; name: string; sentAt: string | null; repliedAt: string | null }[];
+}
+
+// ── Campaign approval ─────────────────────────────────────────────────────
+
+export interface PendingApproval {
+  id: number;
+  name: string;
+  whatsappNumberId: number;
+  whatsappNumber: { label: string };
+  totalRecipients: number;
+  scheduledAt: string | null;
+  submittedAt: string | null;
+  submittedBy: { id: number; name: string | null; username: string } | null;
+  template: { id: number; name: string };
+}
+
+// Meta's daily limit on different people a number may message (the
+// OVER_MESSAGING_LIMIT error's `details` has this shape too).
+export interface CampaignCapacity {
+  tier: string | null;
+  limit: number | null;
+  unlimited: boolean;
+  usedLast24h: number;
+  needed: number;
+  remaining: number | null;
+  overLimit: boolean;
+}
+
+// ── Settings (admin) ──────────────────────────────────────────────────────
+
+export interface QuietHoursSetting {
+  enabled: boolean;
+  start: string; // "21:00"
+  end: string; // "09:00"
+  timezone: string; // "Asia/Dubai"
+  // "server" until an admin saves it in Settings.
+  source?: "settings" | "server";
+}
+
+export interface CampaignSafetySetting {
+  // 0 = off. Otherwise one campaign per patient per number every N days.
+  frequencyCapDays: number;
+  // Pause campaigns and hold new ones when the number's quality drops.
+  qualityAutoPause: boolean;
+  qualityPauseAt: "YELLOW" | "RED";
+}
+
+export interface WorkspaceSettings {
+  quietHours: QuietHoursSetting;
+  campaignSafety: CampaignSafetySetting;
+}
+
+export interface AdminWhatsAppNumber {
+  id: number;
+  label: string;
+  phoneNumberId: string;
+  wabaId: string;
+  displayPhoneNumber: string | null;
+  tokenEnvKey: string;
+  hasToken: boolean;
+  isActive: boolean;
+  isDefault: boolean;
+  sendConcurrency: number;
+  qualityRating: string | null;
+  metaStatus: string | null;
+  qualityCheckedAt: string | null;
+  createdAt: string;
+  activeCampaigns?: number;
+}
+
+// ── Chat outcomes, bookings, notes ────────────────────────────────────────
+
+export type ConversationOutcome = "BOOKED" | "NOT_INTERESTED" | "FOLLOW_UP" | "NO_ANSWER";
+
+export interface PersonRef {
+  id: number;
+  name: string | null;
+  username: string;
+}
+
+export interface Booking {
+  id: number;
+  conversationId: number;
+  customerId: number;
+  whatsappNumberId: number;
+  appointmentAt: string;
+  service: string | null;
+  doctor?: string | null;
+  // The appointment's reference in Dok32, if the agent noted it.
+  dok32Ref?: string | null;
+  note: string | null;
+  // The booking request it came from, and that request's campaign.
+  requestId?: number | null;
+  campaignId?: number | null;
+  status: "BOOKED" | "CANCELLED";
+  cancelledAt: string | null;
+  createdAt: string;
+  createdBy?: PersonRef | null;
+}
+
+// ── Booking requests ──────────────────────────────────────────────────────
+
+export type BookingRequestStatus = "NEW" | "IN_PROGRESS" | "BOOKED" | "NOT_BOOKED";
+export type NotBookedReason = "NO_ANSWER" | "NOT_INTERESTED" | "PRICE" | "CALL_BACK_LATER" | "BOOKED_ELSEWHERE" | "OTHER";
+
+// One appointment as the agent enters it when booking (service, date, time
+// required; the rest optional).
+export interface AppointmentInput {
+  service: string;
+  appointmentAt: string; // ISO
+  doctor?: string;
+  dok32Ref?: string;
+  note?: string;
+}
+
+// "This patient wants to book" — from the booking flow (FLOW) or an agent (AGENT).
+export interface BookingRequest {
+  id: number;
+  conversationId: number;
+  customerId: number;
+  whatsappNumberId: number;
+  source: "FLOW" | "AGENT";
+  campaignId: number | null;
+  campaign?: { id: number; name: string } | null;
+  flowRunId: number | null;
+  // What the patient asked for, as collected: { service, preferred_date, contact_number, … }.
+  requested: Record<string, unknown>;
+  note: string | null;
+  status: BookingRequestStatus;
+  claimedById: number | null;
+  claimedBy?: PersonRef | null;
+  claimedAt: string | null;
+  handledById: number | null;
+  handledBy?: PersonRef | null;
+  handledAt: string | null;
+  notBookedReason: NotBookedReason | null;
+  notBookedNote: string | null;
+  createdAt: string;
+  updatedAt: string;
+  bookings: Booking[];
+  customer?: { id: number; name: string | null; phone: string };
+  conversation?: {
+    id: number;
+    status: "OPEN" | "PENDING" | "RESOLVED";
+    lastMessage: string | null;
+    lastMessageAt: string | null;
+    lastSenderType: "CUSTOMER" | "AGENT" | "BOT" | null;
+    awaitingReplySince: string | null;
+    assignedAgent: PersonRef | null;
+  };
+  // Working minutes it has been open (null once closed).
+  openMinutes?: number | null;
+}
+
+export interface BookingRequestCounts {
+  new: number;
+  inProgress: number;
+  open: number;
+  mine: number;
+  bookedToday: number;
+}
+
+export interface ConversationNote {
+  id: number;
+  conversationId: number;
+  body: string;
+  createdAt: string;
+  author: PersonRef | null;
+}
+
+// What PUT /conversations/:id/outcome returns.
+export interface ConversationOutcomeState {
+  id: number;
+  outcome: ConversationOutcome | null;
+  outcomeAt: string | null;
+  outcomeBy: PersonRef | null;
+  followUpAt: string | null;
+  bookings: Booking[];
+}
+
+// ── Supervision ───────────────────────────────────────────────────────────
+
+export interface SupervisionAgent {
+  id: number;
+  name: string | null;
+  username: string;
+  role: UserRole;
+  status: "ONLINE" | "OFFLINE" | "ON_BREAK";
+  lastActiveAt: string | null;
+  openChats: number;
+  waiting: number;
+  waitingOverSla: number;
+  repliesToday: number;
+  // Their latest reply today (null if none yet).
+  lastReplyAt: string | null;
+  avgResponseMinutes: number | null;
+  bookedToday: number;
+}
+
+export interface SupervisionOverview {
+  slaMinutes: number;
+  generatedAt: string;
+  kpis: {
+    waiting: number;
+    waitingOverSla: number;
+    unassignedWaiting: number;
+    // Patients waiting more than a day (the "Gone cold" tab).
+    goneCold: number;
+    longestWaitMinutes: number;
+    bookedToday: number;
+    bookingRequestsOpen: number;
+    bookingRequestsNew: number;
+    bookingRequestsOverSla: number;
+    droppedHalfwayToday: number;
+    flowsStartedToday: number;
+    followUpsDue: number;
+    avgFirstResponseMinutes: number | null;
+    unansweredToday: number;
+  };
+  agents: SupervisionAgent[];
+}
+
+// Flow progress for a chat. STALLED = still "active" but idle over an hour.
+export interface SupervisionFlowState {
+  id: number;
+  flowName: string | null;
+  status: "ACTIVE" | "COMPLETED" | "HANDED_OFF" | "STOPPED" | "EXPIRED" | "FAILED" | "STALLED";
+  droppedHalfway: boolean;
+  bookingRequested: boolean;
+  answers: Record<string, unknown>;
+  startedAt: string;
+  updatedAt: string;
+}
+
+// waiting = started waiting in the last 24h; cold = waiting longer than that.
+export type SupervisionFilter = "waiting" | "cold" | "booking" | "halfway" | "follow_up" | "booked" | "all";
+
+// The same patient's chat on another line (the list shows one row per patient).
+export interface SupervisionOtherChat {
+  id: number;
+  whatsappNumber: { id: number; label: string };
+  status?: "OPEN" | "PENDING" | "RESOLVED";
+  lastMessage: string | null;
+  lastMessageAt: string | null;
+  lastSenderType: "CUSTOMER" | "AGENT" | "BOT" | null;
+  waitingMinutes: number | null;
+  overSla: boolean;
+  outcome: ConversationOutcome | null;
+  assignedAgent: PersonRef | null;
+}
+
+export interface SupervisionConversation {
+  id: number;
+  customer: { id: number; name: string | null; phone: string };
+  whatsappNumber: { id: number; label: string };
+  assignedAgent: PersonRef | null;
+  status: "OPEN" | "PENDING" | "RESOLVED";
+  lastMessage: string | null;
+  lastMessageAt: string | null;
+  lastSenderType: "CUSTOMER" | "AGENT" | "BOT" | null;
+  lastAgentReplyAt: string | null;
+  awaitingReplySince: string | null;
+  // Working minutes (outside quiet hours) the patient has been waiting.
+  waitingMinutes: number | null;
+  overSla: boolean;
+  outcome: ConversationOutcome | null;
+  outcomeAt: string | null;
+  outcomeBy: PersonRef | null;
+  followUpAt: string | null;
+  followUpOverdue: boolean;
+  flow: SupervisionFlowState | null;
+  latestBooking: Booking | null;
+  // The chat's open booking request, if any.
+  openRequest: BookingRequest | null;
+  noteCount: number;
+  // This patient's other chats that match the same tab (other lines).
+  otherChats: SupervisionOtherChat[];
+}
+
+export interface SupervisionTimeline {
+  id: number;
+  customer: { id: number; name: string | null; phone: string; tags: string[]; optedOut: boolean };
+  whatsappNumber: { id: number; label: string };
+  whatsappNumberId: number;
+  assignedAgent: PersonRef | null;
+  status: "OPEN" | "PENDING" | "RESOLVED";
+  outcome: ConversationOutcome | null;
+  outcomeAt: string | null;
+  outcomeBy: PersonRef | null;
+  followUpAt: string | null;
+  awaitingReplySince: string | null;
+  lastAgentReplyAt: string | null;
+  waitingMinutes: number | null;
+  overSla: boolean;
+  slaMinutes: number;
+  bookings: Booking[];
+  bookingRequests: BookingRequest[];
+  notes: ConversationNote[];
+  flowRuns: SupervisionFlowState[];
+  messages: {
+    id: number;
+    senderType: "CUSTOMER" | "AGENT" | "BOT";
+    content: string;
+    messageType: string;
+    mediaUrl: string | null;
+    status: string | null;
+    createdAt: string;
+    sender: PersonRef | null;
+  }[];
+  // This patient's chats on other lines.
+  otherChats: SupervisionOtherChat[];
+  // Each time the patient waited, and how long the reply took (working minutes).
+  waits: { askedAt: string; repliedAt: string | null; repliedBy: string | null; minutes: number; stillWaiting: boolean }[];
+  // Assignment / status / outcome changes, newest first.
+  history: { action: string; actorUsername: string | null; details: Record<string, unknown> | null; createdAt: string }[];
+}
+
+// One line of the live dashboard feed. type is "patient_message",
+// "agent_message", or an event: conversation.assigned / claimed /
+// status_changed / outcome_set / booking_cancelled, flow.handed_off,
+// booking_request.created / booked / not_booked. details is the event's data
+// (e.g. { agentUsername, previousAgentUsername }, { outcome }, { status }).
+export interface SupervisionActivity {
+  id: string;
+  type: string;
+  at: string;
+  actor: PersonRef | null;
+  conversationId: number;
+  customer: { id: number; name: string | null; phone: string };
+  line: { id: number; label: string };
+  text: string | null;
+  details: Record<string, unknown> | null;
 }

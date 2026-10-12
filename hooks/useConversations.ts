@@ -191,6 +191,23 @@ export function useConversations(
       );
     };
 
+    // Booked / follow up / … set on a chat. Patched at once so the inbox chip
+    // and the chat header change together; the quiet refresh then brings the
+    // follow-up date, which the event doesn't carry.
+    const handleConversationOutcome = (payload: {
+      conversationId: string | number;
+      outcome: string | null;
+    }) => {
+      setConversations((prev) =>
+        prev.map((c) =>
+          String(payload.conversationId) === String(c.id ?? c._id)
+            ? ({ ...c, outcome: payload.outcome } as Conversation)
+            : c
+        )
+      );
+      refreshLive();
+    };
+
     // `connect` fires on the initial connect AND every reconnect. Socket.IO
     // doesn't replay events broadcast while a client was disconnected (e.g.
     // during a backend restart), so without this, a new conversation/message
@@ -200,12 +217,14 @@ export function useConversations(
     socket.on("connect", refreshLive);
     socket.on("conversation.assigned", handleConversationAssigned);
     socket.on("conversation.status_changed", handleConversationStatusChanged);
+    socket.on("conversation.outcome", handleConversationOutcome);
 
     return () => {
       socket.off("conversation.updated", refreshLive);
       socket.off("connect", refreshLive);
       socket.off("conversation.assigned", handleConversationAssigned);
       socket.off("conversation.status_changed", handleConversationStatusChanged);
+      socket.off("conversation.outcome", handleConversationOutcome);
     };
   }, [refreshLive]);
 
