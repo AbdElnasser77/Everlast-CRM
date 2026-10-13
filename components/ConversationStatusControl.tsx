@@ -8,7 +8,7 @@ import { useToast } from "@/components/ui/toast";
 type Status = "OPEN" | "PENDING" | "RESOLVED";
 
 const OPTIONS: { value: Status; label: string; active: string }[] = [
-  { value: "OPEN", label: "Open", active: "bg-white text-[#3B694C] shadow-sm" },
+  { value: "OPEN", label: "Open", active: "bg-white text-brand-fg shadow-sm" },
   { value: "PENDING", label: "Pending", active: "bg-white text-amber-600 shadow-sm" },
   { value: "RESOLVED", label: "Resolved", active: "bg-white text-gray-700 shadow-sm" },
 ];

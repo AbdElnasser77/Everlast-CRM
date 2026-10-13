@@ -174,9 +174,9 @@ export default function FlowEditorPage({ params }: { params: Promise<{ id: strin
               type="button"
               disabled={!canWrite}
               onClick={toggleActive}
-              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-semibold disabled:opacity-50 ${flow.isActive ? "border-[#3B694C]/30 bg-[#EEF6F1] text-[#3B694C]" : "border-gray-200 bg-gray-50 text-gray-500"}`}
+              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-semibold disabled:opacity-50 ${flow.isActive ? "border-brand/30 bg-brand-100 text-brand-fg" : "border-gray-200 bg-gray-50 text-gray-500"}`}
             >
-              <span className={`w-2 h-2 rounded-full ${flow.isActive ? "bg-[#3B694C]" : "bg-gray-300"}`} />
+              <span className={`w-2 h-2 rounded-full ${flow.isActive ? "bg-brand" : "bg-gray-300"}`} />
               {flow.isActive ? "On" : "Off"}
             </button>
           </div>
@@ -189,7 +189,7 @@ export default function FlowEditorPage({ params }: { params: Promise<{ id: strin
               type="button"
               disabled={t === "responses" && !flow}
               onClick={() => setTab(t)}
-              className={`text-[13px] font-semibold rounded-md px-3.5 py-1.5 transition-colors disabled:opacity-40 ${tab === t ? "bg-[#3B694C] text-white" : "text-gray-500 hover:text-gray-800"}`}
+              className={`text-[13px] font-semibold rounded-md px-3.5 py-1.5 transition-colors disabled:opacity-40 ${tab === t ? "bg-brand text-white" : "text-gray-500 hover:text-gray-800"}`}
             >
               {t === "builder" ? "Builder" : `Responses${flow ? ` (${flow.runs.total})` : ""}`}
             </button>

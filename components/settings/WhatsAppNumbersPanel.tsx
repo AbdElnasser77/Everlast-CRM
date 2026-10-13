@@ -246,7 +246,7 @@ function EditNumberForm({ number, tokenKeys, onClose, onSaved }: EditNumberFormP
           type="submit"
           disabled={submitting}
           className={`flex-1 py-3 rounded-xl disabled:opacity-60 disabled:cursor-not-allowed text-[13px] font-semibold text-white transition-colors cursor-pointer ${
-            confirmDeactivate ? "bg-amber-600 hover:bg-amber-700" : "bg-[#3B694C] hover:bg-[#2f5840]"
+            confirmDeactivate ? "bg-amber-600 hover:bg-amber-700" : "bg-brand hover:bg-[#2f5840]"
           }`}
         >
           {submitting ? "Saving…" : confirmDeactivate ? "Turn off and pause" : "Save changes"}
@@ -366,7 +366,7 @@ function AddNumberForm({ tokenKeys, onClose, onCreated }: Omit<AddNumberDrawerPr
         <button type="button" onClick={onClose} className="flex-1 py-3 rounded-xl border border-gray-200 text-[13px] font-semibold text-gray-600 hover:bg-gray-50 transition-colors cursor-pointer">
           Cancel
         </button>
-        <button type="submit" disabled={submitting || tokenKeys.length === 0} className="flex-1 py-3 rounded-xl bg-[#3B694C] hover:bg-[#2f5840] disabled:opacity-60 disabled:cursor-not-allowed text-[13px] font-semibold text-white transition-colors cursor-pointer">
+        <button type="submit" disabled={submitting || tokenKeys.length === 0} className="flex-1 py-3 rounded-xl bg-brand hover:bg-[#2f5840] disabled:opacity-60 disabled:cursor-not-allowed text-[13px] font-semibold text-white transition-colors cursor-pointer">
           {submitting ? "Checking with Meta…" : "Add number"}
         </button>
       </div>
@@ -384,14 +384,14 @@ function NumberCard({ n, onEdit }: { n: AdminWhatsAppNumber; onEdit: () => void 
     <div className={`px-5 py-4 ${n.isActive ? "" : "bg-gray-50/60"}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${n.isActive ? "bg-[#EEF6F1]" : "bg-gray-100"}`}>
-            <Phone className={`w-4 h-4 ${n.isActive ? "text-[#3B694C]" : "text-gray-400"}`} />
+          <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${n.isActive ? "bg-brand-100" : "bg-gray-100"}`}>
+            <Phone className={`w-4 h-4 ${n.isActive ? "text-brand-fg" : "text-gray-400"}`} />
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <p className="text-[14px] font-semibold text-gray-900 truncate">{n.label}</p>
               {n.isDefault && (
-                <span className="text-[10px] font-semibold text-[#3B694C] bg-[#EEF6F1] px-1.5 py-0.5 rounded-full uppercase tracking-wide shrink-0">
+                <span className="text-[10px] font-semibold text-brand-fg bg-brand-100 px-1.5 py-0.5 rounded-full uppercase tracking-wide shrink-0">
                   Default
                 </span>
               )}

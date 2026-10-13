@@ -91,7 +91,7 @@ export function FlowResponses({ flowId, flowName }: { flowId: number; flowName: 
         <button
           type="button"
           onClick={() => changeStatus("")}
-          className={`text-[12px] font-semibold rounded-full px-3 py-1.5 border ${status === "" ? "bg-[#3B694C] text-white border-[#3B694C]" : "bg-white text-gray-600 border-gray-200"}`}
+          className={`text-[12px] font-semibold rounded-full px-3 py-1.5 border ${status === "" ? "bg-brand text-white border-brand" : "bg-white text-gray-600 border-gray-200"}`}
         >
           All
         </button>
@@ -100,7 +100,7 @@ export function FlowResponses({ flowId, flowName }: { flowId: number; flowName: 
             key={s}
             type="button"
             onClick={() => changeStatus(s)}
-            className={`text-[12px] font-semibold rounded-full px-3 py-1.5 border ${status === s ? "bg-[#3B694C] text-white border-[#3B694C]" : "bg-white text-gray-600 border-gray-200"}`}
+            className={`text-[12px] font-semibold rounded-full px-3 py-1.5 border ${status === s ? "bg-brand text-white border-brand" : "bg-white text-gray-600 border-gray-200"}`}
           >
             {RUN_STATUS_META[s].label}
           </button>
@@ -109,7 +109,7 @@ export function FlowResponses({ flowId, flowName }: { flowId: number; flowName: 
           <button type="button" onClick={refresh} className="inline-flex items-center gap-1.5 text-[13px] font-medium text-gray-600 bg-white border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50">
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> Refresh
           </button>
-          <button type="button" onClick={exportCsv} disabled={exporting || total === 0} className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5840] disabled:opacity-50 rounded-lg px-3 py-1.5">
+          <button type="button" onClick={exportCsv} disabled={exporting || total === 0} className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-white bg-brand hover:bg-[#2f5840] disabled:opacity-50 rounded-lg px-3 py-1.5">
             <Download className="w-3.5 h-3.5" /> {exporting ? "Exporting…" : "Export CSV"}
           </button>
         </div>
@@ -148,7 +148,7 @@ export function FlowResponses({ flowId, flowName }: { flowId: number; flowName: 
                 <td className="px-4 py-3 text-gray-500">{r.campaign?.name || "—"}</td>
                 <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{fmt(r.startedAt)}</td>
                 <td className="px-4 py-3">
-                  <Link href={`/chats/${r.conversationId}`} title="Open chat" className="inline-flex w-8 h-8 rounded-lg items-center justify-center text-gray-400 hover:text-[#3B694C] hover:bg-[#EEF6F1]">
+                  <Link href={`/chats/${r.conversationId}`} title="Open chat" className="inline-flex w-8 h-8 rounded-lg items-center justify-center text-gray-400 hover:text-brand-fg hover:bg-brand-100">
                     <MessageCircle className="w-4 h-4" />
                   </Link>
                 </td>

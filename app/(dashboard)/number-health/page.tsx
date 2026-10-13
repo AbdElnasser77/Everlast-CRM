@@ -101,15 +101,15 @@ function MessagingLimitsLadder({ tier }: { tier: string | null }) {
             <div
               key={t.key}
               className={`relative rounded-xl border px-2 py-3 text-center ${
-                isCurrent ? "bg-[#EEF6F1] border-[#3B694C]" : "bg-gray-50 border-gray-200"
+                isCurrent ? "bg-brand-100 border-brand" : "bg-gray-50 border-gray-200"
               }`}
             >
               {isCurrent && (
-                <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-[9px] font-bold uppercase tracking-wide bg-[#3B694C] text-white px-1.5 py-0.5 rounded-full whitespace-nowrap">
+                <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-[9px] font-bold uppercase tracking-wide bg-brand text-white px-1.5 py-0.5 rounded-full whitespace-nowrap">
                   Current
                 </span>
               )}
-              <p className={`text-[12px] font-bold ${isCurrent ? "text-[#3B694C]" : "text-gray-600"}`}>{t.label}</p>
+              <p className={`text-[12px] font-bold ${isCurrent ? "text-brand-fg" : "text-gray-600"}`}>{t.label}</p>
             </div>
           );
         })}
@@ -219,14 +219,14 @@ export default function NumberHealthPage() {
   const qualityMeta = status ? (QUALITY_META[status.qualityRating] ?? { severity: "neutral" as Severity, label: status.qualityRating }) : null;
 
   return (
-    <div className="flex-1 overflow-y-auto bg-[#f9f9f8]">
+    <div className="flex-1 overflow-y-auto bg-canvas">
       <div className="max-w-4xl mx-auto px-6 py-8 space-y-6">
 
         {/* Header */}
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#EEF6F1] flex items-center justify-center shrink-0">
-              <ShieldCheck className="w-5 h-5 text-[#3B694C]" />
+            <div className="w-10 h-10 rounded-xl bg-brand-100 flex items-center justify-center shrink-0">
+              <ShieldCheck className="w-5 h-5 text-brand-fg" />
             </div>
             <div>
               <h1 className="text-[22px] font-bold text-gray-900">Number Health</h1>
@@ -325,7 +325,7 @@ export default function NumberHealthPage() {
                                 switcher, not a number the app is hardwired to —
                                 that concept no longer exists. */}
                             {n.isPrimary && (
-                              <span className="text-[10px] font-semibold text-[#3B694C] bg-[#EEF6F1] px-1.5 py-0.5 rounded-full uppercase tracking-wide shrink-0">
+                              <span className="text-[10px] font-semibold text-brand-fg bg-brand-100 px-1.5 py-0.5 rounded-full uppercase tracking-wide shrink-0">
                                 Active
                               </span>
                             )}

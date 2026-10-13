@@ -87,12 +87,12 @@ export default function SegmentsPage() {
           <button
             type="button"
             onClick={() => router.push("/customers/segments/new")}
-            className="w-full flex flex-col items-center justify-center gap-2 py-8 mb-6 rounded-2xl border-2 border-dashed border-gray-200 hover:border-[#3B694C] hover:bg-[#EEF6F1] transition-colors cursor-pointer group"
+            className="w-full flex flex-col items-center justify-center gap-2 py-8 mb-6 rounded-2xl border-2 border-dashed border-gray-200 hover:border-brand hover:bg-brand-100 transition-colors cursor-pointer group"
           >
-            <div className="w-11 h-11 rounded-2xl bg-[#DCF2E3] group-hover:bg-white flex items-center justify-center transition-colors">
-              <svg className="w-5 h-5 text-[#3B694C]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+            <div className="w-11 h-11 rounded-2xl bg-brand-200 group-hover:bg-white flex items-center justify-center transition-colors">
+              <svg className="w-5 h-5 text-brand-fg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
             </div>
-            <p className="text-[14px] font-semibold text-gray-700 group-hover:text-[#3B694C]">Create Segment</p>
+            <p className="text-[14px] font-semibold text-gray-700 group-hover:text-brand-fg">Create Segment</p>
           </button>
         )}
 
@@ -100,12 +100,12 @@ export default function SegmentsPage() {
 
         {loading ? (
           <div className="flex justify-center py-10">
-            <svg className="w-6 h-6 animate-spin text-[#3B694C]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
+            <svg className="w-6 h-6 animate-spin text-brand-fg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
           </div>
         ) : segments.length === 0 ? (
           <div className="text-center py-10">
-            <div className="w-14 h-14 rounded-2xl bg-[#EEF6F1] flex items-center justify-center mx-auto mb-4">
-              <Filter className="w-6 h-6 text-[#3B694C]" />
+            <div className="w-14 h-14 rounded-2xl bg-brand-100 flex items-center justify-center mx-auto mb-4">
+              <Filter className="w-6 h-6 text-brand-fg" />
             </div>
             <h2 className="text-[16px] font-semibold text-gray-800">No segments yet</h2>
             <p className="text-[13.5px] text-gray-400 mt-1.5 max-w-md mx-auto leading-relaxed">
@@ -135,8 +135,8 @@ export default function SegmentsPage() {
                     </button>
                   )}
 
-                  <div className="w-9 h-9 rounded-xl bg-[#EEF6F1] flex items-center justify-center mb-3">
-                    <Filter className="w-4 h-4 text-[#3B694C]" />
+                  <div className="w-9 h-9 rounded-xl bg-brand-100 flex items-center justify-center mb-3">
+                    <Filter className="w-4 h-4 text-brand-fg" />
                   </div>
 
                   <p className="text-[14px] font-semibold text-gray-900 truncate pr-6">{s.name}</p>
@@ -162,7 +162,7 @@ export default function SegmentsPage() {
 
                   <div className="flex items-center gap-2 mt-2.5">
                     {s.excludeOptedOut && (
-                      <span className="flex items-center gap-1 text-[10.5px] font-semibold text-[#3B694C] bg-[#EEF6F1] rounded-md px-1.5 py-0.5">
+                      <span className="flex items-center gap-1 text-[10.5px] font-semibold text-brand-fg bg-brand-100 rounded-md px-1.5 py-0.5">
                         <ShieldCheck className="w-3 h-3" />
                         Consent-safe
                       </span>
@@ -183,7 +183,7 @@ export default function SegmentsPage() {
                       onClick={(e) => { e.stopPropagation(); router.push(`/campaigns/new?segmentId=${s.id}`); }}
                       disabled={broken || !s.reachable}
                       title={broken ? "Fix this segment's rules first" : !s.reachable ? "Nobody matches this segment right now" : undefined}
-                      className="w-full flex items-center justify-center gap-1.5 mt-3 py-2 rounded-xl border border-gray-200 text-[12px] font-semibold text-gray-600 hover:bg-[#EEF6F1] hover:border-[#3B694C] hover:text-[#3B694C] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:border-gray-200 disabled:hover:text-gray-600 transition-colors cursor-pointer"
+                      className="w-full flex items-center justify-center gap-1.5 mt-3 py-2 rounded-xl border border-gray-200 text-[12px] font-semibold text-gray-600 hover:bg-brand-100 hover:border-brand hover:text-brand-fg disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:border-gray-200 disabled:hover:text-gray-600 transition-colors cursor-pointer"
                     >
                       <Megaphone className="w-3.5 h-3.5" />
                       Create Campaign

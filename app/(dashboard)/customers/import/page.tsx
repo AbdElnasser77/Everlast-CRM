@@ -286,7 +286,7 @@ export default function ImportContactsPage() {
             const active = step === s.n;
             return (
               <div key={s.n} className="flex items-center gap-2 flex-1 last:flex-none">
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 ${done || active ? "bg-[#3B694C] text-white" : "bg-gray-100 text-gray-400"}`}>
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 ${done || active ? "bg-brand text-white" : "bg-gray-100 text-gray-400"}`}>
                   {done ? (
                     <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                   ) : s.n}
@@ -311,17 +311,17 @@ export default function ImportContactsPage() {
                 onDragLeave={() => setDragOver(false)}
                 onDrop={(e) => { e.preventDefault(); setDragOver(false); handleFile(e.dataTransfer.files?.[0]); }}
                 onClick={() => fileRef.current?.click()}
-                className={`flex flex-col items-center justify-center gap-3 py-14 rounded-2xl border-2 border-dashed cursor-pointer transition-colors ${dragOver ? "border-[#3B694C] bg-[#EEF6F1]" : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"}`}
+                className={`flex flex-col items-center justify-center gap-3 py-14 rounded-2xl border-2 border-dashed cursor-pointer transition-colors ${dragOver ? "border-brand bg-brand-100" : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"}`}
               >
                 {parsing ? (
                   <>
-                    <svg className="w-7 h-7 animate-spin text-[#3B694C]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                    <svg className="w-7 h-7 animate-spin text-brand-fg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
                     <p className="text-[14px] font-semibold text-gray-700">Reading your file…</p>
                   </>
                 ) : (
                   <>
-                    <div className="w-12 h-12 rounded-2xl bg-[#DCF2E3] flex items-center justify-center">
-                      <svg className="w-6 h-6 text-[#3B694C]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    <div className="w-12 h-12 rounded-2xl bg-brand-200 flex items-center justify-center">
+                      <svg className="w-6 h-6 text-brand-fg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                     </div>
                     <p className="text-[14px] font-semibold text-gray-700">Drop your CSV here, or click to browse</p>
                     <p className="text-[12px] text-gray-400">Up to 20,000 rows · .csv</p>
@@ -332,14 +332,14 @@ export default function ImportContactsPage() {
 
               {data && !parsing && (
                 <div className="flex items-center gap-4 p-4 rounded-xl border border-gray-200 bg-gray-50">
-                  <div className="w-11 h-11 rounded-xl bg-[#DCF2E3] flex items-center justify-center shrink-0">
-                    <svg className="w-5 h-5 text-[#3B694C]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                  <div className="w-11 h-11 rounded-xl bg-brand-200 flex items-center justify-center shrink-0">
+                    <svg className="w-5 h-5 text-brand-fg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-[14px] font-semibold text-gray-900 truncate">{data.fileName}</p>
                     <p className="text-[12px] text-gray-400">{data.rows.length.toLocaleString()} rows · {data.headers.length} columns detected</p>
                   </div>
-                  <button type="button" onClick={() => fileRef.current?.click()} className="text-[12px] font-semibold text-[#3B694C] hover:underline cursor-pointer shrink-0">Change file</button>
+                  <button type="button" onClick={() => fileRef.current?.click()} className="text-[12px] font-semibold text-brand-fg hover:underline cursor-pointer shrink-0">Change file</button>
                 </div>
               )}
             </div>
@@ -363,7 +363,7 @@ export default function ImportContactsPage() {
                           <select
                             value={mapping[f.key]}
                             onChange={(e) => setMapping((m) => ({ ...m, [f.key]: Number(e.target.value) }))}
-                            className={`w-full text-[13px] rounded-lg border px-2.5 py-2 pr-7 outline-none cursor-pointer bg-white appearance-none transition-colors ${missing ? "border-red-300 bg-red-50" : "border-gray-200"} focus:ring-2 focus:ring-[#3B694C]/20 focus:border-[#3B694C]`}
+                            className={`w-full text-[13px] rounded-lg border px-2.5 py-2 pr-7 outline-none cursor-pointer bg-white appearance-none transition-colors ${missing ? "border-red-300 bg-red-50" : "border-gray-200"} focus:ring-2 focus:ring-brand/20 focus:border-brand`}
                           >
                             <option value={-1}>— Skip —</option>
                             {data.headers.map((h, i) => (
@@ -387,7 +387,7 @@ export default function ImportContactsPage() {
                     <select
                       value={defaultCountry}
                       onChange={(e) => setDefaultCountry(e.target.value as PhoneCountry)}
-                      className="w-full text-[13px] rounded-lg border border-gray-200 px-2.5 py-2 pr-7 outline-none cursor-pointer bg-white appearance-none focus:ring-2 focus:ring-[#3B694C]/20 focus:border-[#3B694C]"
+                      className="w-full text-[13px] rounded-lg border border-gray-200 px-2.5 py-2 pr-7 outline-none cursor-pointer bg-white appearance-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
                     >
                       {COUNTRY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
@@ -405,7 +405,7 @@ export default function ImportContactsPage() {
                     <select
                       value={dateFormat}
                       onChange={(e) => setDateFormat(e.target.value as DateFormat)}
-                      className="w-full text-[13px] rounded-lg border border-gray-200 px-2.5 py-2 pr-7 outline-none cursor-pointer bg-white appearance-none focus:ring-2 focus:ring-[#3B694C]/20 focus:border-[#3B694C]"
+                      className="w-full text-[13px] rounded-lg border border-gray-200 px-2.5 py-2 pr-7 outline-none cursor-pointer bg-white appearance-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
                     >
                       {DATE_FORMAT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
@@ -428,7 +428,7 @@ export default function ImportContactsPage() {
                           <select
                             value={valueMaps.gender?.[v] ?? ""}
                             onChange={(e) => setValueMaps((prev) => ({ ...prev, gender: { ...(prev.gender ?? {}), [v]: e.target.value } }))}
-                            className="w-full text-[13px] rounded-lg border border-gray-200 px-2.5 py-1.5 pr-7 outline-none cursor-pointer bg-white appearance-none focus:ring-2 focus:ring-[#3B694C]/20 focus:border-[#3B694C]"
+                            className="w-full text-[13px] rounded-lg border border-gray-200 px-2.5 py-1.5 pr-7 outline-none cursor-pointer bg-white appearance-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
                           >
                             <option value="">Don’t import</option>
                             <option value="Male">Male</option>
@@ -485,7 +485,7 @@ export default function ImportContactsPage() {
             <div className="space-y-4">
               {validating ? (
                 <div className="flex flex-col items-center justify-center gap-3 py-16 text-gray-500">
-                  <svg className="w-7 h-7 animate-spin text-[#3B694C]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                  <svg className="w-7 h-7 animate-spin text-brand-fg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
                   <p className="text-[14px] font-semibold text-gray-700">Checking {data?.rows.length.toLocaleString()} rows…</p>
                   <p className="text-[12px] text-gray-400">Detecting duplicates and invalid values</p>
                 </div>
@@ -535,7 +535,7 @@ export default function ImportContactsPage() {
             <div className="space-y-4">
               {importing ? (
                 <div className="flex flex-col items-center justify-center gap-3 py-16 text-gray-500">
-                  <svg className="w-7 h-7 animate-spin text-[#3B694C]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                  <svg className="w-7 h-7 animate-spin text-brand-fg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
                   <p className="text-[14px] font-semibold text-gray-700">Importing…</p>
                 </div>
               ) : importResult ? (
@@ -583,25 +583,25 @@ export default function ImportContactsPage() {
           {step === 1 && (
             <>
               <button type="button" onClick={() => router.push("/customers")} className="py-2.5 px-4 rounded-xl border border-gray-200 text-[13px] font-semibold text-gray-600 hover:bg-gray-50 transition-colors cursor-pointer">Cancel</button>
-              <button type="button" onClick={() => setStep(2)} disabled={!data || parsing} className="py-2.5 px-4 rounded-xl bg-[#3B694C] hover:bg-[#2f5840] disabled:opacity-50 disabled:cursor-not-allowed text-[13px] font-semibold text-white transition-colors cursor-pointer">Next: Map columns →</button>
+              <button type="button" onClick={() => setStep(2)} disabled={!data || parsing} className="py-2.5 px-4 rounded-xl bg-brand hover:bg-[#2f5840] disabled:opacity-50 disabled:cursor-not-allowed text-[13px] font-semibold text-white transition-colors cursor-pointer">Next: Map columns →</button>
             </>
           )}
           {step === 2 && (
             <>
               <button type="button" onClick={() => setStep(1)} className="py-2.5 px-4 rounded-xl border border-gray-200 text-[13px] font-semibold text-gray-600 hover:bg-gray-50 transition-colors cursor-pointer">← Back</button>
-              <button type="button" onClick={runValidate} disabled={!phoneMapped} className="py-2.5 px-4 rounded-xl bg-[#3B694C] hover:bg-[#2f5840] disabled:opacity-50 disabled:cursor-not-allowed text-[13px] font-semibold text-white transition-colors cursor-pointer">Next: Validate →</button>
+              <button type="button" onClick={runValidate} disabled={!phoneMapped} className="py-2.5 px-4 rounded-xl bg-brand hover:bg-[#2f5840] disabled:opacity-50 disabled:cursor-not-allowed text-[13px] font-semibold text-white transition-colors cursor-pointer">Next: Validate →</button>
             </>
           )}
           {step === 3 && (
             <>
               <button type="button" onClick={() => { setStep(2); setValidateResult(null); setError(null); }} disabled={validating} className="py-2.5 px-4 rounded-xl border border-gray-200 text-[13px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-60 transition-colors cursor-pointer">← Back</button>
-              <button type="button" onClick={runImport} disabled={validating || !validateResult || validateResult.valid === 0} className="py-2.5 px-4 rounded-xl bg-[#3B694C] hover:bg-[#2f5840] disabled:opacity-50 disabled:cursor-not-allowed text-[13px] font-semibold text-white transition-colors cursor-pointer">
+              <button type="button" onClick={runImport} disabled={validating || !validateResult || validateResult.valid === 0} className="py-2.5 px-4 rounded-xl bg-brand hover:bg-[#2f5840] disabled:opacity-50 disabled:cursor-not-allowed text-[13px] font-semibold text-white transition-colors cursor-pointer">
                 Import {validateResult ? validateResult.valid.toLocaleString() : ""} contact{validateResult && validateResult.valid !== 1 ? "s" : ""}
               </button>
             </>
           )}
           {step === 4 && (
-            <button type="button" onClick={() => router.push("/customers")} disabled={importing} className="py-2.5 px-5 rounded-xl bg-[#3B694C] hover:bg-[#2f5840] disabled:opacity-60 text-[13px] font-semibold text-white transition-colors cursor-pointer">
+            <button type="button" onClick={() => router.push("/customers")} disabled={importing} className="py-2.5 px-5 rounded-xl bg-brand hover:bg-[#2f5840] disabled:opacity-60 text-[13px] font-semibold text-white transition-colors cursor-pointer">
               {importResult ? "Done" : "Importing…"}
             </button>
           )}

@@ -3,7 +3,8 @@
 import { useParams, useRouter } from "next/navigation";
 import { useState, useEffect, useRef, KeyboardEvent } from "react";
 import { ArrowLeft, Pencil, X, Check } from "lucide-react";
-import { apiGetCustomer, apiUpdateCustomer } from "@/lib/api";
+import { ApiError, apiGetCustomer, apiUpdateCustomer } from "@/lib/api";
+import { useCurrentUser } from "@/components/CurrentUserProvider";
 import type { Customer } from "@/types";
 
 // ── Tag pill input ────────────────────────────────────────────────────────────
@@ -47,7 +48,7 @@ function TagInput({
       {tags.map((tag) => (
         <span
           key={tag}
-          className="inline-flex items-center gap-1 bg-[#3B694C]/10 text-[#3B694C] text-[12px] font-medium px-2 py-0.5 rounded-full"
+          className="inline-flex items-center gap-1 bg-brand/10 text-brand-fg text-[12px] font-medium px-2 py-0.5 rounded-full"
         >
           {tag}
           <button
@@ -56,7 +57,7 @@ function TagInput({
               e.stopPropagation();
               removeTag(tag);
             }}
-            className="text-[#3B694C]/60 hover:text-[#3B694C] transition-colors cursor-pointer"
+            className="text-brand-fg/60 hover:text-brand-fg transition-colors cursor-pointer"
           >
             <X className="w-3 h-3" />
           </button>
@@ -86,7 +87,7 @@ function TagPills({ tags }: { tags: string[] }) {
       {tags.map((tag) => (
         <span
           key={tag}
-          className="inline-flex items-center bg-[#3B694C]/10 text-[#3B694C] text-[12px] font-medium px-2.5 py-0.5 rounded-full"
+          className="inline-flex items-center bg-brand/10 text-brand-fg text-[12px] font-medium px-2.5 py-0.5 rounded-full"
         >
           {tag}
         </span>
@@ -120,6 +121,10 @@ export default function CustomerDetailPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
   const router = useRouter();
+  const { can } = useCurrentUser();
+  // Anyone who edits a contact may record an opt-out; only an admin may lift
+  // one (the server answers 403 OPTOUT_LIFT_FORBIDDEN otherwise).
+  const canLiftOptOut = can("optout:lift");
 
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [loading, setLoading] = useState(true);
@@ -198,7 +203,12 @@ export default function CustomerDetailPage() {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (err: unknown) {
-      setSaveError(err instanceof Error ? err.message : "Failed to save changes.");
+      if (err instanceof ApiError && err.code === "OPTOUT_LIFT_FORBIDDEN") {
+        setEditOptedOut(true);
+        setSaveError("Only an admin can lift an opt-out. The contact is still opted out — save again to keep your other changes.");
+      } else {
+        setSaveError(err instanceof Error ? err.message : "Failed to save changes.");
+      }
     } finally {
       setSaving(false);
     }
@@ -224,7 +234,7 @@ export default function CustomerDetailPage() {
         <button
           type="button"
           onClick={() => router.push("/customers")}
-          className="flex items-center gap-2 text-[13px] font-medium text-[#3B694C] hover:underline cursor-pointer"
+          className="flex items-center gap-2 text-[13px] font-medium text-brand-fg hover:underline cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4" />
           Back to Contacts
@@ -237,7 +247,7 @@ export default function CustomerDetailPage() {
 
   // ── Main render ──────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col flex-1 bg-[#f5f4f0] min-h-0">
+    <div className="flex flex-col flex-1 bg-canvas-warm min-h-0">
       {/* Top bar */}
       <div className="flex items-center gap-3 px-5 py-3 bg-white border-b border-gray-100 shrink-0">
         <button
@@ -258,7 +268,7 @@ export default function CustomerDetailPage() {
       </div>
 
       {/* Scrollable body */}
-      <div className="flex-1 overflow-y-auto px-4 py-6 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-[#3B694C]/20 [&::-webkit-scrollbar-thumb]:rounded-full">
+      <div className="flex-1 overflow-y-auto px-4 py-6 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-brand/20 [&::-webkit-scrollbar-thumb]:rounded-full">
         <div className="max-w-2xl mx-auto">
           {/* Customer info card */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -271,7 +281,7 @@ export default function CustomerDetailPage() {
                 <button
                   type="button"
                   onClick={startEdit}
-                  className="flex items-center gap-1.5 text-[12px] font-medium text-gray-500 hover:text-[#3B694C] transition-colors cursor-pointer"
+                  className="flex items-center gap-1.5 text-[12px] font-medium text-gray-500 hover:text-brand-fg transition-colors cursor-pointer"
                 >
                   <Pencil className="w-3.5 h-3.5" />
                   Edit
@@ -291,7 +301,7 @@ export default function CustomerDetailPage() {
                     type="button"
                     onClick={handleSave}
                     disabled={saving}
-                    className="flex items-center gap-1.5 text-[12px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5840] disabled:opacity-60 disabled:cursor-not-allowed px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                    className="flex items-center gap-1.5 text-[12px] font-semibold text-white bg-brand hover:bg-[#2f5840] disabled:opacity-60 disabled:cursor-not-allowed px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
                   >
                     {saving ? (
                       "Saving…"
@@ -332,7 +342,7 @@ export default function CustomerDetailPage() {
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
                     placeholder="Enter name"
-                    className="px-3 py-2 border border-gray-200 rounded-xl text-[13px] text-gray-700 placeholder:text-gray-400 outline-none focus:border-[#3B694C] transition-colors bg-white"
+                    className="px-3 py-2 border border-gray-200 rounded-xl text-[13px] text-gray-700 placeholder:text-gray-400 outline-none focus:border-brand transition-colors bg-white"
                   />
                 ) : (
                   <p className="text-[13px] text-gray-700">
@@ -356,7 +366,7 @@ export default function CustomerDetailPage() {
                     value={editEmail}
                     onChange={(e) => setEditEmail(e.target.value)}
                     placeholder="Enter email"
-                    className="px-3 py-2 border border-gray-200 rounded-xl text-[13px] text-gray-700 placeholder:text-gray-400 outline-none focus:border-[#3B694C] transition-colors bg-white"
+                    className="px-3 py-2 border border-gray-200 rounded-xl text-[13px] text-gray-700 placeholder:text-gray-400 outline-none focus:border-brand transition-colors bg-white"
                   />
                 ) : (
                   <p className="text-[13px] text-gray-700">
@@ -384,7 +394,7 @@ export default function CustomerDetailPage() {
                     onChange={(e) => setEditNotes(e.target.value)}
                     rows={4}
                     placeholder="Add notes about this contact…"
-                    className="px-3 py-2 border border-gray-200 rounded-xl text-[13px] text-gray-700 placeholder:text-gray-400 outline-none focus:border-[#3B694C] transition-colors bg-white resize-y leading-relaxed"
+                    className="px-3 py-2 border border-gray-200 rounded-xl text-[13px] text-gray-700 placeholder:text-gray-400 outline-none focus:border-brand transition-colors bg-white resize-y leading-relaxed"
                   />
                 ) : (
                   <p className="text-[13px] text-gray-700 whitespace-pre-wrap leading-relaxed">
@@ -401,11 +411,14 @@ export default function CustomerDetailPage() {
                   <button
                     type="button"
                     onClick={() => setEditOptedOut((v) => !v)}
-                    className="flex items-center gap-3 w-fit cursor-pointer"
+                    // Switching it back ON (subscribed) lifts an opt-out: admins only.
+                    disabled={!!customer.optedOut && !canLiftOptOut}
+                    title={customer.optedOut && !canLiftOptOut ? "Only an admin can lift an opt-out" : undefined}
+                    className="flex items-center gap-3 w-fit cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <span
                       className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                        editOptedOut ? "bg-red-400" : "bg-[#3B694C]"
+                        editOptedOut ? "bg-red-400" : "bg-brand"
                       }`}
                     >
                       <span
@@ -423,7 +436,7 @@ export default function CustomerDetailPage() {
                     Opted out of campaigns
                   </span>
                 ) : (
-                  <span className="inline-flex w-fit items-center bg-[#3B694C]/10 text-[#3B694C] text-[12px] font-medium px-2.5 py-1 rounded-full">
+                  <span className="inline-flex w-fit items-center bg-brand/10 text-brand-fg text-[12px] font-medium px-2.5 py-1 rounded-full">
                     Subscribed
                   </span>
                 )}

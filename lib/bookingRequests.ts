@@ -3,7 +3,7 @@
  * Bookings page, the chat banner and the contact panel.
  */
 
-import type { BookingRequest, BookingRequestStatus, NotBookedReason } from "@/types";
+import type { BookingRequest, BookingRequestStatus, LeadSource, LeadSourceInput, NotBookedReason } from "@/types";
 import { OUTCOME_CHIP, fmtElapsed, toDateInput, waitTone } from "@/lib/chatOutcome";
 
 export const REQUEST_STATUS_LABEL: Record<BookingRequestStatus, string> = {
@@ -92,10 +92,136 @@ export function requestPreferred(req: Pick<BookingRequest, "requested">): string
   return date ?? time;
 }
 
-/** Where it came from. */
-export function requestSource(req: Pick<BookingRequest, "campaign" | "source">): string {
-  if (req.campaign) return `From campaign: ${req.campaign.name}`;
-  return req.source === "FLOW" ? "Booking flow" : "Agent";
+// ── Where the patient came from (lead source) ───────────────────────────────
+//
+// A campaign is credited only with proof (AUTOMATIC: they came through its
+// booking flow or replied to / tapped its message) or when an agent confirms
+// it (CONFIRMED). A campaign that merely reached them lately is SUGGESTED —
+// shown, never counted until someone confirms it.
+
+/** Picker labels — the server's own (source-options) win when loaded. */
+export const LEAD_SOURCE_LABEL: Record<LeadSource, string> = {
+  CAMPAIGN: "A campaign",
+  INSTAGRAM: "Instagram",
+  GOOGLE: "Google",
+  REFERRAL: "Referral / word of mouth",
+  WALK_IN: "Walk-in / phone call",
+  RETURNING: "Returning patient",
+  OTHER: "Other",
+};
+
+export const LEAD_SOURCE_ORDER: LeadSource[] = ["CAMPAIGN", "INSTAGRAM", "GOOGLE", "REFERRAL", "WALK_IN", "RETURNING", "OTHER"];
+
+/** As a noun in a list or report: "Campaign", "Instagram", "Not recorded". */
+export function leadSourceName(key: string | null | undefined): string {
+  if (!key || key === "UNKNOWN") return "Not recorded";
+  if (key === "CAMPAIGN") return "Campaign";
+  return LEAD_SOURCE_LABEL[key as LeadSource] ?? prettyKey(key);
+}
+
+export type SourceFields = Pick<
+  BookingRequest,
+  "campaign" | "suggestedCampaign" | "leadSource" | "sourceStatus" | "sourceNote" | "source" | "flowRunId"
+>;
+
+export type SourceTone = "proven" | "confirmed" | "suggested" | "plain" | "unset";
+
+/** Chip colours per tone (theme-aware palette classes). */
+export const SOURCE_CHIP: Record<SourceTone, string> = {
+  proven: "bg-brand-100 text-brand-fg border-brand/30",
+  confirmed: "bg-brand-100 text-brand-fg border-brand/30",
+  suggested: "bg-amber-50 text-amber-700 border-amber-200",
+  plain: "bg-gray-50 text-gray-700 border-gray-200",
+  unset: "bg-white text-gray-400 border-dashed border-gray-300",
+};
+
+/**
+ * What to say about where a request's patient came from:
+ * "Campaign: X · proven" / "Campaign: X · confirmed" / "Suggested: X (not
+ * confirmed)" / "Instagram" / "Other: note" / "Source not set".
+ */
+export function requestSourceInfo(req: Partial<SourceFields>): {
+  text: string;
+  tone: SourceTone;
+  campaign: { id: number; name: string } | null;
+  title: string;
+} {
+  const ls = req.leadSource ?? null;
+  const status = req.sourceStatus ?? null;
+  if (req.campaign && (ls === "CAMPAIGN" || ls == null) && status !== "SUGGESTED") {
+    const proven = status === "AUTOMATIC";
+    return {
+      text: `Campaign: ${req.campaign.name}${status ? (proven ? " · proven" : " · confirmed") : ""}`,
+      tone: proven ? "proven" : "confirmed",
+      campaign: req.campaign,
+      title: proven
+        ? `${provenHow(req)} — counted for the campaign.`
+        : status === "CONFIRMED" ? "An agent confirmed this campaign — counted for it." : "Credited to this campaign.",
+    };
+  }
+  if (ls && ls !== "CAMPAIGN" && status !== "SUGGESTED") {
+    const note = req.sourceNote?.trim();
+    return {
+      text: ls === "OTHER" ? (note ? `Other: ${note}` : "Other") : LEAD_SOURCE_LABEL[ls],
+      tone: "plain",
+      campaign: null,
+      title: "Where the patient came from, as recorded by an agent.",
+    };
+  }
+  if (req.suggestedCampaign) {
+    return {
+      text: `Suggested: ${req.suggestedCampaign.name} (not confirmed)`,
+      tone: "suggested",
+      campaign: req.suggestedCampaign,
+      title: "They received this campaign recently, with no proof it brought them. Not counted until an agent confirms it.",
+    };
+  }
+  return { text: "Source not set", tone: "unset", campaign: null, title: "Nobody has recorded where this patient came from yet." };
+}
+
+/** "They came through its booking flow" / "They replied to it". */
+export function provenHow(req: Partial<Pick<BookingRequest, "source" | "flowRunId">>): string {
+  return req.source === "FLOW" || req.flowRunId ? "They came through its booking flow" : "They replied to / tapped its message";
+}
+
+/** Short wording for list rows and banners. */
+export function requestSource(req: Partial<SourceFields>): string {
+  return requestSourceInfo(req).text;
+}
+
+/** Whether booking needs the agent to say where the patient came from. */
+export const sourceKnown = (req: Partial<Pick<BookingRequest, "sourceStatus">> | null | undefined) =>
+  req?.sourceStatus === "AUTOMATIC" || req?.sourceStatus === "CONFIRMED";
+
+/** The picker's working state. */
+export type SourceDraft = { leadSource: LeadSource | ""; campaignId: number | null; note: string };
+
+/** Start the picker from what the request knows (suggested campaign preselected). */
+export function sourceDraftFrom(req: Partial<SourceFields> | null | undefined): SourceDraft {
+  if (!req) return { leadSource: "", campaignId: null, note: "" };
+  if (req.sourceStatus === "SUGGESTED" || (!req.leadSource && !req.campaign && req.suggestedCampaign)) {
+    return { leadSource: "CAMPAIGN", campaignId: req.suggestedCampaign?.id ?? null, note: "" };
+  }
+  if (req.leadSource) {
+    return { leadSource: req.leadSource, campaignId: req.campaign?.id ?? null, note: req.sourceNote ?? "" };
+  }
+  if (req.campaign) return { leadSource: "CAMPAIGN", campaignId: req.campaign.id, note: "" };
+  return { leadSource: "", campaignId: null, note: "" };
+}
+
+/** Client-side check mirroring the server; returns the input or an error. */
+export function sourceInputFrom(d: SourceDraft): { ok: true; input: LeadSourceInput } | { ok: false; error: string } {
+  if (!d.leadSource) return { ok: false, error: "Choose where this patient came from." };
+  if (d.leadSource === "CAMPAIGN") {
+    if (!d.campaignId) return { ok: false, error: "Pick the campaign." };
+    return { ok: true, input: { leadSource: "CAMPAIGN", campaignId: d.campaignId } };
+  }
+  if (d.leadSource === "OTHER") {
+    const note = d.note.trim();
+    if (!note) return { ok: false, error: "Say where they came from." };
+    return { ok: true, input: { leadSource: "OTHER", note } };
+  }
+  return { ok: true, input: { leadSource: d.leadSource } };
 }
 
 /** "waiting 25m" + tone, from working minutes open. */

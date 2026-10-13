@@ -29,6 +29,7 @@ import { useActiveNumber } from "@/components/WhatsAppNumberProvider";
 import { useCurrentUser } from "@/components/CurrentUserProvider";
 import { useToast } from "@/components/ui/toast";
 import { Spinner } from "@/components/ui/spinner";
+import { LeadSourceChip } from "@/components/bookings/RequestParts";
 import { NumberChip, OutcomeChip, RequestChip, StatusChip, WaitChip } from "./chips";
 import {
   WAIT_WARN_MINUTES,
@@ -55,7 +56,7 @@ type Message = SupervisionTimeline["messages"][number];
 type Loaded = { id: number; data: SupervisionTimeline | null; error: string | null };
 
 const SCROLL =
-  "[&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-[#3B694C]/25 [&::-webkit-scrollbar-thumb]:rounded-full";
+  "[&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-brand/25 [&::-webkit-scrollbar-thumb]:rounded-full";
 
 // ── Building blocks ─────────────────────────────────────────────────────────
 
@@ -92,7 +93,7 @@ function BubbleBody({ m }: { m: Message }) {
       <span className="inline-flex items-center gap-1.5 text-[13px] text-gray-600">
         <MediaIcon className="w-3.5 h-3.5 text-gray-400" />
         {url ? (
-          <a href={url} target="_blank" rel="noreferrer" className="underline decoration-gray-300 hover:text-[#3B694C]">
+          <a href={url} target="_blank" rel="noreferrer" className="underline decoration-gray-300 hover:text-brand-fg">
             {MEDIA_LABEL[type]}
           </a>
         ) : (
@@ -111,12 +112,12 @@ function BubbleBody({ m }: { m: Message }) {
         {(s.buttons?.length || s.list) && (
           <div className="flex flex-wrap gap-1 pt-0.5">
             {s.buttons?.map((b, i) => (
-              <span key={i} className="text-[11px] font-medium text-[#3B694C] bg-white/80 border border-[#3B694C]/20 rounded-full px-2 py-px">
+              <span key={i} className="text-[11px] font-medium text-brand-fg bg-white/80 border border-brand/20 rounded-full px-2 py-px">
                 {b.title}
               </span>
             ))}
             {s.list && (
-              <span className="text-[11px] font-medium text-[#3B694C] bg-white/80 border border-[#3B694C]/20 rounded-full px-2 py-px">
+              <span className="text-[11px] font-medium text-brand-fg bg-white/80 border border-brand/20 rounded-full px-2 py-px">
                 ☰ {s.list.buttonLabel} · {s.list.rows.length} options
               </span>
             )}
@@ -173,7 +174,7 @@ function Messages({ messages }: { messages: Message[] }) {
                       ? "bg-white border border-gray-100 rounded-tl-md"
                       : m.senderType === "BOT"
                         ? "bg-violet-50 border border-violet-100 rounded-tr-md"
-                        : "bg-[#DCF2E3] rounded-tr-md"
+                        : "bg-brand-200 rounded-tr-md"
                   }`}
                 >
                   <BubbleBody m={m} />
@@ -194,7 +195,7 @@ function Messages({ messages }: { messages: Message[] }) {
 function waitTone(minutes: number, sla: number) {
   if (minutes >= sla) return { dot: "bg-red-500", text: "text-red-600" };
   if (minutes >= WAIT_WARN_MINUTES) return { dot: "bg-amber-400", text: "text-amber-700" };
-  return { dot: "bg-[#3B694C]", text: "text-[#3B694C]" };
+  return { dot: "bg-brand", text: "text-brand-fg" };
 }
 
 function ResponseTimeline({ waits, sla }: { waits: SupervisionTimeline["waits"]; sla: number }) {
@@ -232,7 +233,7 @@ function ResponseTimeline({ waits, sla }: { waits: SupervisionTimeline["waits"];
         })}
       </ol>
       {waits.length > 6 && (
-        <button type="button" onClick={() => setShowAll((v) => !v)} className="mt-2 text-[12px] font-semibold text-[#3B694C] hover:underline cursor-pointer">
+        <button type="button" onClick={() => setShowAll((v) => !v)} className="mt-2 text-[12px] font-semibold text-brand-fg hover:underline cursor-pointer">
           {showAll ? "Show fewer" : `Show all ${waits.length}`}
         </button>
       )}
@@ -241,8 +242,8 @@ function ResponseTimeline({ waits, sla }: { waits: SupervisionTimeline["waits"];
 }
 
 const FLOW_STATUS: Record<SupervisionFlowState["status"], { label: string; cls: string }> = {
-  ACTIVE: { label: "In progress", cls: "bg-[#EEF6F1] text-[#3B694C]" },
-  COMPLETED: { label: "Completed", cls: "bg-[#DCF2E3] text-[#2f5840]" },
+  ACTIVE: { label: "In progress", cls: "bg-brand-100 text-brand-fg" },
+  COMPLETED: { label: "Completed", cls: "bg-brand-200 text-brand-strong" },
   HANDED_OFF: { label: "Handed to team", cls: "bg-sky-50 text-sky-700" },
   STOPPED: { label: "Stopped", cls: "bg-orange-50 text-orange-700" },
   EXPIRED: { label: "Expired", cls: "bg-orange-50 text-orange-700" },
@@ -318,11 +319,8 @@ function AppointmentFacts({ b }: { b: Pick<Booking, "service" | "doctor" | "dok3
   );
 }
 
-function requestSource(r: BookingRequest): string {
-  if (r.campaign?.name) return `Campaign “${r.campaign.name}”`;
-  if (r.campaignId) return "From a campaign";
-  return r.source === "AGENT" ? "Added by an agent" : "Booking flow";
-}
+/** How the request was opened (where the patient came from is the source chip). */
+const openedVia = (r: BookingRequest) => (r.source === "AGENT" ? "Added by an agent" : "Booking flow");
 
 function RequestCard({ r, now, slaMinutes }: { r: BookingRequest; now: number; slaMinutes: number }) {
   const open = r.status === "NEW" || r.status === "IN_PROGRESS";
@@ -333,7 +331,7 @@ function RequestCard({ r, now, slaMinutes }: { r: BookingRequest; now: number; s
       ? "border-red-200 bg-red-50/40"
       : "border-amber-200 bg-amber-50/30"
     : r.status === "BOOKED"
-      ? "border-[#3B694C]/20 bg-[#F5FAF7]"
+      ? "border-brand/20 bg-brand-50"
       : "border-gray-100 bg-gray-50";
   const bookings = r.bookings ?? [];
   return (
@@ -341,7 +339,8 @@ function RequestCard({ r, now, slaMinutes }: { r: BookingRequest; now: number; s
       <div className="flex items-start justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-1.5 flex-wrap min-w-0">
           <RequestChip request={r} overSla={overSla} />
-          <span className="text-[11.5px] text-gray-500 truncate">{requestSource(r)}</span>
+          <LeadSourceChip req={r} className="min-w-0" />
+          <span className="text-[11.5px] text-gray-500 truncate">{openedVia(r)}</span>
         </div>
         <span className="text-[11px] text-gray-400 shrink-0" title={dateTime(r.createdAt)}>
           Asked {timeAgo(r.createdAt, now)}
@@ -394,7 +393,7 @@ function RequestCard({ r, now, slaMinutes }: { r: BookingRequest; now: number; s
           {bookings.map((b) => {
             const cancelled = b.status === "CANCELLED";
             return (
-              <li key={b.id} className={`rounded-md border bg-white px-2.5 py-2 ${cancelled ? "border-gray-100" : "border-[#3B694C]/20"}`}>
+              <li key={b.id} className={`rounded-md border bg-white px-2.5 py-2 ${cancelled ? "border-gray-100" : "border-brand/20"}`}>
                 <div className="flex items-center justify-between gap-2">
                   <span className={`text-[12.5px] font-semibold tabular-nums ${cancelled ? "text-gray-400 line-through" : "text-gray-900"}`}>
                     {dateTime(b.appointmentAt)}
@@ -430,7 +429,7 @@ function Bookings({ bookings, now }: { bookings: SupervisionTimeline["bookings"]
         const cancelled = b.status === "CANCELLED";
         const past = new Date(b.appointmentAt).getTime() < now;
         return (
-          <li key={b.id} className={`rounded-lg border p-3 ${cancelled ? "border-gray-100 bg-gray-50" : "border-[#3B694C]/20 bg-[#F5FAF7]"}`}>
+          <li key={b.id} className={`rounded-lg border p-3 ${cancelled ? "border-gray-100 bg-gray-50" : "border-brand/20 bg-brand-50"}`}>
             <div className="flex items-start justify-between gap-2">
               <p className={`text-[13px] font-semibold ${cancelled ? "text-gray-400 line-through" : "text-gray-900"}`}>
                 {dateTime(b.appointmentAt)}
@@ -440,7 +439,7 @@ function Bookings({ bookings, now }: { bookings: SupervisionTimeline["bookings"]
               ) : past ? (
                 <span className="text-[10.5px] font-semibold px-1.5 py-px rounded bg-gray-100 text-gray-500 shrink-0">Past</span>
               ) : (
-                <span className="text-[10.5px] font-semibold px-1.5 py-px rounded bg-[#DCF2E3] text-[#2f5840] shrink-0">Upcoming</span>
+                <span className="text-[10.5px] font-semibold px-1.5 py-px rounded bg-brand-200 text-brand-strong shrink-0">Upcoming</span>
               )}
             </div>
             <AppointmentFacts b={b} />
@@ -590,7 +589,7 @@ export function ConversationDetail({
   // ── Loading / error ──
   if (!current) {
     return (
-      <div className="h-full flex flex-col bg-[#f9f9f8]">
+      <div className="h-full flex flex-col bg-canvas">
         <div className="flex items-center gap-3 px-4 py-3.5 bg-white border-b border-gray-100 animate-pulse">
           <button type="button" onClick={onClose} aria-label="Close" className="lg:hidden text-gray-400">
             <ArrowLeft className="w-5 h-5" />
@@ -614,14 +613,14 @@ export function ConversationDetail({
 
   if (!data) {
     return (
-      <div className="h-full flex flex-col items-center justify-center gap-3 px-6 text-center bg-[#f9f9f8]">
+      <div className="h-full flex flex-col items-center justify-center gap-3 px-6 text-center bg-canvas">
         <p className="text-[14px] font-semibold text-gray-700">Couldn&apos;t load this chat</p>
         <p className="text-[12.5px] font-mono text-red-600 bg-red-50 rounded-lg px-3 py-2 max-w-sm break-words">{current.error}</p>
         <div className="flex gap-2">
           <button
             type="button"
             onClick={() => setRetry((n) => n + 1)}
-            className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5840] rounded-xl px-4 py-2 cursor-pointer"
+            className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-white bg-brand hover:bg-[#2f5840] rounded-xl px-4 py-2 cursor-pointer"
           >
             <RefreshCw className="w-3.5 h-3.5" /> Try again
           </button>
@@ -638,14 +637,14 @@ export function ConversationDetail({
   const lineLabel = data.whatsappNumber.label;
 
   return (
-    <div className="h-full flex flex-col min-h-0 bg-[#f9f9f8]">
+    <div className="h-full flex flex-col min-h-0 bg-canvas">
       {/* Patient header */}
       <div className="shrink-0 bg-white border-b border-gray-100 px-4 py-3">
         <div className="flex items-start gap-3">
           <button type="button" onClick={onClose} aria-label="Back to chats" className="lg:hidden mt-2.5 text-gray-500 hover:text-gray-800 cursor-pointer">
             <ArrowLeft className="w-5 h-5" />
           </button>
-          <div className="w-11 h-11 rounded-full bg-[#DCF2E3] text-[#2f5840] flex items-center justify-center font-bold text-[13px] shrink-0">
+          <div className="w-11 h-11 rounded-full bg-brand-200 text-brand-strong flex items-center justify-center font-bold text-[13px] shrink-0">
             {initials(data.customer.name || data.customer.phone)}
           </div>
           <div className="flex-1 min-w-0">
@@ -674,7 +673,7 @@ export function ConversationDetail({
                 data.assignedAgent ? "border-gray-200 text-gray-700" : "border-dashed border-amber-300 bg-amber-50 text-amber-700"
               }`}
             >
-              <span className={`w-6 h-6 rounded-full text-[10px] font-bold flex items-center justify-center ${data.assignedAgent ? "bg-[#3B694C] text-white" : "bg-amber-100"}`}>
+              <span className={`w-6 h-6 rounded-full text-[10px] font-bold flex items-center justify-center ${data.assignedAgent ? "bg-brand text-white" : "bg-amber-100"}`}>
                 {data.assignedAgent ? personInitials(data.assignedAgent) : "?"}
               </span>
               {personName(data.assignedAgent)}
@@ -696,7 +695,7 @@ export function ConversationDetail({
               <button
                 type="button"
                 onClick={openInInbox}
-                className="flex items-center gap-1.5 text-[13px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5840] px-3.5 py-1.5 rounded-xl transition-colors cursor-pointer"
+                className="flex items-center gap-1.5 text-[13px] font-semibold text-white bg-brand hover:bg-[#2f5840] px-3.5 py-1.5 rounded-xl transition-colors cursor-pointer"
               >
                 <MessageSquare className="w-3.5 h-3.5" />
                 Reply
@@ -753,7 +752,7 @@ export function ConversationDetail({
                         waiting {o.waitingMinutes >= 1440 ? `${Math.floor(o.waitingMinutes / 1440)}d` : o.waitingMinutes >= 60 ? `${Math.floor(o.waitingMinutes / 60)}h` : `${o.waitingMinutes}m`}
                       </span>
                     )}
-                    <span className="text-[11px] text-[#3B694C] font-semibold shrink-0">Open →</span>
+                    <span className="text-[11px] text-brand-fg font-semibold shrink-0">Open →</span>
                   </button>
                 </li>
               ))}
@@ -804,7 +803,7 @@ export function ConversationDetail({
             title="Notes"
             aside={data.notes.length > 0 ? <span className="text-[11px] text-gray-400">{data.notes.length}</span> : undefined}
           >
-            <div className="rounded-xl border border-gray-200 focus-within:border-[#3B694C]/50 bg-white">
+            <div className="rounded-xl border border-gray-200 focus-within:border-brand/50 bg-white">
               <textarea
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
@@ -824,7 +823,7 @@ export function ConversationDetail({
                   type="button"
                   onClick={() => void addNote()}
                   disabled={!onChatsLine || !note.trim() || savingNote}
-                  className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5840] disabled:opacity-40 disabled:cursor-not-allowed rounded-lg px-3 py-1.5 cursor-pointer"
+                  className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-white bg-brand hover:bg-[#2f5840] disabled:opacity-40 disabled:cursor-not-allowed rounded-lg px-3 py-1.5 cursor-pointer"
                 >
                   {savingNote && <Spinner size="xs" label="Saving note" className="[&_svg]:text-white" />}
                   Add note

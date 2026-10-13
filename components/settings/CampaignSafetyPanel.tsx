@@ -36,18 +36,18 @@ function LevelCard({
       onClick={onSelect}
       disabled={disabled}
       className={`border rounded-lg p-3 flex items-center gap-2 transition-all cursor-pointer text-left w-full disabled:cursor-not-allowed ${
-        selected ? "border-[#3B694C] bg-[#EEF6F1]" : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50"
+        selected ? "border-brand bg-brand-100" : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50"
       }`}
     >
       <div
         className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
-          selected ? "border-[#3B694C]" : "border-gray-300"
+          selected ? "border-brand" : "border-gray-300"
         }`}
       >
-        {selected && <div className="w-2 h-2 rounded-full bg-[#3B694C]" />}
+        {selected && <div className="w-2 h-2 rounded-full bg-brand" />}
       </div>
       <div>
-        <p className={`text-[13px] font-semibold ${selected ? "text-[#3B694C]" : "text-gray-700"}`}>{title}</p>
+        <p className={`text-[13px] font-semibold ${selected ? "text-brand-fg" : "text-gray-700"}`}>{title}</p>
         <p className="text-[11px] text-gray-400 leading-tight mt-0.5">{blurb}</p>
       </div>
     </button>

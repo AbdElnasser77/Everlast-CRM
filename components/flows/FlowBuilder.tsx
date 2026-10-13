@@ -22,6 +22,7 @@ import { ADDABLE_STEPS, STEP_META, defaultData, outputsOf, uid } from "@/lib/flo
 import { StepNode, type StepFlowNode } from "./StepNode";
 import { StepEditor } from "./StepEditor";
 import { FlowSimulator } from "./FlowSimulator";
+import { useTheme } from "@/components/ThemeProvider";
 
 const nodeTypes = {
   trigger: StepNode,
@@ -49,7 +50,8 @@ const PALETTE_ICONS: Partial<Record<FlowNodeType, React.ComponentType<{ classNam
 const EDGE_DEFAULTS = {
   type: "smoothstep",
   markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16, color: "#9CA3AF" },
-  style: { stroke: "#9CA3AF", strokeWidth: 1.5 },
+  // Line colour follows the theme (--flow-edge in globals.css).
+  style: { stroke: "var(--flow-edge)", strokeWidth: 1.5 },
 };
 
 function toRfNodes(graph: FlowGraph): StepFlowNode[] {
@@ -84,6 +86,7 @@ export function FlowBuilder({ initialGraph, templates, agents, readOnly, saving,
   const [selectedId, setSelectedId] = useState<string | null>(initialGraph.nodes[0]?.id ?? null);
   const [dirty, setDirty] = useState(false);
   const [testing, setTesting] = useState(false);
+  const { resolvedTheme } = useTheme();
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
 
   const markDirty = useCallback(() => setDirty(true), []);
@@ -241,7 +244,7 @@ export function FlowBuilder({ initialGraph, templates, agents, readOnly, saving,
       )}
 
       {/* Canvas */}
-      <div className="flex-1 min-w-0 relative bg-[#f9f9f8]">
+      <div className="flex-1 min-w-0 relative bg-canvas">
         <ReactFlow
           nodes={displayNodes}
           edges={edges}
@@ -259,8 +262,9 @@ export function FlowBuilder({ initialGraph, templates, agents, readOnly, saving,
           fitViewOptions={{ padding: 0.3, maxZoom: 1 }}
           minZoom={0.3}
           proOptions={{ hideAttribution: true }}
+          colorMode={resolvedTheme ?? "light"}
         >
-          <Background gap={20} color="#e5e7eb" />
+          <Background gap={20} color="var(--flow-grid)" />
           <Controls showInteractive={false} />
           <MiniMap pannable zoomable className="!bg-white !border !border-gray-200 !rounded-lg" maskColor="rgba(0,0,0,0.04)" />
         </ReactFlow>
@@ -276,7 +280,7 @@ export function FlowBuilder({ initialGraph, templates, agents, readOnly, saving,
             <button
               type="button"
               onClick={() => { setTesting((t) => !t); setActiveNodeId(null); }}
-              className={`inline-flex items-center gap-2 text-[13px] font-semibold rounded-xl px-4 py-2.5 shadow-md border ${testing ? "bg-gray-800 text-white border-gray-800" : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"}`}
+              className={`inline-flex items-center gap-2 text-[13px] font-semibold rounded-xl px-4 py-2.5 shadow-md border ${testing ? "bg-gray-800 text-white dark:text-gray-50 border-gray-800" : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"}`}
             >
               <FlaskConical className="w-4 h-4" /> {testing ? "Close test" : "Test"}
             </button>
@@ -285,7 +289,7 @@ export function FlowBuilder({ initialGraph, templates, agents, readOnly, saving,
               type="button"
               onClick={save}
               disabled={saving}
-              className="inline-flex items-center gap-2 bg-[#3B694C] hover:bg-[#2f5840] disabled:opacity-60 text-white text-[13px] font-semibold rounded-xl px-4 py-2.5 shadow-md"
+              className="inline-flex items-center gap-2 bg-brand hover:bg-[#2f5840] disabled:opacity-60 text-white text-[13px] font-semibold rounded-xl px-4 py-2.5 shadow-md"
             >
               <Save className="w-4 h-4" /> {saving ? "Saving…" : "Save flow"}
             </button>

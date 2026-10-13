@@ -136,8 +136,8 @@ export function QuietHoursPanel() {
             <p className="text-[12px] text-gray-400 -mt-2">24-hour times. A window that ends earlier than it starts runs overnight.</p>
 
             {/* What it means in practice */}
-            <div className="flex items-start gap-3 bg-[#EEF6F1] rounded-xl px-4 py-3">
-              <Moon className="w-4 h-4 text-[#3B694C] shrink-0 mt-0.5" />
+            <div className="flex items-start gap-3 bg-brand-100 rounded-xl px-4 py-3">
+              <Moon className="w-4 h-4 text-brand-fg shrink-0 mt-0.5" />
               <ul className="text-[12px] text-gray-600 space-y-1">
                 <li>A campaign that reaches quiet hours pauses, and continues by itself when they end.</li>
                 <li>Scheduling a campaign to start inside quiet hours is refused.</li>

@@ -23,11 +23,12 @@ import { getSocket } from "@/lib/socket";
 import { useCurrentUser } from "@/components/CurrentUserProvider";
 import { useActiveNumber } from "@/components/WhatsAppNumberProvider";
 import { useToast } from "@/components/ui/toast";
-import { AppointmentCard, RequestStatusChip, RequestedDetails } from "@/components/bookings/RequestParts";
+import { AppointmentCard, LeadSourceChip, RequestStatusChip, RequestedDetails } from "@/components/bookings/RequestParts";
 import { NewRequestDialog } from "@/components/bookings/NewRequestDialog";
 import { useRequestActions } from "@/components/bookings/useRequestActions";
+import { LiftOptOutDialog, RecordOptOutDialog, optOutSourceLabel, useOptOutChanged } from "@/components/OptOut";
 import {
-  isOpenRequest, notBookedLabel, notifyRequestChanged, onRequestChanged, requestAge, requestService, requestSource,
+  isOpenRequest, notBookedLabel, notifyRequestChanged, onRequestChanged, requestAge, requestService,
 } from "@/lib/bookingRequests";
 import {
   OUTCOME_CHIP, OUTCOME_LABEL, OVERDUE_CHIP, WAIT_AMBER_MIN, WAIT_RED_MIN, type ProfileWithOutcome,
@@ -84,6 +85,8 @@ export function ContactPanel({
   const canWork = can("conversation:write");
   // Supervisors may remove anyone's note; everyone else only their own (the server decides).
   const canSupervise = can("team:supervise");
+  // Lifting a marketing opt-out is admins only; recording one is anyone working the chat.
+  const canLiftOptOut = can("optout:lift");
   const { numbers } = useActiveNumber();
   const toast = useToast();
   const chatId = Number(conversationId);
@@ -108,6 +111,7 @@ export function ContactPanel({
   const [confirm, setConfirm] = useState<{ kind: "booking"; booking: Booking } | { kind: "note"; note: ConversationNote } | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [newRequest, setNewRequest] = useState(false);
+  const [optOutDialog, setOptOutDialog] = useState<"record" | "lift" | null>(null);
   const requestActions = useRequestActions(() => setReload((n) => n + 1), profile?.customer.name || null);
 
   // For "waiting 12m" and overdue follow-ups.
@@ -155,6 +159,10 @@ export function ContactPanel({
       off();
     };
   }, [conversationId]);
+
+  // Opt-out recorded or lifted (here, from the chat, by a colleague, or the patient's STOP).
+  const reloadPanel = useCallback(() => setReload((n) => n + 1), []);
+  useOptOutChanged(conversationId, profile?.customer.id ?? null, reloadPanel);
 
   useEffect(() => {
     if (!searching || query.trim().length < 2) return;
@@ -310,10 +318,10 @@ export function ContactPanel({
 
   return (
     <PanelShell onClose={onClose} title="Contact info">
-      <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-[#3B694C]/25 [&::-webkit-scrollbar-thumb]:rounded-full">
+      <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-brand/25 [&::-webkit-scrollbar-thumb]:rounded-full">
         {/* Identity */}
         <div className="px-5 pt-6 pb-5 flex flex-col items-center text-center border-b border-gray-100">
-          <div className="w-24 h-24 rounded-full bg-[#EEF6F1] text-[#3B694C] flex items-center justify-center text-[28px] font-bold">{initials}</div>
+          <div className="w-24 h-24 rounded-full bg-brand-100 text-brand-fg flex items-center justify-center text-[28px] font-bold">{initials}</div>
           {editing ? (
             <div className="w-full mt-4 space-y-2 text-left">
               {([
@@ -321,7 +329,7 @@ export function ContactPanel({
               ] as const).map(([k, label]) => (
                 <label key={k} className="block">
                   <span className="text-[11px] font-semibold text-gray-400">{label}</span>
-                  <input value={form[k]} onChange={(e) => setForm({ ...form, [k]: e.target.value })} className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-[13px] outline-none focus:border-[#3B694C]" />
+                  <input value={form[k]} onChange={(e) => setForm({ ...form, [k]: e.target.value })} className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-[13px] outline-none focus:border-brand" />
                 </label>
               ))}
               <div className="flex justify-end gap-2 pt-1">
@@ -336,7 +344,7 @@ export function ContactPanel({
                     }, "Contact updated");
                     if (ok) setEditing(false);
                   }}
-                  className="inline-flex items-center gap-1 text-[12px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5840] px-3 py-1.5 rounded-lg disabled:opacity-60"
+                  className="inline-flex items-center gap-1 text-[12px] font-semibold text-white bg-brand hover:bg-[#2f5840] px-3 py-1.5 rounded-lg disabled:opacity-60"
                 >
                   <Check className="w-3.5 h-3.5" /> Save
                 </button>
@@ -365,9 +373,32 @@ export function ContactPanel({
                 {profile.conversation.assignedAgent ? ` · with ${profile.conversation.assignedAgent.name || profile.conversation.assignedAgent.username}` : ""}
               </p>
               {(profile.optOut || c.optedOut) && (
-                <span className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-red-600 bg-red-50 rounded-full px-2 py-0.5">
-                  <ShieldOff className="w-3 h-3" /> Opted out{profile.optOut ? ` · ${fmtDate(profile.optOut.optedOutAt)}` : ""}
+                <span
+                  title={
+                    c.optedOut
+                      ? "Do not contact: opted out of marketing on all lines"
+                      : `Opted out of marketing on this line (${optOutSourceLabel(profile.optOut?.source)})`
+                  }
+                  className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-red-600 bg-red-50 rounded-full px-2 py-0.5"
+                >
+                  <ShieldOff className="w-3 h-3" />
+                  {c.optedOut ? "Do not contact · all lines" : "Opted out · this line"}
+                  {profile.optOut ? ` · ${fmtDate(profile.optOut.optedOutAt)}` : ""}
                 </span>
+              )}
+              {((canWork && !c.optedOut) || (canLiftOptOut && (profile.optOut || c.optedOut))) && (
+                <div className="mt-1.5 flex items-center gap-3 text-[11px]">
+                  {canWork && !c.optedOut && (
+                    <button type="button" onClick={() => setOptOutDialog("record")} className="font-semibold text-red-600 hover:underline underline-offset-2 cursor-pointer">
+                      Opt out of marketing…
+                    </button>
+                  )}
+                  {canLiftOptOut && (profile.optOut || c.optedOut) && (
+                    <button type="button" onClick={() => setOptOutDialog("lift")} className="font-semibold text-gray-500 hover:text-gray-800 hover:underline underline-offset-2 cursor-pointer">
+                      Lift opt-out…
+                    </button>
+                  )}
+                </div>
               )}
             </>
           )}
@@ -462,7 +493,7 @@ export function ContactPanel({
             <span className="flex items-center gap-2">
               {chatRequests.length > 0 && <span className="text-[11px] text-gray-400">{chatRequests.length}</span>}
               {canWork && (
-                <button type="button" onClick={() => setNewRequest(true)} title="New booking request" className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-[#3B694C] hover:underline cursor-pointer">
+                <button type="button" onClick={() => setNewRequest(true)} title="New booking request" className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-brand-fg hover:underline cursor-pointer">
                   <Plus className="w-3 h-3" /> New
                 </button>
               )}
@@ -490,7 +521,7 @@ export function ContactPanel({
               {bookings.map((r) => {
                 const keys = [...BOOKING_KEYS.filter((k) => r.answers[k]), ...Object.keys(r.answers).filter((k) => !BOOKING_KEYS.includes(k) && k !== "category")];
                 return (
-                  <div key={r.id} className="rounded-xl border border-[#3B694C]/20 bg-[#F5FAF7] p-3">
+                  <div key={r.id} className="rounded-xl border border-brand/20 bg-brand-50 p-3">
                     <div className="flex items-start gap-2">
                       <p className="flex-1 text-[13px] font-bold text-gray-900">{r.answers.offer || "Booking request"}</p>
                       <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${RUN_STATUS_META[r.status].cls}`}>{RUN_STATUS_META[r.status].label}</span>
@@ -503,7 +534,7 @@ export function ContactPanel({
                         </div>
                       ))}
                     </dl>
-                    <Link href={`/campaigns/flows/${r.flow.id}`} className="mt-2 inline-flex items-center gap-0.5 text-[11px] text-[#3B694C] hover:underline">
+                    <Link href={`/campaigns/flows/${r.flow.id}`} className="mt-2 inline-flex items-center gap-0.5 text-[11px] text-brand-fg hover:underline">
                       {r.flow.name} · {fmtDateTime(r.startedAt)} <ChevronRight className="w-3 h-3" />
                     </Link>
                   </div>
@@ -527,7 +558,7 @@ export function ContactPanel({
             onChange={(e) => { setNotes(e.target.value); setNotesDirty(true); }}
             rows={3}
             placeholder={canEdit ? "Add a note for the team — e.g. prefers evenings, allergic to…" : "No notes"}
-            className="w-full resize-y border border-gray-200 rounded-lg px-2.5 py-2 text-[13px] outline-none focus:border-[#3B694C] disabled:bg-gray-50"
+            className="w-full resize-y border border-gray-200 rounded-lg px-2.5 py-2 text-[13px] outline-none focus:border-brand disabled:bg-gray-50"
           />
           {notesDirty && (
             <div className="flex justify-end gap-2 mt-1.5">
@@ -536,7 +567,7 @@ export function ContactPanel({
                 type="button"
                 disabled={saving}
                 onClick={async () => { if (await save({ notes }, "Note saved")) setNotesDirty(false); }}
-                className="text-[12px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5840] px-3 py-1 rounded-lg disabled:opacity-60"
+                className="text-[12px] font-semibold text-white bg-brand hover:bg-[#2f5840] px-3 py-1 rounded-lg disabled:opacity-60"
               >
                 Save note
               </button>
@@ -558,7 +589,7 @@ export function ContactPanel({
                 rows={2}
                 maxLength={NOTE_MAX}
                 placeholder="Add a note for the team — e.g. called back, will confirm Thursday…"
-                className="w-full resize-y border border-gray-200 rounded-lg px-2.5 py-2 text-[13px] outline-none focus:border-[#3B694C]"
+                className="w-full resize-y border border-gray-200 rounded-lg px-2.5 py-2 text-[13px] outline-none focus:border-brand"
               />
               <div className="flex items-center justify-end gap-2 mt-1.5">
                 {noteDraft.length > NOTE_MAX - 200 && (
@@ -567,7 +598,7 @@ export function ContactPanel({
                 <button
                   type="submit"
                   disabled={!noteDraft.trim() || addingNote}
-                  className="text-[12px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5840] px-3 py-1 rounded-lg disabled:opacity-40"
+                  className="text-[12px] font-semibold text-white bg-brand hover:bg-[#2f5840] px-3 py-1 rounded-lg disabled:opacity-40"
                 >
                   {addingNote ? "Adding…" : "Add note"}
                 </button>
@@ -582,7 +613,7 @@ export function ContactPanel({
                 const mine = !!me && n.author?.id === me.id;
                 return (
                   <li key={n.id} className="group flex gap-2.5">
-                    <span className={`w-6 h-6 rounded-full text-[10px] font-bold flex items-center justify-center shrink-0 ${mine ? "bg-[#3B694C] text-white" : "bg-gray-100 text-gray-500"}`}>
+                    <span className={`w-6 h-6 rounded-full text-[10px] font-bold flex items-center justify-center shrink-0 ${mine ? "bg-brand text-white" : "bg-gray-100 text-gray-500"}`}>
                       {initialsOf(n.author)}
                     </span>
                     <div className="flex-1 min-w-0">
@@ -633,8 +664,8 @@ export function ContactPanel({
                 if (await save({ tags: [...c.tags, t] }, "Tag added")) setNewTag("");
               }}
             >
-              <input value={newTag} onChange={(e) => setNewTag(e.target.value)} placeholder="Add a tag…" className="flex-1 border border-gray-200 rounded-lg px-2.5 py-1.5 text-[12px] outline-none focus:border-[#3B694C]" />
-              <button type="submit" disabled={!newTag.trim() || saving} className="text-[12px] font-semibold text-[#3B694C] border border-[#3B694C]/30 bg-[#EEF6F1] px-3 rounded-lg disabled:opacity-40">Add</button>
+              <input value={newTag} onChange={(e) => setNewTag(e.target.value)} placeholder="Add a tag…" className="flex-1 border border-gray-200 rounded-lg px-2.5 py-1.5 text-[12px] outline-none focus:border-brand" />
+              <button type="submit" disabled={!newTag.trim() || saving} className="text-[12px] font-semibold text-brand-fg border border-brand/30 bg-brand-100 px-3 rounded-lg disabled:opacity-40">Add</button>
             </form>
           )}
         </Section>
@@ -643,7 +674,7 @@ export function ContactPanel({
         <Section icon={ImageIcon} title="Media, links and docs" aside={<span className="text-[11px] text-gray-400">{mediaTotal}</span>}>
           <div className="flex gap-1 mb-3">
             {([["media", `Media (${imagesAndVideos.length})`], ["docs", `Docs (${docs.length})`], ["links", `Links (${profile.links.length})`]] as const).map(([k, label]) => (
-              <button key={k} type="button" onClick={() => setMediaTab(k)} className={`text-[12px] px-2.5 py-1 rounded-full border ${mediaTab === k ? "bg-[#DCF2E3] border-[#3B694C] text-[#3B694C] font-semibold" : "border-gray-200 text-gray-500"}`}>
+              <button key={k} type="button" onClick={() => setMediaTab(k)} className={`text-[12px] px-2.5 py-1 rounded-full border ${mediaTab === k ? "bg-brand-200 border-brand text-brand-fg font-semibold" : "border-gray-200 text-gray-500"}`}>
                 {label}
               </button>
             ))}
@@ -680,7 +711,7 @@ export function ContactPanel({
               {profile.links.map((l) => (
                 <li key={l.url} className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-gray-50">
                   <Link2 className="w-4 h-4 text-gray-400 shrink-0" />
-                  <a href={l.url} target="_blank" rel="noreferrer" className="flex-1 min-w-0 text-[12px] text-[#3B694C] hover:underline truncate">{l.url.replace(/^https?:\/\//, "")}</a>
+                  <a href={l.url} target="_blank" rel="noreferrer" className="flex-1 min-w-0 text-[12px] text-brand-fg hover:underline truncate">{l.url.replace(/^https?:\/\//, "")}</a>
                   <button type="button" onClick={() => jump(l.messageId)} title="Show in chat" className="text-[11px] text-gray-400 hover:text-gray-700 shrink-0">{fmtDate(l.createdAt)}</button>
                 </li>
               ))}
@@ -696,7 +727,7 @@ export function ContactPanel({
                 <li key={`${cp.id}-${i}`}>
                   <Link href={`/campaigns/${cp.id}`} className="flex items-center gap-2 text-[12px] hover:bg-gray-50 rounded-lg px-1.5 py-1">
                     <span className="flex-1 min-w-0 truncate text-gray-700">{cp.name}</span>
-                    {cp.repliedAt && <span className="text-[10px] font-semibold text-[#3B694C] bg-[#EEF6F1] rounded-full px-1.5">Replied</span>}
+                    {cp.repliedAt && <span className="text-[10px] font-semibold text-brand-fg bg-brand-100 rounded-full px-1.5">Replied</span>}
                     <span className="text-[11px] text-gray-400 shrink-0">{fmtDate(cp.sentAt)}</span>
                   </Link>
                 </li>
@@ -707,6 +738,20 @@ export function ContactPanel({
       </div>
 
       {requestActions.dialogs}
+      {optOutDialog === "record" && (
+        <RecordOptOutDialog
+          conversationId={conversationId}
+          state={{ line: profile.optOut, all: !!c.optedOut }}
+          onClose={() => setOptOutDialog(null)}
+        />
+      )}
+      {optOutDialog === "lift" && (profile.optOut || c.optedOut) && (
+        <LiftOptOutDialog
+          conversationId={conversationId}
+          state={{ line: profile.optOut, all: !!c.optedOut }}
+          onClose={() => setOptOutDialog(null)}
+        />
+      )}
       {newRequest && (
         <NewRequestDialog
           onCancel={() => setNewRequest(false)}
@@ -758,12 +803,24 @@ function ChatRequestCard({ req: r, now, meId, canWork, actions }: {
   const appts = sortBookings(r.bookings || [], now);
   const btn = "inline-flex items-center gap-1 text-[11.5px] font-semibold px-2.5 py-1 rounded-lg transition-colors cursor-pointer disabled:opacity-60";
   return (
-    <div className={`rounded-xl border p-3 ${open ? "border-[#3B694C]/25 bg-[#F5FAF7]" : "border-gray-200 bg-white"}`}>
+    <div className={`rounded-xl border p-3 ${open ? "border-brand/25 bg-brand-50" : "border-gray-200 bg-white"}`}>
       <div className="flex items-start gap-2">
         <p className="flex-1 text-[13px] font-bold text-gray-900">{requestService(r) || "Booking request"}</p>
         <RequestStatusChip status={r.status} />
       </div>
-      <p className="mt-0.5 text-[11px] text-gray-400">{requestSource(r)} · {fmtDateTime(r.createdAt)}</p>
+      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-gray-400 min-w-0">
+        <LeadSourceChip req={r} />
+        {canWork && (
+          <button
+            type="button"
+            onClick={() => actions.changeSource(r)}
+            className="font-semibold text-brand-fg hover:underline underline-offset-2 cursor-pointer"
+          >
+            {r.sourceStatus === "SUGGESTED" ? "Confirm or change" : "Change source"}
+          </button>
+        )}
+        <span>{fmtDateTime(r.createdAt)}</span>
+      </div>
       <div className="mt-2">
         <RequestedDetails requested={r.requested} empty="Nothing collected yet. Ask the patient what they'd like." />
       </div>
@@ -808,12 +865,12 @@ function ChatRequestCard({ req: r, now, meId, canWork, actions }: {
       {canWork && (
         <div className="mt-2.5 flex flex-wrap gap-1.5">
           {open && (r.status === "NEW" || someoneElse) && (
-            <button type="button" onClick={() => actions.claim(r)} disabled={claiming} className={`${btn} text-[#3B694C] border border-[#3B694C]/30 bg-white hover:bg-[#EEF6F1]`}>
+            <button type="button" onClick={() => actions.claim(r)} disabled={claiming} className={`${btn} text-brand-fg border border-brand/30 bg-white hover:bg-brand-100`}>
               {claiming && <Loader2 className="w-3 h-3 animate-spin" />} {someoneElse ? "Take over" : "Take it"}
             </button>
           )}
           {(open || r.status === "BOOKED") && (
-            <button type="button" onClick={() => actions.book(r)} className={`${btn} text-white bg-[#3B694C] hover:bg-[#2f5840]`}>
+            <button type="button" onClick={() => actions.book(r)} className={`${btn} text-white bg-brand hover:bg-[#2f5840]`}>
               {r.status === "BOOKED" ? "Add appointment" : "Book"}
             </button>
           )}
@@ -823,7 +880,7 @@ function ChatRequestCard({ req: r, now, meId, canWork, actions }: {
             </button>
           )}
           {r.status === "NOT_BOOKED" && (
-            <button type="button" onClick={() => actions.reopen(r)} disabled={reopening} className={`${btn} text-[#3B694C] border border-[#3B694C]/30 bg-white hover:bg-[#EEF6F1]`}>
+            <button type="button" onClick={() => actions.reopen(r)} disabled={reopening} className={`${btn} text-brand-fg border border-brand/30 bg-white hover:bg-brand-100`}>
               {reopening && <Loader2 className="w-3 h-3 animate-spin" />} Reopen
             </button>
           )}
@@ -873,7 +930,7 @@ function Empty({ text }: { text: string }) {
 function PanelAction({ icon: Icon, label, onClick, href }: { icon: React.ComponentType<{ className?: string }>; label: string; onClick?: () => void; href?: string }) {
   const inner = (
     <>
-      <span className="w-11 h-11 rounded-full bg-gray-50 border border-gray-100 flex items-center justify-center text-[#3B694C] group-hover:bg-[#EEF6F1]">
+      <span className="w-11 h-11 rounded-full bg-gray-50 border border-gray-100 flex items-center justify-center text-brand-fg group-hover:bg-brand-100">
         <Icon className="w-4.5 h-4.5" />
       </span>
       <span className="text-[11px] text-gray-600">{label}</span>

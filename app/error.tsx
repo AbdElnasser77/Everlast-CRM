@@ -15,7 +15,7 @@ export default function Error({
   }, [error]);
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center gap-5 bg-[#f5f4f0] px-6 text-center">
+    <div className="min-h-screen flex flex-col items-center justify-center gap-5 bg-canvas-warm px-6 text-center">
       <div className="w-14 h-14 rounded-2xl bg-white flex items-center justify-center shadow-sm text-2xl">
         ⚠️
       </div>
@@ -28,7 +28,7 @@ export default function Error({
       </div>
       <button
         onClick={reset}
-        className="px-5 py-2.5 rounded-xl text-[13px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5540] transition-colors cursor-pointer"
+        className="px-5 py-2.5 rounded-xl text-[13px] font-semibold text-white bg-brand hover:bg-[#2f5540] transition-colors cursor-pointer"
       >
         Try again
       </button>

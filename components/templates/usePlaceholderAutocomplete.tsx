@@ -105,7 +105,7 @@ export function usePlaceholderAutocomplete<T extends Field>(
             }}
             onMouseEnter={() => setActive(i)}
             className={`w-full flex items-center justify-between gap-2 text-left px-3 py-1.5 text-[12px] cursor-pointer ${
-              i === active ? "bg-[#EEF6F1] text-[#3B694C]" : "text-gray-700"
+              i === active ? "bg-brand-100 text-brand-fg" : "text-gray-700"
             }`}
           >
             <span>{v.label}</span>

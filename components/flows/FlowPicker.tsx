@@ -70,14 +70,14 @@ export function FlowPicker({
           disabled={disabled}
           value={flowId ?? ""}
           onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}
-          className="flex-1 px-3 py-2.5 text-[14px] border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-[#3B694C]/20 focus:border-[#3B694C] disabled:opacity-60"
+          className="flex-1 px-3 py-2.5 text-[14px] border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand disabled:opacity-60"
         >
           <option value="">None: replies go to the inbox only</option>
           {options.map((f) => (
             <option key={f.id} value={f.id}>{f.name}{f.isActive ? "" : " (off)"}</option>
           ))}
         </select>
-        <Link href="/campaigns/flows" target="_blank" className="text-[12px] font-semibold text-[#3B694C] hover:underline shrink-0">
+        <Link href="/campaigns/flows" target="_blank" className="text-[12px] font-semibold text-brand-fg hover:underline shrink-0">
           Manage flows
         </Link>
       </div>

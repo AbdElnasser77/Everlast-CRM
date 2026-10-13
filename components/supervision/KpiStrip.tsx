@@ -22,7 +22,7 @@ function KpiCard({ title, icon, value, sub, active, alert, onClick }: CardProps)
     <>
       <span className="flex items-center justify-between gap-2">
         <span className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight truncate">{title}</span>
-        <span className={alert ? "text-red-500" : active ? "text-[#3B694C]" : "text-gray-300"}>{icon}</span>
+        <span className={alert ? "text-red-500" : active ? "text-brand-fg" : "text-gray-300"}>{icon}</span>
       </span>
       <span className={`text-[26px] font-bold leading-tight tabular-nums ${alert ? "text-red-600" : "text-gray-900"}`}>{value}</span>
       <span className="text-[12px] font-medium leading-tight text-gray-400 min-h-[16px]">{sub}</span>
@@ -39,7 +39,7 @@ function KpiCard({ title, icon, value, sub, active, alert, onClick }: CardProps)
       aria-pressed={active}
       className={`${base} cursor-pointer ${
         active
-          ? "border-[#3B694C] bg-[#F5FAF7] ring-1 ring-[#3B694C]/15"
+          ? "border-brand bg-brand-50 ring-1 ring-brand/15"
           : alert
             ? "border-red-200 hover:border-red-300 hover:bg-red-50/40"
             : "border-gray-100 hover:border-gray-200 hover:bg-gray-50/60"
@@ -97,7 +97,7 @@ export function KpiStrip({
               {k.waitingOverSla > 0 ? (
                 <span className="text-red-600 font-semibold">{k.waitingOverSla} over {sla} min</span>
               ) : (
-                <span className="text-[#3B694C]">All under {sla} min</span>
+                <span className="text-brand-fg">All under {sla} min</span>
               )}
               <span> · longest {formatMinutes(k.longestWaitMinutes)}</span>
             </>
@@ -123,7 +123,7 @@ export function KpiStrip({
               {(k.bookingRequestsNew ?? 0) > 0 ? (
                 <span className="text-amber-600">{k.bookingRequestsNew} not picked up</span>
               ) : (k.bookingRequestsOverSla ?? 0) === 0 ? (
-                <span className="text-[#3B694C]">All picked up</span>
+                <span className="text-brand-fg">All picked up</span>
               ) : null}
             </>
           )
@@ -152,7 +152,7 @@ export function KpiStrip({
         value={k.bookedToday}
         active={filter === "booked"}
         onClick={() => onFilter("booked")}
-        sub={<span className={k.bookedToday > 0 ? "text-[#3B694C]" : ""}>Appointments set by the team</span>}
+        sub={<span className={k.bookedToday > 0 ? "text-brand-fg" : ""}>Appointments set by the team</span>}
       />
       <KpiCard
         title="Avg first response"

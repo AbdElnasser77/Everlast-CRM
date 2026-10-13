@@ -113,7 +113,7 @@ export function AssigneePicker({ conversationId, assignee }: { conversationId: s
         {saving ? (
           <span className="w-6 h-6 flex items-center justify-center"><Spinner size="xs" label="Assigning" /></span>
         ) : assignee ? (
-          <span className="w-6 h-6 rounded-full bg-[#3B694C] text-white text-[10px] font-bold flex items-center justify-center">
+          <span className="w-6 h-6 rounded-full bg-brand text-white text-[10px] font-bold flex items-center justify-center">
             {initials(assignee)}
           </span>
         ) : (
@@ -139,7 +139,7 @@ export function AssigneePicker({ conversationId, assignee }: { conversationId: s
                 role="option"
                 aria-selected={false}
                 onClick={() => assign(me.id)}
-                className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-[13px] font-semibold text-[#3B694C] hover:bg-[#EEF6F1]"
+                className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-[13px] font-semibold text-brand-fg hover:bg-brand-100"
               >
                 <UserRound className="w-4 h-4" /> Assign to me
               </button>
@@ -160,7 +160,7 @@ export function AssigneePicker({ conversationId, assignee }: { conversationId: s
                     role="option"
                     aria-selected={isCurrent}
                     onClick={() => assign(p.id)}
-                    className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ${isCurrent ? "bg-[#EEF6F1]" : "hover:bg-gray-50"}`}
+                    className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ${isCurrent ? "bg-brand-100" : "hover:bg-gray-50"}`}
                   >
                     <span className="relative shrink-0">
                       <span className="w-6 h-6 rounded-full bg-gray-100 text-gray-500 text-[10px] font-bold flex items-center justify-center">
@@ -169,7 +169,7 @@ export function AssigneePicker({ conversationId, assignee }: { conversationId: s
                       <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full ring-2 ring-white ${PRESENCE_DOT[p.status]}`} />
                     </span>
                     <span className="flex-1 min-w-0 text-[13px] text-gray-700 truncate">{displayName(p)}</span>
-                    {isCurrent && <Check className="w-4 h-4 text-[#3B694C] shrink-0" />}
+                    {isCurrent && <Check className="w-4 h-4 text-brand-fg shrink-0" />}
                   </button>
                 );
               })

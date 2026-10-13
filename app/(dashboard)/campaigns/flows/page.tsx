@@ -56,7 +56,7 @@ export default function FlowsPage() {
   if (!canRead) return <NoAccess what="flows" />;
 
   return (
-    <div className="p-6 lg:p-8 bg-[#f9f9f8] min-h-full overflow-y-auto">
+    <div className="p-6 lg:p-8 bg-canvas min-h-full overflow-y-auto">
       <Link href="/campaigns" className="inline-flex items-center gap-1.5 text-[13px] text-gray-500 hover:text-gray-800">
         <ArrowLeft className="w-4 h-4" /> Campaigns
       </Link>
@@ -70,7 +70,7 @@ export default function FlowsPage() {
         {canWrite && (
           <button
             onClick={() => router.push("/campaigns/flows/new")}
-            className="flex items-center gap-1.5 text-[13px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5840] px-4 py-2 rounded-xl"
+            className="flex items-center gap-1.5 text-[13px] font-semibold text-white bg-brand hover:bg-[#2f5840] px-4 py-2 rounded-xl"
           >
             <Plus className="w-4 h-4" /> New flow
           </button>
@@ -104,7 +104,7 @@ export default function FlowsPage() {
             </thead>
             <tbody className="divide-y divide-gray-50">
               {flows.map((f) => (
-                <tr key={f.id} className="hover:bg-[#F5FAF7] cursor-pointer" onClick={() => router.push(`/campaigns/flows/${f.id}`)}>
+                <tr key={f.id} className="hover:bg-brand-50 cursor-pointer" onClick={() => router.push(`/campaigns/flows/${f.id}`)}>
                   <td className="px-5 py-3">
                     <p className="font-semibold text-gray-900">{f.name}</p>
                     {f.description && <p className="text-[12px] text-gray-400 truncate max-w-md">{f.description}</p>}
@@ -114,7 +114,7 @@ export default function FlowsPage() {
                       type="button"
                       disabled={!canWrite}
                       onClick={() => toggle(f)}
-                      className={`relative w-9 h-5 rounded-full transition-colors disabled:opacity-50 ${f.isActive ? "bg-[#3B694C]" : "bg-gray-200"}`}
+                      className={`relative w-9 h-5 rounded-full transition-colors disabled:opacity-50 ${f.isActive ? "bg-brand" : "bg-gray-200"}`}
                       title={f.isActive ? "On: answers campaign taps" : "Off: taps are left for agents"}
                     >
                       <span className={`absolute top-[3px] w-[14px] h-[14px] rounded-full bg-white shadow-sm transition-all ${f.isActive ? "left-[19px]" : "left-[3px]"}`} />

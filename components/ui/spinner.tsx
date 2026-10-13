@@ -25,7 +25,7 @@ export function Spinner({
 }) {
   return (
     <span role="status" className={cn("inline-flex shrink-0", className)}>
-      <svg className={cn(SIZES[size], "animate-spin text-[#3B694C]")} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <svg className={cn(SIZES[size], "animate-spin text-brand-fg")} viewBox="0 0 24 24" fill="none" aria-hidden>
         <circle cx="12" cy="12" r="9.5" stroke="currentColor" strokeWidth="3" className="opacity-20" />
         <path d="M21.5 12a9.5 9.5 0 0 0-9.5-9.5" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
       </svg>

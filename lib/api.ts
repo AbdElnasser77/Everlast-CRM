@@ -868,7 +868,7 @@ export function apiUpdateMyProfile(name: string) {
 export function apiSetConversationOutcome(
   conversationId: number,
   body:
-    | { outcome: "BOOKED"; appointments: import("@/types").AppointmentInput[] }
+    | { outcome: "BOOKED"; appointments: import("@/types").AppointmentInput[]; source?: import("@/types").LeadSourceInput }
     | { outcome: "BOOKED"; booking: { appointmentAt: string; service?: string; note?: string } }
     | { outcome: "FOLLOW_UP"; followUpAt: string }
     | { outcome: "NOT_INTERESTED" | "NO_ANSWER" | null },
@@ -941,11 +941,26 @@ export function apiClaimBookingRequest(id: number, opts: { force?: boolean } = {
 
 // Record the appointment(s) booked in Dok32 (1–10). Also works on an already
 // BOOKED request (the patient added something).
-export function apiBookRequest(id: number, appointments: import("@/types").AppointmentInput[]) {
+// source: where the patient came from — required (400 SOURCE_REQUIRED) unless
+// the request's sourceStatus is AUTOMATIC or CONFIRMED.
+export function apiBookRequest(id: number, appointments: import("@/types").AppointmentInput[], source?: import("@/types").LeadSourceInput) {
   return apiFetch<{ success: boolean; data: import("@/types").BookingRequest }>(`/api/booking-requests/${id}/book`, {
     method: "POST",
-    body: JSON.stringify({ appointments }),
+    body: JSON.stringify({ appointments, ...(source ? { source } : {}) }),
   });
+}
+
+// Set or correct where a request's patient came from (its appointments follow).
+export function apiSetBookingRequestSource(id: number, source: import("@/types").LeadSourceInput) {
+  return apiFetch<{ success: boolean; data: import("@/types").BookingRequest }>(`/api/booking-requests/${id}/source`, {
+    method: "PUT",
+    body: JSON.stringify(source),
+  });
+}
+
+// Choices for "where did this patient come from" on the line in view.
+export function apiGetBookingSourceOptions() {
+  return apiFetch<{ success: boolean; data: import("@/types").BookingSourceOptions }>("/api/booking-requests/source-options");
 }
 
 // Close without an appointment. reason OTHER needs a note.
@@ -1009,6 +1024,50 @@ export function apiGetSupervisionActivity(params: { after?: string; limit?: numb
   );
 }
 
+// The supervisor's report for a period (from/to YYYY-MM-DD, both days
+// included, max 92 days; clinic time zone). numberId narrows to one line.
+export function apiGetSupervisionReport(params: { from: string; to: string; numberId?: number }) {
+  const q = new URLSearchParams({ from: params.from, to: params.to });
+  if (params.numberId) q.set("numberId", String(params.numberId));
+  return apiFetch<{ success: boolean; data: import("@/types").SupervisionReport }>(`/api/supervision/report?${q}`, {}, { numberScoped: false });
+}
+
+// Messages of the chosen chats within the period (max 100 chats, 300 messages each).
+export function apiGetReportTranscripts(params: { ids: number[]; from: string; to: string }) {
+  const q = new URLSearchParams({ ids: params.ids.join(","), from: params.from, to: params.to });
+  return apiFetch<{ success: boolean; data: import("@/types").ReportTranscript[] }>(`/api/supervision/report/transcripts?${q}`, {}, { numberScoped: false });
+}
+
+// ── Detailed supervisor reports (same period rules as the overview report) ──
+
+export type ReportQuery = { from: string; to: string; numberId?: number };
+
+function reportQuery(params: ReportQuery): URLSearchParams {
+  const q = new URLSearchParams({ from: params.from, to: params.to });
+  if (params.numberId) q.set("numberId", String(params.numberId));
+  return q;
+}
+
+/** Booking requests opened or closed in the period, with appointments and couldn't-book reasons. */
+export function apiGetBookingsReport(params: ReportQuery) {
+  return apiFetch<{ success: boolean; data: import("@/types").BookingsReport }>(`/api/supervision/reports/bookings?${reportQuery(params)}`, {}, { numberScoped: false });
+}
+
+/** Team and per-person speed, volume and results, day by day and hour by hour. */
+export function apiGetTeamReport(params: ReportQuery) {
+  return apiFetch<{ success: boolean; data: import("@/types").TeamReport }>(`/api/supervision/reports/team?${reportQuery(params)}`, {}, { numberScoped: false });
+}
+
+/** Campaigns started in the period, from sent to booked. */
+export function apiGetCampaignsReport(params: ReportQuery) {
+  return apiFetch<{ success: boolean; data: import("@/types").CampaignsReport }>(`/api/supervision/reports/campaigns?${reportQuery(params)}`, {}, { numberScoped: false });
+}
+
+/** One row per chat with a message in the period (up to 5000). */
+export function apiGetChatsReport(params: ReportQuery) {
+  return apiFetch<{ success: boolean; data: import("@/types").ChatsReport }>(`/api/supervision/reports/chats?${reportQuery(params)}`, {}, { numberScoped: false });
+}
+
 export function apiGetSupervisionBookings(params: { from?: string; to?: string; agentId?: number; status?: "BOOKED" | "CANCELLED" | "all"; numberId?: number } = {}) {
   const q = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null && v !== "") q.set(k, String(v));
@@ -1016,6 +1075,29 @@ export function apiGetSupervisionBookings(params: { from?: string; to?: string; 
     success: boolean;
     data: (import("@/types").Booking & { customer: { id: number; name: string | null; phone: string }; conversation: { id: number; whatsappNumberId: number } })[];
   }>(`/api/supervision/bookings?${q}`, {}, { numberScoped: false });
+}
+
+// ── Opt-out from a chat: any agent records one; only an admin (optout:lift) lifts one ──
+// scope "line" = no campaigns from this WhatsApp line; "all" = do not contact on any line.
+export function apiOptOutPatient(conversationId: number, scope: "line" | "all", reason?: string) {
+  return apiFetch<{ success: boolean; data: { line: { optedOutAt: string; source: string } | null; all: boolean } }>(
+    `/api/conversations/${conversationId}/opt-out`,
+    { method: "POST", body: JSON.stringify({ scope, reason }) },
+  );
+}
+
+export function apiLiftOptOut(conversationId: number, scope: "line" | "all") {
+  return apiFetch<{ success: boolean; data: { line: { optedOutAt: string; source: string } | null; all: boolean } }>(
+    `/api/conversations/${conversationId}/opt-out?scope=${scope}`,
+    { method: "DELETE" },
+  );
+}
+
+// Unread chats / waiting (last 24h) / new booking requests on every active line.
+export function apiGetLineCounts() {
+  return apiFetch<{ success: boolean; data: { id: number; label: string; unreadChats: number; waiting: number; newBookingRequests: number }[] }>(
+    "/api/conversations/line-counts", {}, { numberScoped: false },
+  );
 }
 
 // Server rules: newPassword ≥ 8 characters; 401 if currentPassword is wrong.
@@ -1073,7 +1155,9 @@ export function apiCreateConversation(customerId: number) {
 export function apiSendTemplate(
   conversationId: string,
   templateId: number,
-  opts: { clientMessageId?: string; confirmOtherOwner?: boolean } = {},
+  // confirmOptedOut: send a marketing template to a patient who opted out —
+  // the first try answers 409 OPTED_OUT (details.scope "line" | "all").
+  opts: { clientMessageId?: string; confirmOtherOwner?: boolean; confirmOptedOut?: boolean } = {},
 ) {
   return apiFetch<{ success: boolean; data: import("@/types").Message }>(
     `/api/templates/conversations/${conversationId}/send-template`,

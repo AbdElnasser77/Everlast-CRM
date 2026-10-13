@@ -175,16 +175,16 @@ export default function MediaLibraryPage() {
             type="button"
             onClick={() => fileRef.current?.click()}
             disabled={uploading}
-            className="w-full flex flex-col items-center justify-center gap-2 py-8 mb-6 rounded-2xl border-2 border-dashed border-gray-200 hover:border-[#3B694C] hover:bg-[#EEF6F1] disabled:opacity-60 disabled:cursor-wait transition-colors cursor-pointer group"
+            className="w-full flex flex-col items-center justify-center gap-2 py-8 mb-6 rounded-2xl border-2 border-dashed border-gray-200 hover:border-brand hover:bg-brand-100 disabled:opacity-60 disabled:cursor-wait transition-colors cursor-pointer group"
           >
-            <div className="w-11 h-11 rounded-2xl bg-[#DCF2E3] group-hover:bg-white flex items-center justify-center transition-colors">
+            <div className="w-11 h-11 rounded-2xl bg-brand-200 group-hover:bg-white flex items-center justify-center transition-colors">
               {uploading ? (
-                <svg className="w-5 h-5 animate-spin text-[#3B694C]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
+                <svg className="w-5 h-5 animate-spin text-brand-fg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
               ) : (
-                <svg className="w-5 h-5 text-[#3B694C]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+                <svg className="w-5 h-5 text-brand-fg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
               )}
             </div>
-            <p className="text-[14px] font-semibold text-gray-700 group-hover:text-[#3B694C]">
+            <p className="text-[14px] font-semibold text-gray-700 group-hover:text-brand-fg">
               {uploading ? "Uploading…" : "Upload Media"}
             </p>
             <p className="text-[11px] text-gray-400">Images, video, audio, PDF/Word/Excel — up to 16 MB</p>
@@ -201,7 +201,7 @@ export default function MediaLibraryPage() {
                 onClick={() => setFilter(f)}
                 className={`px-3.5 py-1.5 rounded-full text-[13px] border transition-colors cursor-pointer font-medium ${
                   filter === f
-                    ? "bg-[#DCF2E3] border-[#3B694C] text-[#3B694C]"
+                    ? "bg-brand-200 border-brand text-brand-fg"
                     : "border-gray-200 text-gray-500 hover:bg-gray-50 bg-white"
                 }`}
               >
@@ -212,12 +212,12 @@ export default function MediaLibraryPage() {
 
           {loading ? (
             <div className="flex justify-center py-10">
-              <svg className="w-6 h-6 animate-spin text-[#3B694C]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
+              <svg className="w-6 h-6 animate-spin text-brand-fg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
             </div>
           ) : assets.length === 0 ? (
             <div className="text-center py-10">
-              <div className="w-14 h-14 rounded-2xl bg-[#EEF6F1] flex items-center justify-center mx-auto mb-4">
-                <Images className="w-6 h-6 text-[#3B694C]" />
+              <div className="w-14 h-14 rounded-2xl bg-brand-100 flex items-center justify-center mx-auto mb-4">
+                <Images className="w-6 h-6 text-brand-fg" />
               </div>
               <h2 className="text-[16px] font-semibold text-gray-800">No media yet</h2>
               <p className="text-[13.5px] text-gray-400 mt-1.5">Upload an image, video, or document to use in a template header.</p>
@@ -231,11 +231,11 @@ export default function MediaLibraryPage() {
                     key={a.id}
                     onClick={() => setSelectedId(a.id)}
                     className={`relative rounded-2xl border hover:shadow-sm bg-white transition-all overflow-hidden group cursor-pointer ${
-                      isSelected ? "border-2 border-[#3B694C]" : "border border-gray-100 hover:border-gray-200"
+                      isSelected ? "border-2 border-brand" : "border border-gray-100 hover:border-gray-200"
                     }`}
                   >
                     {isSelected && (
-                      <div className="absolute top-2 left-2 z-10 w-5 h-5 rounded-full bg-[#3B694C] flex items-center justify-center">
+                      <div className="absolute top-2 left-2 z-10 w-5 h-5 rounded-full bg-brand flex items-center justify-center">
                         <Check className="w-3 h-3 text-white" strokeWidth={3} />
                       </div>
                     )}
@@ -243,7 +243,7 @@ export default function MediaLibraryPage() {
                       <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); copyUrl(a); }}
-                        className="p-1.5 rounded-lg bg-white/90 text-gray-500 hover:text-[#3B694C] hover:bg-white shadow-sm cursor-pointer"
+                        className="p-1.5 rounded-lg bg-white/90 text-gray-500 hover:text-brand-fg hover:bg-white shadow-sm cursor-pointer"
                         title="Copy URL"
                       >
                         {copiedId === a.id ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}
@@ -289,7 +289,7 @@ export default function MediaLibraryPage() {
                 onChange={(e) => setRenameValue(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") saveRename(); if (e.key === "Escape") setRenaming(false); }}
                 onBlur={saveRename}
-                className="w-full text-[14px] font-semibold text-gray-900 border border-gray-200 rounded-lg px-2 py-1 mb-4 outline-none focus:border-[#3B694C]"
+                className="w-full text-[14px] font-semibold text-gray-900 border border-gray-200 rounded-lg px-2 py-1 mb-4 outline-none focus:border-brand"
               />
             ) : (
               <div className="flex items-center gap-1.5 mb-4">
@@ -331,10 +331,10 @@ export default function MediaLibraryPage() {
               <p className="text-[11px] font-semibold text-gray-500 mb-1.5">URL</p>
               <div className="flex items-center gap-1.5">
                 <input readOnly value={selectedAsset.url} className="flex-1 min-w-0 text-[11px] text-gray-500 border border-gray-200 rounded-lg px-2 py-1.5 truncate outline-none bg-gray-50" />
-                <button type="button" onClick={() => copyUrl(selectedAsset)} className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:text-[#3B694C] hover:bg-gray-50 cursor-pointer shrink-0" title="Copy URL">
+                <button type="button" onClick={() => copyUrl(selectedAsset)} className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:text-brand-fg hover:bg-gray-50 cursor-pointer shrink-0" title="Copy URL">
                   {copiedId === selectedAsset.id ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}
                 </button>
-                <a href={selectedAsset.url} target="_blank" rel="noreferrer" className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:text-[#3B694C] hover:bg-gray-50 cursor-pointer shrink-0" title="Open in new tab">
+                <a href={selectedAsset.url} target="_blank" rel="noreferrer" className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:text-brand-fg hover:bg-gray-50 cursor-pointer shrink-0" title="Open in new tab">
                   <ExternalLink className="w-3.5 h-3.5" />
                 </a>
               </div>

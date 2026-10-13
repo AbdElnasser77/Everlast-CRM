@@ -33,8 +33,8 @@ function StepNodeImpl({ type, data, selected }: NodeProps<StepFlowNode>) {
   return (
     <div
       className={`w-[240px] rounded-xl bg-white shadow-sm border transition-shadow ${
-        problems.length ? "border-red-300" : selected ? "border-[#3B694C]" : "border-gray-200"
-      } ${selected ? "shadow-md ring-2 ring-[#3B694C]/20" : ""} ${data.active ? "ring-4 ring-amber-300 shadow-lg" : ""}`}
+        problems.length ? "border-red-300" : selected ? "border-brand" : "border-gray-200"
+      } ${selected ? "shadow-md ring-2 ring-brand/20" : ""} ${data.active ? "ring-4 ring-amber-300 shadow-lg" : ""}`}
     >
       {type !== "trigger" && (
         <Handle type="target" position={Position.Left} className="!w-3 !h-3 !bg-white !border-2 !border-gray-400" />

@@ -85,7 +85,7 @@ function StatCard({ title, value, sub, subGreen }: StatCardProps) {
         {title}
       </span>
       <span className="text-[28px] font-bold text-gray-900 leading-tight">{value}</span>
-      <span className={`text-[12px] font-medium leading-tight ${subGreen ? "text-[#3B694C]" : "text-gray-400"}`}>
+      <span className={`text-[12px] font-medium leading-tight ${subGreen ? "text-brand-fg" : "text-gray-400"}`}>
         {sub}
       </span>
     </div>
@@ -119,7 +119,7 @@ function BarChart({ days, totalWeek }: { days: { label: string; incoming: number
               <span className="text-[10px] text-gray-400">{total > 0 ? total : ""}</span>
               {barH > 0 ? (
                 <div
-                  className={isMax ? "bg-[#3B694C]" : "bg-[#3B694C]/20"}
+                  className={isMax ? "bg-brand" : "bg-brand/20 dark:bg-brand/45"}
                   style={{ height: barH, borderRadius: "4px 4px 0 0", width: "100%" }}
                 />
               ) : (
@@ -203,8 +203,8 @@ function AgentPerformanceTable({ agents }: { agents: AgentStat[] }) {
               <tr key={agent.id}>
                 <td className="py-3 pr-4">
                   <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-full bg-[#EEF6F1] flex items-center justify-center shrink-0">
-                      <span className="text-[11px] font-bold text-[#3B694C]">{getInitials(agent.name, agent.username)}</span>
+                    <div className="w-8 h-8 rounded-full bg-brand-100 flex items-center justify-center shrink-0">
+                      <span className="text-[11px] font-bold text-brand-fg">{getInitials(agent.name, agent.username)}</span>
                     </div>
                     <div className="min-w-0">
                       <p className="font-medium text-gray-900 truncate">{agent.name ?? agent.username}</p>
@@ -324,7 +324,7 @@ export default function DashboardPage() {
               key={key}
               onClick={() => setTab(key)}
               className={`text-[13px] font-semibold rounded-md px-3.5 py-1.5 transition-colors ${
-                tab === key ? "bg-[#3B694C] text-white" : "text-gray-500 hover:text-gray-800"
+                tab === key ? "bg-brand text-white" : "text-gray-500 hover:text-gray-800"
               }`}
             >
               {label}

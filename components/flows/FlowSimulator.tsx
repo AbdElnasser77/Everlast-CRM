@@ -335,7 +335,7 @@ export function FlowSimulator({
 
       <div className="px-4 py-2 border-b border-gray-100 flex items-center gap-2">
         <span className="text-[11px] text-gray-400 shrink-0">Test as</span>
-        <input value={name} onChange={(e) => setName(e.target.value)} className="flex-1 text-[12px] border border-gray-200 rounded-md px-2 py-1 focus:outline-none focus:border-[#3B694C]" />
+        <input value={name} onChange={(e) => setName(e.target.value)} className="flex-1 text-[12px] border border-gray-200 rounded-md px-2 py-1 focus:outline-none focus:border-brand" />
       </div>
 
       {/* Phone */}
@@ -343,7 +343,7 @@ export function FlowSimulator({
         {/* The campaign message that starts it all */}
         <div className="max-w-[85%]">
           <div className="bg-white rounded-xl rounded-tl-sm px-3 py-2 shadow-sm">
-            <p className="text-[11px] font-semibold text-[#3B694C] mb-0.5">Campaign message</p>
+            <p className="text-[11px] font-semibold text-brand-fg mb-0.5">Campaign message</p>
             <p className="text-[13px] text-gray-500 italic">Your campaign template{startButtons.length ? " with its buttons" : ""}</p>
           </div>
           {startButtons.map((b) => (
@@ -352,7 +352,7 @@ export function FlowSimulator({
               type="button"
               disabled={waiting?.kind !== "start"}
               onClick={() => tapStart(b)}
-              className="mt-1 w-full bg-white rounded-xl py-2 text-[13px] font-medium text-[#3B694C] shadow-sm enabled:hover:bg-[#F5FAF7] disabled:opacity-50"
+              className="mt-1 w-full bg-white rounded-xl py-2 text-[13px] font-medium text-brand-fg shadow-sm enabled:hover:bg-brand-50 disabled:opacity-50"
             >
               {b.title || "Button"}
             </button>
@@ -371,7 +371,7 @@ export function FlowSimulator({
             );
           }
           if (it.kind === "event") {
-            const cls = it.tone === "warn" ? "bg-amber-50 text-amber-800 border-amber-200" : it.tone === "end" ? "bg-gray-800 text-white border-gray-800" : "bg-white/70 text-gray-600 border-white";
+            const cls = it.tone === "warn" ? "bg-amber-50 text-amber-800 border-amber-200" : it.tone === "end" ? "bg-gray-800 text-white dark:text-gray-50 border-gray-800" : "bg-white/70 text-gray-600 border-white";
             return (
               <div key={i} className="flex justify-center">
                 <span className={`text-[11px] rounded-lg border px-2.5 py-1 text-center max-w-[90%] ${cls}`}>{it.text}</span>
@@ -398,7 +398,7 @@ export function FlowSimulator({
                   type="button"
                   disabled={handedOff}
                   onClick={() => choose(b, nodeId)}
-                  className="mt-1 w-full bg-white rounded-xl py-2 text-[13px] font-medium text-[#3B694C] shadow-sm enabled:hover:bg-[#F5FAF7] disabled:opacity-50"
+                  className="mt-1 w-full bg-white rounded-xl py-2 text-[13px] font-medium text-brand-fg shadow-sm enabled:hover:bg-brand-50 disabled:opacity-50"
                 >
                   {b.title || "Button"}
                 </button>
@@ -421,13 +421,13 @@ export function FlowSimulator({
                             type="button"
                             disabled={handedOff}
                             onClick={() => chooseCard(b, c.label, nodeId)}
-                            className="w-full border border-gray-100 rounded-lg py-1.5 text-[12px] font-medium text-[#3B694C] enabled:hover:bg-[#F5FAF7] disabled:opacity-50"
+                            className="w-full border border-gray-100 rounded-lg py-1.5 text-[12px] font-medium text-brand-fg enabled:hover:bg-brand-50 disabled:opacity-50"
                           >
                             {b.title}
                           </button>
                         ))}
                         {c.links.map((l, li) => (
-                          <a key={li} href={l.url} target="_blank" rel="noreferrer" className="block w-full border border-gray-100 rounded-lg py-1.5 text-center text-[12px] font-medium text-[#3B694C] hover:bg-[#F5FAF7]">
+                          <a key={li} href={l.url} target="_blank" rel="noreferrer" className="block w-full border border-gray-100 rounded-lg py-1.5 text-center text-[12px] font-medium text-brand-fg hover:bg-brand-50">
                             🔗 {l.title}
                           </a>
                         ))}
@@ -438,14 +438,14 @@ export function FlowSimulator({
               )}
               {it.list && (
                 <div className="mt-1 bg-white rounded-xl shadow-sm overflow-hidden">
-                  <p className="py-2 text-center text-[13px] font-medium text-[#3B694C] border-b border-gray-100">☰ {it.list.label}</p>
+                  <p className="py-2 text-center text-[13px] font-medium text-brand-fg border-b border-gray-100">☰ {it.list.label}</p>
                   {it.list.rows.map((r) => (
                     <button
                       key={r.id}
                       type="button"
                       disabled={handedOff}
                       onClick={() => choose(r, nodeId)}
-                      className="w-full text-left px-3 py-2 border-b border-gray-50 last:border-0 enabled:hover:bg-[#F5FAF7] disabled:opacity-50"
+                      className="w-full text-left px-3 py-2 border-b border-gray-50 last:border-0 enabled:hover:bg-brand-50 disabled:opacity-50"
                     >
                       <span className="block text-[13px] text-gray-800">{r.title || "Option"}</span>
                       {r.description && <span className="block text-[11px] text-gray-400">{r.description}</span>}
@@ -478,9 +478,9 @@ export function FlowSimulator({
           onChange={(e) => setInput(e.target.value)}
           disabled={!waiting}
           placeholder={placeholder}
-          className={`flex-1 text-[13px] border rounded-full px-3.5 py-2 focus:outline-none focus:border-[#3B694C] disabled:bg-gray-50 ${canType ? "border-gray-200" : "border-gray-100"}`}
+          className={`flex-1 text-[13px] border rounded-full px-3.5 py-2 focus:outline-none focus:border-brand disabled:bg-gray-50 ${canType ? "border-gray-200" : "border-gray-100"}`}
         />
-        <button type="submit" disabled={!waiting || !input.trim()} className="w-9 h-9 rounded-full bg-[#3B694C] text-white flex items-center justify-center disabled:opacity-40">
+        <button type="submit" disabled={!waiting || !input.trim()} className="w-9 h-9 rounded-full bg-brand text-white flex items-center justify-center disabled:opacity-40">
           <Send className="w-4 h-4" />
         </button>
       </form>

@@ -23,14 +23,15 @@ import { dateTime, humanizeKey, messagePreview, notBookedReasonLabel, patientNam
 
 export type Tone = "sky" | "green" | "violet" | "amber" | "red" | "gray";
 
-/** Dark-surface classes per tone: accent bar, icon disc, and a soft text colour. */
+/** Live-wall classes per tone: accent bar, icon disc, and a text colour. The -700 text
+ *  shades turn into the bright -300s in dark mode (see the palette in app/globals.css). */
 export const TONE: Record<Tone, { bar: string; icon: string; text: string }> = {
-  sky: { bar: "bg-sky-400", icon: "bg-sky-400/15 text-sky-300", text: "text-sky-300" },
-  green: { bar: "bg-emerald-400", icon: "bg-[#3B694C]/40 text-emerald-300", text: "text-emerald-300" },
-  violet: { bar: "bg-violet-400", icon: "bg-violet-400/15 text-violet-300", text: "text-violet-300" },
-  amber: { bar: "bg-amber-400", icon: "bg-amber-400/15 text-amber-300", text: "text-amber-300" },
-  red: { bar: "bg-red-400", icon: "bg-red-400/15 text-red-300", text: "text-red-300" },
-  gray: { bar: "bg-white/25", icon: "bg-white/10 text-white/60", text: "text-white/60" },
+  sky: { bar: "bg-sky-400", icon: "bg-sky-400/15 text-sky-700", text: "text-sky-700" },
+  green: { bar: "bg-emerald-400", icon: "bg-emerald-400/15 dark:bg-brand/40 text-emerald-700", text: "text-emerald-700" },
+  violet: { bar: "bg-violet-400", icon: "bg-violet-400/15 text-violet-700", text: "text-violet-700" },
+  amber: { bar: "bg-amber-400", icon: "bg-amber-400/15 text-amber-700", text: "text-amber-700" },
+  red: { bar: "bg-red-400", icon: "bg-red-400/15 text-red-700", text: "text-red-700" },
+  gray: { bar: "bg-wall-ink/25", icon: "bg-wall-ink/10 text-wall-ink/60", text: "text-wall-ink/60" },
 };
 
 export interface Described {
@@ -58,7 +59,7 @@ function appointmentLine(appointmentAt: string | null, service: string | null): 
 
 const STATUS_WORD: Record<string, string> = { OPEN: "reopened", PENDING: "marked pending", RESOLVED: "resolved" };
 
-const B = ({ children }: { children: ReactNode }) => <span className="font-semibold text-white">{children}</span>;
+const B = ({ children }: { children: ReactNode }) => <span className="font-semibold text-wall-ink">{children}</span>;
 
 export function describeActivity(a: SupervisionActivity): Described {
   const icon = "w-[18px] h-[18px]";
@@ -84,7 +85,7 @@ export function describeActivity(a: SupervisionActivity): Described {
         tone: "green",
         title: (
           <>
-            <B>{actor ?? "Team"}</B> <span className="text-white/40">→</span> <B>{patient}</B>
+            <B>{actor ?? "Team"}</B> <span className="text-wall-ink/40">→</span> <B>{patient}</B>
           </>
         ),
         text: extra,

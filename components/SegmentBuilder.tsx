@@ -213,7 +213,7 @@ function describeRule(rule: SegmentRule, options: SegmentOptions | null): string
 // ── Small inputs ────────────────────────────────────────────────────────────
 
 const inputCls =
-  "text-[13px] rounded-xl border border-gray-200 px-3 py-2 outline-none focus:ring-2 focus:ring-[#3B694C]/20 focus:border-[#3B694C] transition-colors bg-white";
+  "text-[13px] rounded-xl border border-gray-200 px-3 py-2 outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand transition-colors bg-white";
 
 function MultiPicker({
   values,
@@ -288,7 +288,7 @@ function MultiPicker({
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search…"
                 autoFocus
-                className="w-full text-[12px] rounded-lg border border-gray-200 px-2.5 py-1.5 outline-none focus:border-[#3B694C]"
+                className="w-full text-[12px] rounded-lg border border-gray-200 px-2.5 py-1.5 outline-none focus:border-brand"
               />
             </div>
           )}
@@ -304,7 +304,7 @@ function MultiPicker({
             >
               <span
                 className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
-                  selected.has(String(o.value)) ? "bg-[#3B694C] border-[#3B694C]" : "border-gray-300"
+                  selected.has(String(o.value)) ? "bg-brand border-brand" : "border-gray-300"
                 }`}
               >
                 {selected.has(String(o.value)) && (
@@ -640,8 +640,8 @@ export default function SegmentBuilder({
 
         {definition.rules.length === 0 && (
           <div className="rounded-2xl border-2 border-dashed border-gray-200 px-5 py-8 text-center">
-            <div className="w-11 h-11 rounded-2xl bg-[#EEF6F1] flex items-center justify-center mx-auto mb-3">
-              <Users className="w-5 h-5 text-[#3B694C]" />
+            <div className="w-11 h-11 rounded-2xl bg-brand-100 flex items-center justify-center mx-auto mb-3">
+              <Users className="w-5 h-5 text-brand-fg" />
             </div>
             <p className="text-[14px] font-semibold text-gray-700">No rules yet</p>
             <p className="text-[12.5px] text-gray-400 mt-1">
@@ -705,7 +705,7 @@ export default function SegmentBuilder({
         <button
           type="button"
           onClick={addRule}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 text-[13px] font-semibold text-gray-600 hover:bg-[#EEF6F1] hover:border-[#3B694C] hover:text-[#3B694C] transition-colors cursor-pointer"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 text-[13px] font-semibold text-gray-600 hover:bg-brand-100 hover:border-brand hover:text-brand-fg transition-colors cursor-pointer"
         >
           <Plus className="w-4 h-4" />
           Add rule
@@ -723,7 +723,7 @@ export default function SegmentBuilder({
       <aside className="w-full lg:w-[300px] shrink-0 space-y-3 lg:sticky lg:top-0">
         <div className="rounded-2xl border border-gray-100 bg-white p-5">
           <div className="flex items-center gap-2 mb-3">
-            <Users className="w-4 h-4 text-[#3B694C]" />
+            <Users className="w-4 h-4 text-brand-fg" />
             <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400">Audience right now</p>
           </div>
 
@@ -748,7 +748,7 @@ export default function SegmentBuilder({
 
               {!!preview?.suppressed && (
                 <div className="flex items-start gap-2 mt-3 pt-3 border-t border-gray-50 text-[12px] text-gray-500">
-                  <ShieldCheck className="w-3.5 h-3.5 text-[#3B694C] shrink-0 mt-0.5" />
+                  <ShieldCheck className="w-3.5 h-3.5 text-brand-fg shrink-0 mt-0.5" />
                   <span>
                     {preview.suppressed.toLocaleString()} of {preview.matched.toLocaleString()} matched
                     contact{preview.matched === 1 ? "" : "s"} opted out and will not be messaged.
@@ -771,7 +771,7 @@ export default function SegmentBuilder({
             type="checkbox"
             checked={excludeOptedOut}
             onChange={(e) => onExcludeOptedOutChange(e.target.checked)}
-            className="mt-0.5 w-4 h-4 accent-[#3B694C] cursor-pointer"
+            className="mt-0.5 w-4 h-4 accent-brand cursor-pointer"
           />
           <span>
             <span className="block text-[13px] font-semibold text-gray-800">Exclude opted-out contacts</span>
@@ -788,7 +788,7 @@ export default function SegmentBuilder({
             <ul className="space-y-2">
               {preview.sample.slice(0, 6).map((c) => (
                 <li key={c.id} className="flex items-center gap-2.5">
-                  <span className="w-7 h-7 rounded-lg bg-[#EEF6F1] text-[#3B694C] text-[10px] font-bold flex items-center justify-center shrink-0">
+                  <span className="w-7 h-7 rounded-lg bg-brand-100 text-brand-fg text-[10px] font-bold flex items-center justify-center shrink-0">
                     {(c.name ?? "?").slice(0, 2).toUpperCase()}
                   </span>
                   <span className="min-w-0">

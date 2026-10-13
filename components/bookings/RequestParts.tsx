@@ -1,14 +1,54 @@
 "use client";
 
-import { Stethoscope, Hash } from "lucide-react";
+import Link from "next/link";
+import { Stethoscope, Hash, Megaphone, CircleCheck, CircleHelp, Compass } from "lucide-react";
 import type { Booking, BookingRequestStatus } from "@/types";
 import { fmtWhen, personName } from "@/lib/chatOutcome";
-import { REQUEST_STATUS_CHIP, REQUEST_STATUS_LABEL, requestedPairs } from "@/lib/bookingRequests";
+import {
+  REQUEST_STATUS_CHIP, REQUEST_STATUS_LABEL, SOURCE_CHIP, type SourceFields, requestSourceInfo, requestedPairs,
+} from "@/lib/bookingRequests";
 
 export function RequestStatusChip({ status, className = "" }: { status: BookingRequestStatus; className?: string }) {
   return (
     <span className={`shrink-0 inline-flex items-center text-[10.5px] font-semibold px-1.5 py-px rounded border ${REQUEST_STATUS_CHIP[status]} ${className}`}>
       {REQUEST_STATUS_LABEL[status]}
+    </span>
+  );
+}
+
+/**
+ * Where the patient came from: "Campaign: X · proven" / "· confirmed",
+ * "Suggested: X (not confirmed)" in amber, "Instagram", "Other: note",
+ * "Source not set". `campaignHref` links a credited campaign's name.
+ */
+export function LeadSourceChip({ req, campaignHref, className = "" }: {
+  req: Partial<SourceFields>;
+  campaignHref?: (id: number) => string;
+  className?: string;
+}) {
+  const info = requestSourceInfo(req);
+  const Icon = info.tone === "proven" || info.tone === "confirmed" ? CircleCheck
+    : info.tone === "suggested" ? CircleHelp
+    : info.tone === "unset" ? Compass
+    : Megaphone;
+  const linked = campaignHref && info.campaign && (info.tone === "proven" || info.tone === "confirmed");
+  return (
+    <span
+      title={info.title}
+      className={`inline-flex max-w-full items-center gap-1 text-[11px] font-medium px-1.5 py-px rounded border ${SOURCE_CHIP[info.tone]} ${className}`}
+    >
+      <Icon className="w-3 h-3 shrink-0" />
+      <span className="truncate">
+        {linked ? (
+          <>
+            Campaign:{" "}
+            <Link href={campaignHref(info.campaign!.id)} className="font-semibold hover:underline" onClick={(e) => e.stopPropagation()}>
+              {info.campaign!.name}
+            </Link>
+            {info.text.endsWith(" · proven") ? " · proven" : info.text.endsWith(" · confirmed") ? " · confirmed" : ""}
+          </>
+        ) : info.text}
+      </span>
     </span>
   );
 }
@@ -39,10 +79,10 @@ export function AppointmentCard({ booking: b, now, footer, action }: {
   const cancelled = b.status === "CANCELLED";
   const upcoming = !cancelled && new Date(b.appointmentAt).getTime() >= now;
   return (
-    <div className={`rounded-xl border p-3 ${cancelled ? "border-gray-100 bg-gray-50 opacity-60" : upcoming ? "border-[#3B694C]/20 bg-[#F5FAF7]" : "border-gray-200 bg-white"}`}>
+    <div className={`rounded-xl border p-3 ${cancelled ? "border-gray-100 bg-gray-50 opacity-60" : upcoming ? "border-brand/20 bg-brand-50" : "border-gray-200 bg-white"}`}>
       <div className="flex items-start gap-2">
         <p className={`flex-1 text-[13px] font-bold ${cancelled ? "text-gray-500 line-through" : "text-gray-900"}`}>{fmtWhen(b.appointmentAt)}</p>
-        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${upcoming ? "bg-[#DCF2E3] text-[#3B694C]" : "bg-gray-100 text-gray-500"}`}>
+        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${upcoming ? "bg-brand-200 text-brand-fg" : "bg-gray-100 text-gray-500"}`}>
           {cancelled ? "Cancelled" : upcoming ? "Upcoming" : "Past"}
         </span>
       </div>

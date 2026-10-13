@@ -82,7 +82,7 @@ export default function SearchPage() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-[#f5f4f0]">
+    <div className="flex flex-col h-full bg-canvas-warm">
       {/* Page header */}
       <div className="shrink-0 px-6 pt-6 pb-4 bg-white border-b border-gray-100">
         <h1 className="text-[22px] font-bold text-gray-900 tracking-tight mb-4">
@@ -90,7 +90,7 @@ export default function SearchPage() {
         </h1>
 
         {/* Search bar */}
-        <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 focus-within:border-[#3B694C] focus-within:ring-2 focus-within:ring-[#3B694C]/10 transition-all">
+        <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/10 transition-all">
           <svg
             className="w-5 h-5 text-gray-400 shrink-0"
             viewBox="0 0 24 24"
@@ -131,7 +131,7 @@ export default function SearchPage() {
             type="button"
             onClick={handleSearch}
             disabled={!query.trim() || loading}
-            className="ml-1 bg-[#3B694C] hover:bg-[#2f5840] disabled:opacity-40 disabled:cursor-not-allowed text-white text-[13px] font-semibold px-4 py-2 rounded-xl transition-colors cursor-pointer shrink-0"
+            className="ml-1 bg-brand hover:bg-[#2f5840] disabled:opacity-40 disabled:cursor-not-allowed text-white text-[13px] font-semibold px-4 py-2 rounded-xl transition-colors cursor-pointer shrink-0"
           >
             Search
           </button>
@@ -139,13 +139,13 @@ export default function SearchPage() {
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-y-auto px-6 py-5 space-y-3 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-[#3B694C]/20 [&::-webkit-scrollbar-thumb]:rounded-full">
+      <div className="flex-1 overflow-y-auto px-6 py-5 space-y-3 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-brand/20 [&::-webkit-scrollbar-thumb]:rounded-full">
         {/* Initial state */}
         {!loading && !searched && (
           <div className="flex flex-col items-center justify-center h-full min-h-[360px] gap-5 text-center">
-            <div className="w-[80px] h-[80px] rounded-2xl bg-[#DCF2E3] flex items-center justify-center">
+            <div className="w-[80px] h-[80px] rounded-2xl bg-brand-200 flex items-center justify-center">
               <svg
-                className="w-9 h-9 text-[#3B694C]"
+                className="w-9 h-9 text-brand-fg"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -215,7 +215,7 @@ export default function SearchPage() {
                   key={mid}
                   type="button"
                   onClick={() => router.push(`/chats/${msg.conversationId}`)}
-                  className="w-full text-left flex flex-col gap-2 p-4 bg-white border border-gray-100 rounded-2xl hover:border-[#3B694C]/30 hover:shadow-sm transition-all cursor-pointer group"
+                  className="w-full text-left flex flex-col gap-2 p-4 bg-white border border-gray-100 rounded-2xl hover:border-brand/30 hover:shadow-sm transition-all cursor-pointer group"
                 >
                   {/* Top row: sender badge + timestamp */}
                   <div className="flex items-center justify-between gap-2">
@@ -223,7 +223,7 @@ export default function SearchPage() {
                       className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
                         isCustomer
                           ? "bg-blue-50 text-blue-600 border-blue-200"
-                          : "bg-[#DCF2E3] text-[#3B694C] border-[#3B694C]/20"
+                          : "bg-brand-200 text-brand-fg border-brand/20"
                       }`}
                     >
                       {msg.senderType}
@@ -239,7 +239,7 @@ export default function SearchPage() {
                   </p>
 
                   {/* Conversation link hint */}
-                  <div className="flex items-center gap-1 text-[12px] text-gray-400 group-hover:text-[#3B694C] transition-colors">
+                  <div className="flex items-center gap-1 text-[12px] text-gray-400 group-hover:text-brand-fg transition-colors">
                     <svg
                       className="w-3.5 h-3.5 shrink-0"
                       viewBox="0 0 24 24"

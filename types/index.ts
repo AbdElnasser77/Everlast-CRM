@@ -854,9 +854,11 @@ export interface Booking {
   // The appointment's reference in Dok32, if the agent noted it.
   dok32Ref?: string | null;
   note: string | null;
-  // The booking request it came from, and that request's campaign.
+  // The booking request it came from, and the campaign it's credited to
+  // (proven or agent-confirmed only).
   requestId?: number | null;
   campaignId?: number | null;
+  leadSource?: LeadSource | null;
   status: "BOOKED" | "CANCELLED";
   cancelledAt: string | null;
   createdAt: string;
@@ -866,6 +868,26 @@ export interface Booking {
 // ── Booking requests ──────────────────────────────────────────────────────
 
 export type BookingRequestStatus = "NEW" | "IN_PROGRESS" | "BOOKED" | "NOT_BOOKED";
+
+// Where a patient came from. CAMPAIGN needs a campaign; OTHER needs a note.
+export type LeadSource = "CAMPAIGN" | "INSTAGRAM" | "GOOGLE" | "REFERRAL" | "WALK_IN" | "RETURNING" | "OTHER";
+// AUTOMATIC = proven (came through the campaign's flow / replied to its
+// message); SUGGESTED = a campaign reached them lately, no proof — the agent
+// must confirm; CONFIRMED = an agent chose it. null = nothing known.
+export type LeadSourceStatus = "AUTOMATIC" | "SUGGESTED" | "CONFIRMED";
+
+// What "where did this patient come from" sends.
+export interface LeadSourceInput {
+  leadSource: LeadSource;
+  campaignId?: number;
+  note?: string;
+}
+
+export interface BookingSourceOptions {
+  leadSources: { value: LeadSource; label: string }[];
+  // This line's campaigns from the last 90 days.
+  campaigns: { id: number; name: string; startedAt: string | null }[];
+}
 export type NotBookedReason = "NO_ANSWER" | "NOT_INTERESTED" | "PRICE" | "CALL_BACK_LATER" | "BOOKED_ELSEWHERE" | "OTHER";
 
 // One appointment as the agent enters it when booking (service, date, time
@@ -885,8 +907,16 @@ export interface BookingRequest {
   customerId: number;
   whatsappNumberId: number;
   source: "FLOW" | "AGENT";
+  // Credited campaign (proven or confirmed) — what campaign results count.
   campaignId: number | null;
   campaign?: { id: number; name: string } | null;
+  // A campaign that reached them lately, with no proof (needs confirming).
+  suggestedCampaignId?: number | null;
+  suggestedCampaign?: { id: number; name: string } | null;
+  leadSource?: LeadSource | null;
+  sourceStatus?: LeadSourceStatus | null;
+  sourceNote?: string | null;
+  sourceConfirmedAt?: string | null;
   flowRunId: number | null;
   // What the patient asked for, as collected: { service, preferred_date, contact_number, … }.
   requested: Record<string, unknown>;
@@ -1095,4 +1125,344 @@ export interface SupervisionActivity {
   line: { id: number; label: string };
   text: string | null;
   details: Record<string, unknown> | null;
+}
+
+// ── Supervisor report (PDF) ───────────────────────────────────────────────
+
+export interface SupervisionReport {
+  period: { from: string; to: string; fromDay: string; toDay: string; timezone: string };
+  line: { id: number; label: string | null } | null;
+  generatedAt: string;
+  slaMinutes: number;
+  summary: {
+    chats: number;
+    patientsWrote: number;
+    patientMessages: number;
+    staffReplies: number;
+    firstResponses: number;
+    avgFirstResponseMinutes: number | null;
+    withinSlaPercent: number | null;
+    lateResponses: number;
+    unanswered: number;
+    bookingRequests: number;
+    bookingRequestsBySource: Partial<Record<"FLOW" | "AGENT", number>>;
+    requestsBooked: number;
+    requestsNotBooked: number;
+    requestsStillOpen: number;
+    notBookedReasons: Partial<Record<NotBookedReason, number>>;
+    appointmentsBooked: number;
+    appointmentsCancelled: number;
+    // Booked appointments by where the patient came from (UNKNOWN = not set).
+    bookingsByLeadSource: Record<string, number>;
+    // Outcome changes made in the period: BOOKED / NOT_INTERESTED / FOLLOW_UP / NO_ANSWER / CLEARED.
+    outcomes: Record<string, number>;
+  };
+  agents: {
+    id: number;
+    name: string | null;
+    username: string;
+    role: UserRole;
+    isActive: boolean;
+    chats: number;
+    replies: number;
+    firstResponses: number;
+    avgResponseMinutes: number | null;
+    lateResponses: number;
+    appointmentsBooked: number;
+    requestsBooked: number;
+    requestsNotBooked: number;
+    outcomesSet: number;
+  }[];
+  bookings: {
+    id: number;
+    customer: { id: number; name: string | null; phone: string };
+    service: string | null;
+    appointmentAt: string;
+    doctor: string | null;
+    dok32Ref: string | null;
+    note: string | null;
+    status: "BOOKED" | "CANCELLED";
+    bookedBy: PersonRef | null;
+    bookedAt: string;
+    campaign: string | null;
+    leadSource: LeadSource | null;
+    conversationId: number;
+  }[];
+  campaigns: {
+    id: number;
+    name: string;
+    line: string | null;
+    status: CampaignStatus;
+    startedAt: string | null;
+    recipients: number;
+    sent: number;
+    failed: number;
+    replied: number;
+    bookingRequests: number;
+    booked: number;
+  }[];
+  // Every chat with a message in the period.
+  chats: {
+    id: number;
+    customer: { id: number; name: string | null; phone: string };
+    line: string | null;
+    assignedAgent: PersonRef | null;
+    status: "OPEN" | "PENDING" | "RESOLVED";
+    outcome: ConversationOutcome | null;
+    request: { status: BookingRequestStatus; notBookedReason: NotBookedReason | null } | null;
+    messages: number;
+    patientMessages: number;
+    avgResponseMinutes: number | null;
+    lateResponses: number;
+    unanswered: boolean;
+    lastMessageAt: string | null;
+  }[];
+  chatsTruncated: boolean;
+}
+
+export interface ReportTranscript {
+  id: number;
+  customer: { name: string | null; phone: string };
+  line: string | null;
+  assignedAgent: PersonRef | null;
+  truncated: boolean;
+  messages: { id: number; from: "patient" | "agent" | "bot" | "campaign"; sender: string | null; text: string; at: string }[];
+}
+
+// ── Detailed supervisor reports (/api/supervision/reports/*) ──────────────
+// All take from/to (YYYY-MM-DD, clinic time zone, both days included, max 92
+// days) and an optional numberId. People are plain display names here.
+
+export interface DetailedReportMeta {
+  period: { from: string; to: string; fromDay: string; toDay: string; timezone: string };
+  numberId: number | null;
+  generatedAt: string;
+  slaMinutes: number;
+}
+
+/** Response-time bands, in working minutes. */
+export type ResponseBandKey = "under5" | "5to15" | "15to30" | "30to60" | "over60";
+export type ResponseBands = Record<ResponseBandKey, number>;
+
+export interface BookingsReportAppointment {
+  id: number;
+  service: string | null;
+  appointmentAt: string;
+  doctor: string | null;
+  dok32Ref: string | null;
+  note: string | null;
+  status: "BOOKED" | "CANCELLED";
+  bookedBy: string | null;
+  bookedAt: string;
+}
+
+export interface BookingsReportRequest {
+  id: number;
+  conversationId: number | null;
+  createdAt: string;
+  customer: { id: number; name: string | null; phone: string };
+  line: string | null;
+  openedVia: "FLOW" | "AGENT";
+  /** The raw answers collected: { service, preferred_date, … }. */
+  requested: Record<string, unknown> | null;
+  note: string | null;
+  leadSource: string | null;
+  /** AUTOMATIC | SUGGESTED | CONFIRMED | null. */
+  sourceStatus: string | null;
+  campaign: string | null;
+  suggestedCampaign: string | null;
+  status: BookingRequestStatus;
+  claimedBy: string | null;
+  claimedAt: string | null;
+  handledBy: string | null;
+  handledAt: string | null;
+  minutesToPickUp: number | null;
+  minutesToClose: number | null;
+  notBookedReason: string | null;
+  notBookedNote: string | null;
+  appointmentsBooked: number;
+  appointmentsCancelled: number;
+  appointments: BookingsReportAppointment[];
+}
+
+export interface BookingsReport extends DetailedReportMeta {
+  summary: {
+    requests: number;
+    byStatus: Partial<Record<BookingRequestStatus, number>>;
+    byOpenedVia: Partial<Record<"FLOW" | "AGENT", number>>;
+    /** Lead source keys plus SUGGESTED (a guess, not confirmed) and UNKNOWN. */
+    byLeadSource: Record<string, number>;
+    notBookedReasons: Record<string, number>;
+    appointmentsBooked: number;
+    appointmentsCancelled: number;
+    patientsBooked: number;
+    /** Booked ÷ closed (booked + couldn't book), in %. */
+    bookingRate: number | null;
+    avgMinutesToPickUp: number | null;
+    avgMinutesToClose: number | null;
+  };
+  /** By the person who closed the request. */
+  byAgent: { agent: string; booked: number; notBooked: number; appointments: number; avgMinutesToClose: number | null }[];
+  requests: BookingsReportRequest[];
+}
+
+export interface TeamReportAgent {
+  id: number;
+  name: string | null;
+  username: string;
+  role: UserRole;
+  isActive: boolean;
+  activeDays: number;
+  chatsHandled: number;
+  replies: number;
+  firstResponses: number;
+  avgResponseMinutes: number | null;
+  medianResponseMinutes: number | null;
+  p90ResponseMinutes: number | null;
+  withinSlaPercent: number | null;
+  lateResponses: number;
+  responseBands: ResponseBands;
+  /** Outcomes set: BOOKED / NOT_INTERESTED / FOLLOW_UP / NO_ANSWER / CLEARED. */
+  outcomes: Record<string, number>;
+  notesWritten: number;
+  requestsTaken: number;
+  requestsBooked: number;
+  requestsNotBooked: number;
+  appointmentsBooked: number;
+  patientsBooked: number;
+  openChatsNow: number;
+}
+
+export interface TeamReport extends DetailedReportMeta {
+  team: {
+    chats: number;
+    patientMessages: number;
+    staffReplies: number;
+    firstResponses: number;
+    avgResponseMinutes: number | null;
+    medianResponseMinutes: number | null;
+    p90ResponseMinutes: number | null;
+    withinSlaPercent: number | null;
+    lateResponses: number;
+    unanswered: number;
+    responseBands: ResponseBands;
+    appointmentsBooked: number;
+  };
+  agents: TeamReportAgent[];
+  daily: {
+    day: string;
+    patientMessages: number;
+    chats: number;
+    staffReplies: number;
+    avgFirstResponseMinutes: number | null;
+    lateResponses: number;
+    unanswered: number;
+    appointmentsBooked: number;
+  }[];
+  /** 24 entries, clinic time. */
+  hourly: { hour: number; patientMessages: number; staffReplies: number }[];
+}
+
+export interface CampaignsReportCampaign {
+  id: number;
+  name: string;
+  line: string | null;
+  template: string | null;
+  category: string | null;
+  status: CampaignStatus;
+  createdBy: string | null;
+  approvedBy: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  recipients: number;
+  sent: number;
+  failed: number;
+  skipped: number;
+  delivered: number;
+  read: number;
+  replied: number;
+  bookingRequests: number;
+  /** Requests where this campaign is only a suggestion (not confirmed). */
+  suggestedRequests: number;
+  requestsBooked: number;
+  requestsNotBooked: number;
+  requestsOpen: number;
+  notBookedReasons: Record<string, number>;
+  patientsBooked: number;
+  appointmentsBooked: number;
+  /** Booked appointments by service ("—" = not recorded). */
+  services: Record<string, number>;
+  optOuts: number;
+  /** Percentages of sent (bookedOfReplied: of replied), one decimal; null when the base is 0. */
+  rates: {
+    delivered: number | null;
+    read: number | null;
+    replied: number | null;
+    booked: number | null;
+    bookedOfReplied: number | null;
+    optOut: number | null;
+  };
+}
+
+export interface CampaignsReport extends DetailedReportMeta {
+  totals: {
+    campaigns: number;
+    sent: number;
+    delivered: number;
+    read: number;
+    replied: number;
+    bookingRequests: number;
+    patientsBooked: number;
+    appointmentsBooked: number;
+    optOuts: number;
+  } | null;
+  campaigns: CampaignsReportCampaign[];
+}
+
+export interface ChatsReportChat {
+  id: number;
+  patient: string | null;
+  phone: string;
+  tags: string[];
+  optedOut: boolean;
+  line: string | null;
+  assignedTo: string | null;
+  repliedBy: string[];
+  status: "OPEN" | "PENDING" | "RESOLVED";
+  outcome: ConversationOutcome | null;
+  outcomeBy: string | null;
+  followUpAt: string | null;
+  firstMessageAt: string;
+  lastMessageAt: string;
+  patientMessages: number;
+  staffMessages: number;
+  botMessages: number;
+  campaignMessages: number;
+  firstResponses: number;
+  avgResponseMinutes: number | null;
+  longestWaitMinutes: number;
+  lateResponses: number;
+  unanswered: boolean;
+  /** Status of the chat's latest booking request. */
+  bookingRequest: BookingRequestStatus | null;
+  notBookedReason: string | null;
+  leadSource: string | null;
+  campaign: string | null;
+  appointments: number;
+  notes: number;
+}
+
+export interface ChatsReport extends DetailedReportMeta {
+  summary: {
+    chats: number;
+    unanswered: number;
+    withLateResponses: number;
+    /** Outcome keys plus NONE. */
+    byOutcome: Record<string, number>;
+    byStatus: Record<string, number>;
+    byLine: Record<string, number>;
+  };
+  chats: ChatsReportChat[];
+  /** More than 5000 chats in the period — only the first are listed. */
+  truncated: boolean;
 }

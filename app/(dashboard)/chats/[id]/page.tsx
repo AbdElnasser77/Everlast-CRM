@@ -18,6 +18,7 @@ import {
   Trash2,
   Loader2,
   PanelRight,
+  ShieldOff,
 } from "lucide-react";
 import {
   useMessages,
@@ -41,6 +42,7 @@ import { MessageMenu } from "@/components/MessageMenu";
 import { WaText } from "@/components/templates/shared";
 import { useCurrentUser } from "@/components/CurrentUserProvider";
 import { useToast } from "@/components/ui/toast";
+import { useTheme } from "@/components/ThemeProvider";
 import { Spinner } from "@/components/ui/spinner";
 import type { Message, QuotedMessage, Template } from "@/types";
 import {
@@ -67,6 +69,7 @@ import { AssigneePicker } from "@/components/AssigneePicker";
 import { ConversationStatusControl } from "@/components/ConversationStatusControl";
 import { ConversationOutcomeControl } from "@/components/ConversationOutcomeControl";
 import { BookingRequestBanner } from "@/components/bookings/BookingRequestBanner";
+import { OptOutBanner, isMarketingTemplate, isOptedOut, useOptOutState, type OptOutState } from "@/components/OptOut";
 import type { InboxConversation } from "@/lib/chatOutcome";
 
 /** The server refused a send because the 24-hour window is closed. */
@@ -79,7 +82,7 @@ function isWindowClosedError(err: unknown): boolean {
  * campaign. Links to the campaign for those who can read campaigns.
  */
 function CampaignReplyTag({ campaign, linkable }: { campaign: { id: number; name: string }; linkable: boolean }) {
-  const cls = "inline-flex items-center gap-1 mb-1 text-[11px] font-medium text-[#3B694C] bg-[#DCF2E3] px-2 py-0.5 rounded-full max-w-full";
+  const cls = "inline-flex items-center gap-1 mb-1 text-[11px] font-medium text-brand-fg bg-brand-200 px-2 py-0.5 rounded-full max-w-full";
   const body = (
     <>
       <CornerUpLeft className="w-3 h-3 shrink-0" />
@@ -399,7 +402,7 @@ function AudioMessage({ directSrc, mediaMsgId }: { directSrc: string | null; med
 function VideoMessage({ src }: { src: string | null }) {
   if (!src) {
     return (
-      <div className="w-[260px] h-[148px] bg-gray-900 rounded-lg flex flex-col items-center justify-center gap-2 text-gray-400">
+      <div className="w-[260px] h-[148px] bg-gray-900 dark:bg-black rounded-lg flex flex-col items-center justify-center gap-2 text-gray-400">
         <svg className="w-8 h-8 opacity-40" viewBox="0 0 24 24" fill="currentColor"><path d="M17 10.5V7a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h12a1 1 0 001-1v-3.5l4 4v-11l-4 4z"/></svg>
         <span className="text-[12px]">Video processing…</span>
       </div>
@@ -442,7 +445,7 @@ function DocumentMessage({ directSrc, mediaMsgId, isAgent }: { directSrc: string
   return (
     <button type="button" onClick={handleDownload}
       className={`flex items-center gap-2 text-[13px] font-medium underline underline-offset-2 cursor-pointer ${
-        isAgent ? "text-[#2f5840] hover:text-[#1f3d2c]" : "text-[#3B694C] hover:text-[#2d5239]"
+        isAgent ? "text-brand-strong hover:text-[#1f3d2c]" : "text-brand-fg hover:text-[#2d5239]"
       }`}
     >
       <Download className="w-4 h-4 shrink-0" />
@@ -603,7 +606,7 @@ function MediaPreviewPanel({
         <button
           type="button"
           onClick={() => onSend(files, captions)}
-          className="h-11 px-4 rounded-full bg-[#3B694C] hover:bg-[#2f5840] flex items-center gap-2 text-white transition-colors cursor-pointer shrink-0"
+          className="h-11 px-4 rounded-full bg-brand hover:bg-[#2f5840] flex items-center gap-2 text-white transition-colors cursor-pointer shrink-0"
         >
           <Send className="w-[18px] h-[18px]" />
           {files.length > 1 && (
@@ -623,7 +626,7 @@ function MediaPreviewPanel({
               <button
                 type="button"
                 onClick={() => setActiveIdx(i)}
-                className={`w-14 h-14 rounded-lg overflow-hidden border-2 transition-all cursor-pointer block ${i === activeIdx ? "border-[#3B694C] scale-105" : "border-gray-200 opacity-60 hover:opacity-90"}`}
+                className={`w-14 h-14 rounded-lg overflow-hidden border-2 transition-all cursor-pointer block ${i === activeIdx ? "border-brand scale-105" : "border-gray-200 opacity-60 hover:opacity-90"}`}
               >
                 {f.type.startsWith("image/") && src ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -638,7 +641,7 @@ function MediaPreviewPanel({
               <button
                 type="button"
                 onClick={(e) => removeFile(e, i)}
-                className="absolute -top-1.5 -right-1.5 w-[18px] h-[18px] rounded-full bg-gray-600 hover:bg-red-500 text-white flex items-center justify-center transition-colors cursor-pointer z-10"
+                className="absolute -top-1.5 -right-1.5 w-[18px] h-[18px] rounded-full bg-gray-600 dark:bg-gray-300 hover:bg-red-500 text-white flex items-center justify-center transition-colors cursor-pointer z-10"
               >
                 <X className="w-2.5 h-2.5" />
               </button>
@@ -662,7 +665,7 @@ function MediaPreviewPanel({
         <button
           type="button"
           onClick={() => addMoreRef.current?.click()}
-          className="shrink-0 w-14 h-14 rounded-lg border-2 border-dashed border-gray-300 hover:border-[#3B694C] flex items-center justify-center text-gray-400 hover:text-[#3B694C] transition-colors cursor-pointer"
+          className="shrink-0 w-14 h-14 rounded-lg border-2 border-dashed border-gray-300 hover:border-brand flex items-center justify-center text-gray-400 hover:text-brand-fg transition-colors cursor-pointer"
         >
           <svg className="w-5 h-5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <path d="M8 2v12M2 8h12" />
@@ -686,6 +689,7 @@ function TemplatePickerModal({
   onSent,
   beforeSend,
   guardedSend,
+  optOut,
 }: {
   conversationId: string;
   category: "GENERAL" | "RE_ENGAGEMENT";
@@ -697,6 +701,8 @@ function TemplatePickerModal({
   beforeSend: () => Promise<boolean>;
   /** Sends, re-asking once if the server says a colleague owns the chat. */
   guardedSend: <T>(send: (confirmOtherOwner: boolean) => Promise<T>) => Promise<T>;
+  /** The patient's marketing opt-out: warns before choosing, marks marketing templates. */
+  optOut: OptOutState | null;
 }) {
   // One id for this template send: a double click returns the first send.
   const clientIdRef = useRef(crypto.randomUUID());
@@ -707,6 +713,10 @@ function TemplatePickerModal({
   const [search, setSearch] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The server refused a marketing template: the patient opted out (409 OPTED_OUT).
+  const [optOutPrompt, setOptOutPrompt] = useState<"line" | "all" | null>(null);
+  const optedOut = isOptedOut(optOut);
+  const optOutWhere = optOut?.all ? "all lines" : "this line";
 
   // Outside the 24-hour window only a Meta-approved template can be sent — the
   // same rule the server enforces (utils/templateSend.js needsMetaTemplate): not
@@ -745,18 +755,26 @@ function TemplatePickerModal({
       sendingRef.current = false;
       return;
     }
+    await send(selected.id, false);
+  }
+
+  // confirmOptedOut: the agent confirmed the opted-out patient asked for it.
+  // Same clientMessageId on the retry: the refused try created nothing.
+  async function send(templateId: number, confirmOptedOut: boolean) {
+    sendingRef.current = true;
     setSending(true);
     setError(null);
     try {
-      const templateId = selected.id;
       await guardedSend((confirmOtherOwner) =>
-        apiSendTemplate(conversationId, templateId, { clientMessageId: clientIdRef.current, confirmOtherOwner }),
+        apiSendTemplate(conversationId, templateId, { clientMessageId: clientIdRef.current, confirmOtherOwner, confirmOptedOut }),
       );
       onSent();
       onClose();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to send template";
-      if (isWindowClosedError(err)) {
+      if (err instanceof ApiError && err.code === "OPTED_OUT") {
+        setOptOutPrompt(err.details?.scope === "all" ? "all" : "line");
+      } else if (isWindowClosedError(err)) {
         setError("The 24-hour window is closed, and this template isn't approved by Meta — pick an approved one.");
       } else if (msg.toLowerCase().includes("approved")) {
         setError("This template is pending Meta approval.");
@@ -792,6 +810,15 @@ function TemplatePickerModal({
         <div className="flex flex-1 min-h-0">
           {/* List panel */}
           <div className="w-64 shrink-0 border-r border-gray-100 flex flex-col">
+            {optedOut && (
+              <div className="flex items-start gap-2 px-3 py-2.5 bg-red-50 border-b border-red-100">
+                <ShieldOff className="w-3.5 h-3.5 text-red-500 shrink-0 mt-0.5" />
+                <p className="text-[11.5px] text-red-700 leading-snug">
+                  <span className="font-semibold">Opted out of marketing ({optOutWhere}).</span>{" "}
+                  Marketing templates are marked. Only send one if the patient asked for it.
+                </p>
+              </div>
+            )}
             <div className="px-3 py-3 border-b border-gray-100">
               <input
                 type="text"
@@ -823,10 +850,17 @@ function TemplatePickerModal({
                     type="button"
                     onClick={() => { setSelected(tpl); setError(null); }}
                     className={`w-full text-left px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer ${
-                      selected?.id === tpl.id ? "bg-[#EEF6F1] border-l-2 border-l-[#3B694C]" : ""
+                      selected?.id === tpl.id ? "bg-brand-100 border-l-2 border-l-brand" : ""
                     }`}
                   >
-                    <p className="text-[13px] font-medium text-gray-900 truncate">{tpl.name}</p>
+                    <p className="flex items-center gap-1.5 min-w-0">
+                      <span className="text-[13px] font-medium text-gray-900 truncate">{tpl.name}</span>
+                      {optedOut && isMarketingTemplate(tpl) && (
+                        <span className="shrink-0 text-[10px] font-semibold text-red-600 bg-red-50 border border-red-100 rounded-full px-1.5">
+                          Marketing
+                        </span>
+                      )}
+                    </p>
                     <p className="text-[11px] text-gray-400 truncate mt-0.5">{tpl.body.slice(0, 50)}…</p>
                   </button>
                 ))
@@ -863,6 +897,13 @@ function TemplatePickerModal({
                     )}
                   </div>
                 </div>
+                {optedOut && isMarketingTemplate(selected) && (
+                  <div className="px-6 pb-3">
+                    <p className="text-[12.5px] text-red-700 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
+                      This is a marketing template and the patient opted out of marketing ({optOutWhere}). Only send it if they asked for it.
+                    </p>
+                  </div>
+                )}
                 {error && (
                   <div className="px-6 pb-3">
                     <p className="text-[13px] text-red-500 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{error}</p>
@@ -873,7 +914,7 @@ function TemplatePickerModal({
                     type="button"
                     onClick={handleSend}
                     disabled={sending}
-                    className="w-full py-2.5 bg-[#3B694C] hover:bg-[#2f5840] disabled:opacity-60 text-[14px] font-semibold text-white rounded-xl cursor-pointer transition-colors flex items-center justify-center gap-2"
+                    className="w-full py-2.5 bg-brand hover:bg-[#2f5840] disabled:opacity-60 text-[14px] font-semibold text-white rounded-xl cursor-pointer transition-colors flex items-center justify-center gap-2"
                   >
                     <Send className="w-4 h-4" />
                     {sending ? "Sending…" : category === "RE_ENGAGEMENT" ? "Send Re-engagement" : "Send Template"}
@@ -893,6 +934,31 @@ function TemplatePickerModal({
           </div>
         </div>
       </div>
+      {optOutPrompt && selected && (
+        <div className="fixed inset-0 z-[9999] bg-black/40 flex items-center justify-center px-4" onClick={() => setOptOutPrompt(null)}>
+          <div role="alertdialog" aria-modal="true" className="bg-white rounded-2xl shadow-2xl w-[400px] max-w-full p-6" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-[15px] font-bold text-gray-900 mb-1.5 flex items-center gap-2">
+              <ShieldOff className="w-4 h-4 text-red-500" /> Patient opted out of marketing
+            </h3>
+            <p className="text-[13px] text-gray-500 mb-5">
+              This patient opted out of marketing ({optOutPrompt === "all" ? "all lines" : "this line"}). Only send
+              &ldquo;{selected.name}&rdquo; if they asked for it. The send is recorded in the audit log.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button type="button" autoFocus onClick={() => setOptOutPrompt(null)} className="px-4 py-2 rounded-xl text-[13px] font-medium text-gray-600 hover:bg-gray-50 cursor-pointer">
+                Don&apos;t send
+              </button>
+              <button
+                type="button"
+                onClick={() => { const tid = selected.id; setOptOutPrompt(null); void send(tid, true); }}
+                className="px-4 py-2 rounded-xl text-[13px] font-semibold text-white bg-red-500 hover:bg-red-600 cursor-pointer"
+              >
+                They asked for it. Send
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>,
     document.body
   );
@@ -903,6 +969,7 @@ export default function ConversationPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const toast = useToast();
+  const { resolvedTheme } = useTheme();
   const { conversations, loading: conversationsLoading, markRead } = useConversationsContext();
   const conversation = conversations.find((c) => String(c.id ?? c._id) === id);
   // Conversation ids are global integers, so a bookmarked or pasted link can
@@ -930,6 +997,8 @@ export default function ConversationPage() {
     typingUsers,
   } = useMessages(id);
   const { can } = useCurrentUser();
+  // Marketing opt-out (this line / all lines): banner, Outcome menu, template picker.
+  const optOut = useOptOutState(id);
 
   // The server said the window is closed (the client's clock or data may have
   // disagreed). Take the bubble back, keep what was typed, and go straight to
@@ -1444,9 +1513,9 @@ export default function ConversationPage() {
       {/* Drag-and-drop overlay */}
       {isDragging && (
         <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-white/80 backdrop-blur-sm pointer-events-none">
-          <div className="flex flex-col items-center gap-3 p-8 rounded-2xl border-2 border-dashed border-[#3B694C]">
-            <Paperclip className="w-10 h-10 text-[#3B694C]" />
-            <p className="text-[15px] font-semibold text-[#3B694C]">Drop files to send</p>
+          <div className="flex flex-col items-center gap-3 p-8 rounded-2xl border-2 border-dashed border-brand">
+            <Paperclip className="w-10 h-10 text-brand-fg" />
+            <p className="text-[15px] font-semibold text-brand-fg">Drop files to send</p>
           </div>
         </div>
       )}
@@ -1454,8 +1523,9 @@ export default function ConversationPage() {
       {/* Chat background — tiled, stays fixed while messages scroll */}
       <div className="absolute inset-0 pointer-events-none z-0 bg-[#E7ECE9]" />
 
-      {/* Header */}
-      <div className="relative z-10 flex items-center gap-3 px-5 py-3 bg-white border-b border-gray-100 shrink-0">
+      {/* Header. Above the banner and messages (z-10): its Status / Outcome /
+          Assignee menus open downwards over them. */}
+      <div className="relative z-30 flex items-center gap-3 px-5 py-3 bg-white border-b border-gray-100 shrink-0">
         <button
           type="button"
           onClick={() => router.push("/chats")}
@@ -1469,7 +1539,7 @@ export default function ConversationPage() {
           title="Contact info"
           className="flex-1 min-w-0 flex items-center gap-3 text-left rounded-xl -ml-1 pl-1 py-0.5 hover:bg-gray-50 transition-colors cursor-pointer"
         >
-          <span className="w-10 h-10 rounded-full bg-[#EEF6F1] flex items-center justify-center text-[#3B694C] font-bold text-[13px] shrink-0">
+          <span className="w-10 h-10 rounded-full bg-brand-100 flex items-center justify-center text-brand-fg font-bold text-[13px] shrink-0">
             {initials}
           </span>
           <span className="flex-1 min-w-0">
@@ -1495,6 +1565,7 @@ export default function ConversationPage() {
               conversationId={id}
               outcome={(conversation as InboxConversation).outcome ?? null}
               followUpAt={(conversation as InboxConversation).followUpAt ?? null}
+              optOut={optOut}
             />
             <AssigneePicker conversationId={id} assignee={conversation.assignedAgent ?? null} />
           </>
@@ -1503,7 +1574,7 @@ export default function ConversationPage() {
           type="button"
           onClick={() => setShowInfo((v) => !v)}
           title={showInfo ? "Hide contact info" : "Contact info"}
-          className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors cursor-pointer shrink-0 ${showInfo ? "bg-[#EEF6F1] text-[#3B694C]" : "text-gray-400 hover:bg-gray-100 hover:text-gray-700"}`}
+          className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors cursor-pointer shrink-0 ${showInfo ? "bg-brand-100 text-brand-fg" : "text-gray-400 hover:bg-gray-100 hover:text-gray-700"}`}
         >
           <PanelRight className="w-4.5 h-4.5" />
         </button>
@@ -1511,6 +1582,9 @@ export default function ConversationPage() {
 
       {/* The chat's open booking request, if any: what they asked for, and Book / Couldn't book */}
       <BookingRequestBanner conversationId={id} patient={customer?.name || (customer?.phone ? `+${customer.phone}` : null)} />
+
+      {/* Opted out of marketing: replying is fine, offers / campaign templates aren't */}
+      <OptOutBanner conversationId={id} state={optOut} />
 
       {/* File preview panel — replaces messages + input when files are queued */}
       {pendingFiles.length > 0 && (
@@ -1540,7 +1614,7 @@ export default function ConversationPage() {
           <div
             ref={messagesContainerRef}
             onScroll={handleMessagesScroll}
-            className="absolute inset-0 overflow-y-auto overflow-x-hidden px-4 md:px-8 py-4 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-[#3B694C]/20 [&::-webkit-scrollbar-thumb]:rounded-full"
+            className="absolute inset-0 overflow-y-auto overflow-x-hidden px-4 md:px-8 py-4 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-brand/20 [&::-webkit-scrollbar-thumb]:rounded-full"
           >
           {loadingMore && (
             <div className="flex justify-center py-2">
@@ -1584,8 +1658,8 @@ export default function ConversationPage() {
                         const qm = msg.quotedMessage;
                         const qImg = !qm.deletedAt && qm.messageType === "IMAGE" ? (qm.mediaUrl ?? qm.content) : null;
                         return (
-                          <div onClick={() => scrollToMessage(qm.id)} className="border-l-2 border-[#3B694C]/60 pl-2 mb-2 py-0.5 pr-1 bg-[#3B694C]/5 rounded-r-sm cursor-pointer hover:bg-[#3B694C]/10 transition-colors">
-                            <p className="text-[10px] font-semibold text-[#3B694C] leading-tight">
+                          <div onClick={() => scrollToMessage(qm.id)} className="border-l-2 border-brand/60 pl-2 mb-2 py-0.5 pr-1 bg-brand/5 rounded-r-sm cursor-pointer hover:bg-brand/10 transition-colors">
+                            <p className="text-[10px] font-semibold text-brand-fg leading-tight">
                               {qm.senderType === "CUSTOMER" ? customer?.name || "Contact" : "You"}
                             </p>
                             {qm.deletedAt ? (
@@ -1689,12 +1763,12 @@ export default function ConversationPage() {
                             <img src={tpl.headerMediaUrl} alt="" className="w-full max-h-48 object-cover rounded-lg mb-1.5" />
                           )}
                           {tpl.headerType === "VIDEO" && tpl.headerMediaUrl && (
-                            <div className="flex items-center gap-2 bg-black/5 rounded-lg px-2.5 py-3 mb-1.5">
+                            <div className="flex items-center gap-2 bg-black/5 dark:bg-black/25 rounded-lg px-2.5 py-3 mb-1.5">
                               <span className="text-[13px] text-gray-600">▶ Video attachment</span>
                             </div>
                           )}
                           {tpl.headerType === "DOCUMENT" && tpl.headerMediaUrl && (
-                            <a href={tpl.headerMediaUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 bg-black/5 rounded-lg px-2.5 py-3 mb-1.5 hover:bg-black/10 transition-colors">
+                            <a href={tpl.headerMediaUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 bg-black/5 dark:bg-black/25 rounded-lg px-2.5 py-3 mb-1.5 hover:bg-black/10 transition-colors">
                               <span className="text-[13px] text-gray-600 truncate">📄 {tpl.headerMediaUrl.split("/").pop() || "Document"}</span>
                             </a>
                           )}
@@ -1711,7 +1785,7 @@ export default function ConversationPage() {
                         {tpl.buttons && tpl.buttons.length > 0 && (
                           <div className="space-y-1 mt-1">
                             {tpl.buttons.map((btn) => {
-                              const cls = "flex items-center justify-center gap-1.5 py-1.5 bg-white border border-[#E5EAE7] rounded-xl text-[13px] font-medium text-[#3B694C]";
+                              const cls = "flex items-center justify-center gap-1.5 py-1.5 bg-white border border-[#E5EAE7] rounded-xl text-[13px] font-medium text-brand-fg";
                               if (btn.type === "URL" && btn.url) {
                                 return <a key={btn.id} href={btn.url} target="_blank" rel="noreferrer" className={cls}>🔗 {btn.title}</a>;
                               }
@@ -1736,9 +1810,9 @@ export default function ConversationPage() {
                                 <div className="p-1.5 space-y-1">
                                   {card.buttons.map((b) =>
                                     b.type === "URL" && b.url ? (
-                                      <a key={b.id} href={b.url} target="_blank" rel="noreferrer" className="block border border-gray-100 rounded-lg py-1.5 text-center text-[12px] font-medium text-[#3B694C] hover:bg-[#F5FAF7]">🔗 {b.title}</a>
+                                      <a key={b.id} href={b.url} target="_blank" rel="noreferrer" className="block border border-gray-100 rounded-lg py-1.5 text-center text-[12px] font-medium text-brand-fg hover:bg-brand-50">🔗 {b.title}</a>
                                     ) : (
-                                      <div key={b.id} className="border border-gray-100 rounded-lg py-1.5 text-center text-[12px] font-medium text-[#3B694C]">{b.title}</div>
+                                      <div key={b.id} className="border border-gray-100 rounded-lg py-1.5 text-center text-[12px] font-medium text-brand-fg">{b.title}</div>
                                     ),
                                   )}
                                 </div>
@@ -1748,7 +1822,7 @@ export default function ConversationPage() {
                         )}
                         {tpl.list && (
                           <div className="mt-1 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-                            <div className="py-2 text-center text-[13px] font-medium text-[#3B694C] border-b border-gray-100">☰ {tpl.list.buttonLabel}</div>
+                            <div className="py-2 text-center text-[13px] font-medium text-brand-fg border-b border-gray-100">☰ {tpl.list.buttonLabel}</div>
                             <ul className="px-3 py-1.5 space-y-0.5">
                               {tpl.list.rows.map((r, ri) => (
                                 <li key={ri} className="text-[12px] text-gray-600 leading-snug">
@@ -1803,8 +1877,8 @@ export default function ConversationPage() {
                               const qm = msg.quotedMessage;
                               const qImg = !qm.deletedAt && qm.messageType === "IMAGE" ? (qm.mediaUrl ?? qm.content) : null;
                               return (
-                                <div onClick={() => scrollToMessage(qm.id)} className="border-l-2 border-[#3B694C]/60 pl-2 mb-2 py-0.5 pr-1 bg-white/60 rounded-r-md cursor-pointer hover:bg-white transition-colors">
-                                  <p className="text-[10px] font-semibold text-[#3B694C] leading-tight">
+                                <div onClick={() => scrollToMessage(qm.id)} className="border-l-2 border-brand/60 pl-2 mb-2 py-0.5 pr-1 bg-white/60 rounded-r-md cursor-pointer hover:bg-white transition-colors">
+                                  <p className="text-[10px] font-semibold text-brand-fg leading-tight">
                                     {qm.senderType === "AGENT" ? "You" : customer?.name || "Contact"}
                                   </p>
                                   {qm.deletedAt ? (
@@ -1871,7 +1945,7 @@ export default function ConversationPage() {
           {typingUsers.length > 0 && (
             <div className="flex justify-end">
               <div className="mt-3 bg-[#D3EBDC] border border-[#B5D8C2] rounded-2xl rounded-tr-md px-3.5 py-2">
-                <span className="text-[12px] text-[#3B694C]/60 italic">
+                <span className="text-[12px] text-brand-fg/60 italic">
                   {typingUsers.join(", ")}{" "}
                   {typingUsers.length === 1 ? "is" : "are"} typing…
                 </span>
@@ -1884,11 +1958,11 @@ export default function ConversationPage() {
           {showScrollDown && (
             <button
               onClick={() => { messagesContainerRef.current?.scrollTo({ top: messagesContainerRef.current.scrollHeight, behavior: "smooth" }); setUnreadCount(0); }}
-              className="absolute bottom-5 right-7 z-20 w-11 h-11 rounded-full bg-white border border-gray-200 shadow-md flex items-center justify-center text-[#3B694C] hover:bg-[#3B694C] hover:text-white hover:border-[#3B694C] transition-all cursor-pointer"
+              className="absolute bottom-5 right-7 z-20 w-11 h-11 rounded-full bg-white border border-gray-200 shadow-md flex items-center justify-center text-brand-fg hover:bg-brand hover:text-white hover:border-brand transition-all cursor-pointer"
             >
               <ChevronDown className="w-5 h-5" />
               {unreadCount > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-[#3B694C] text-white text-[10px] font-semibold flex items-center justify-center leading-none">
+                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-brand text-white text-[10px] font-semibold flex items-center justify-center leading-none">
                   {unreadCount > 99 ? "99+" : unreadCount}
                 </span>
               )}
@@ -1903,8 +1977,8 @@ export default function ConversationPage() {
           {/* Replying-to preview bar */}
           {replyingTo && (
             <div className="flex items-center gap-3 px-4 pt-2.5 pb-1 border-b border-gray-100">
-              <div className="flex-1 border-l-2 border-[#3B694C] pl-2 min-w-0">
-                <p className="text-[11px] font-semibold text-[#3B694C] leading-tight">
+              <div className="flex-1 border-l-2 border-brand pl-2 min-w-0">
+                <p className="text-[11px] font-semibold text-brand-fg leading-tight">
                   {replyingTo.senderType === "AGENT" ? "You" : customer?.name || "Contact"}
                 </p>
                 {replyingTo.messageType === "IMAGE" && replyingTo.mediaUrl ? (
@@ -2012,7 +2086,7 @@ export default function ConversationPage() {
                   type="button"
                   disabled={windowClosed}
                   onClick={() => setShowEmojiPicker((v) => !v)}
-                  className={`text-gray-400 hover:text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer mb-0.5 ${showEmojiPicker ? "text-[#3B694C]" : ""}`}
+                  className={`text-gray-400 hover:text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer mb-0.5 ${showEmojiPicker ? "text-brand-fg" : ""}`}
                 >
                   <Smile className="w-4 h-4" />
                 </button>
@@ -2020,7 +2094,7 @@ export default function ConversationPage() {
                   <div ref={emojiPickerRef} className="absolute bottom-8 right-0 z-50 emoji-picker-green">
                     <Suspense fallback={null}>
                       <EmojiPicker
-                        theme="light"
+                        theme={resolvedTheme ?? "light"}
                         onEmojiSelect={(emoji: { native: string }) => {
                           const ta = textareaRef.current;
                           if (!ta) return;
@@ -2049,7 +2123,7 @@ export default function ConversationPage() {
               className={`flex items-center gap-1.5 text-[12px] font-medium border rounded-xl px-2.5 py-2 transition-colors cursor-pointer shrink-0 ${
                 windowClosed
                   ? "text-red-600 bg-red-50 border-red-300 hover:bg-red-100 hover:border-red-400"
-                  : "text-gray-500 hover:text-[#3B694C] hover:bg-[#EEF6F1] border-gray-200 hover:border-[#3B694C]/30"
+                  : "text-gray-500 hover:text-brand-fg hover:bg-brand-100 border-gray-200 hover:border-brand/30"
               }`}
             >
               <LayoutTemplate className="w-3.5 h-3.5" />
@@ -2060,7 +2134,7 @@ export default function ConversationPage() {
               type="button"
               onClick={handleSend}
               disabled={!message.trim() || sending || windowClosed}
-              className="flex items-center gap-2 bg-[#3B694C] hover:bg-[#2f5840] disabled:opacity-50 disabled:cursor-not-allowed text-white text-[13px] font-semibold px-4 py-2.5 rounded-xl transition-colors cursor-pointer shrink-0"
+              className="flex items-center gap-2 bg-brand hover:bg-[#2f5840] disabled:opacity-50 disabled:cursor-not-allowed text-white text-[13px] font-semibold px-4 py-2.5 rounded-xl transition-colors cursor-pointer shrink-0"
             >
               Send
               <Send className="w-3.5 h-3.5" />
@@ -2079,6 +2153,7 @@ export default function ConversationPage() {
           onSent={() => setTemplatePickerOpen(false)}
           beforeSend={confirmOwnership}
           guardedSend={guardedSend}
+          optOut={optOut}
         />
       )}
       {reengagementOpen && (
@@ -2091,6 +2166,7 @@ export default function ConversationPage() {
           onSent={() => setReengagementOpen(false)}
           beforeSend={confirmOwnership}
           guardedSend={guardedSend}
+          optOut={optOut}
         />
       )}
       {ownerPrompt && createPortal(
@@ -2104,7 +2180,7 @@ export default function ConversationPage() {
               <button type="button" autoFocus onClick={() => answerOwnerPrompt(false)} className="px-4 py-2 rounded-xl text-[13px] font-medium text-gray-600 hover:bg-gray-50 cursor-pointer">
                 Cancel
               </button>
-              <button type="button" onClick={() => answerOwnerPrompt(true)} className="px-4 py-2 rounded-xl text-[13px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5840] cursor-pointer">
+              <button type="button" onClick={() => answerOwnerPrompt(true)} className="px-4 py-2 rounded-xl text-[13px] font-semibold text-white bg-brand hover:bg-[#2f5840] cursor-pointer">
                 Reply anyway
               </button>
             </div>

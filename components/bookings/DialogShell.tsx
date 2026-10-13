@@ -4,7 +4,7 @@ import { useEffect, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Loader2 } from "lucide-react";
 
-export const inputCls = "w-full border border-gray-200 rounded-lg px-2.5 py-2 text-[13px] outline-none focus:border-[#3B694C] bg-white";
+export const inputCls = "w-full border border-gray-200 rounded-lg px-2.5 py-2 text-[13px] outline-none focus:border-brand bg-white";
 export const inputErrCls = "w-full border border-red-300 rounded-lg px-2.5 py-2 text-[13px] outline-none focus:border-red-400 bg-white";
 export const labelCls = "block text-[12px] font-semibold text-gray-500 mb-1";
 
@@ -54,7 +54,7 @@ export function DialogButtons({ saving, onCancel, label, danger = false, disable
       <button
         type="submit"
         disabled={saving || disabled}
-        className={`px-4 py-2 rounded-xl text-[13px] font-semibold text-white transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-1.5 ${danger ? "bg-red-500 hover:bg-red-600" : "bg-[#3B694C] hover:bg-[#2f5840]"}`}
+        className={`px-4 py-2 rounded-xl text-[13px] font-semibold text-white transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-1.5 ${danger ? "bg-red-500 hover:bg-red-600" : "bg-brand hover:bg-[#2f5840]"}`}
       >
         {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
         {label}

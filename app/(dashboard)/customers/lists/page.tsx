@@ -143,12 +143,12 @@ export default function ContactListsPage() {
         <button
           type="button"
           onClick={() => setShowCreate(true)}
-          className="w-full flex flex-col items-center justify-center gap-2 py-8 mb-6 rounded-2xl border-2 border-dashed border-gray-200 hover:border-[#3B694C] hover:bg-[#EEF6F1] transition-colors cursor-pointer group"
+          className="w-full flex flex-col items-center justify-center gap-2 py-8 mb-6 rounded-2xl border-2 border-dashed border-gray-200 hover:border-brand hover:bg-brand-100 transition-colors cursor-pointer group"
         >
-          <div className="w-11 h-11 rounded-2xl bg-[#DCF2E3] group-hover:bg-white flex items-center justify-center transition-colors">
-            <svg className="w-5 h-5 text-[#3B694C]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+          <div className="w-11 h-11 rounded-2xl bg-brand-200 group-hover:bg-white flex items-center justify-center transition-colors">
+            <svg className="w-5 h-5 text-brand-fg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
           </div>
-          <p className="text-[14px] font-semibold text-gray-700 group-hover:text-[#3B694C]">Create List</p>
+          <p className="text-[14px] font-semibold text-gray-700 group-hover:text-brand-fg">Create List</p>
         </button>
         )}
 
@@ -156,12 +156,12 @@ export default function ContactListsPage() {
 
         {loading ? (
           <div className="flex justify-center py-10">
-            <svg className="w-6 h-6 animate-spin text-[#3B694C]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
+            <svg className="w-6 h-6 animate-spin text-brand-fg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
           </div>
         ) : lists.length === 0 ? (
           <div className="text-center py-10">
-            <div className="w-14 h-14 rounded-2xl bg-[#EEF6F1] flex items-center justify-center mx-auto mb-4">
-              <ListChecks className="w-6 h-6 text-[#3B694C]" />
+            <div className="w-14 h-14 rounded-2xl bg-brand-100 flex items-center justify-center mx-auto mb-4">
+              <ListChecks className="w-6 h-6 text-brand-fg" />
             </div>
             <h2 className="text-[16px] font-semibold text-gray-800">No lists yet</h2>
             <p className="text-[13.5px] text-gray-400 mt-1.5">Create your first list to group contacts for campaigns.</p>
@@ -184,8 +184,8 @@ export default function ContactListsPage() {
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
                 )}
-                <div className="w-9 h-9 rounded-xl bg-[#EEF6F1] flex items-center justify-center mb-3">
-                  <ListChecks className="w-4 h-4 text-[#3B694C]" />
+                <div className="w-9 h-9 rounded-xl bg-brand-100 flex items-center justify-center mb-3">
+                  <ListChecks className="w-4 h-4 text-brand-fg" />
                 </div>
                 <p className="text-[14px] font-semibold text-gray-900 truncate pr-6">{l.name}</p>
                 <p className="text-[12px] text-gray-400 mt-0.5 line-clamp-2 min-h-[32px]">{l.description || "No description"}</p>
@@ -201,7 +201,7 @@ export default function ContactListsPage() {
                   onClick={(e) => { e.stopPropagation(); router.push(`/campaigns/new?listId=${l.id}`); }}
                   disabled={l.memberCount === 0}
                   title={l.memberCount === 0 ? "Add contacts to this list first" : undefined}
-                  className="w-full flex items-center justify-center gap-1.5 mt-3 py-2 rounded-xl border border-gray-200 text-[12px] font-semibold text-gray-600 hover:bg-[#EEF6F1] hover:border-[#3B694C] hover:text-[#3B694C] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:border-gray-200 disabled:hover:text-gray-600 transition-colors cursor-pointer"
+                  className="w-full flex items-center justify-center gap-1.5 mt-3 py-2 rounded-xl border border-gray-200 text-[12px] font-semibold text-gray-600 hover:bg-brand-100 hover:border-brand hover:text-brand-fg disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:border-gray-200 disabled:hover:text-gray-600 transition-colors cursor-pointer"
                 >
                   <Megaphone className="w-3.5 h-3.5" />
                   Create Campaign
@@ -230,7 +230,7 @@ export default function ContactListsPage() {
                       onChange={(e) => setName(e.target.value)}
                       placeholder="e.g. VIP Patients"
                       autoFocus
-                      className="w-full text-[13px] rounded-xl border border-gray-200 px-3 py-2.5 outline-none focus:ring-2 focus:ring-[#3B694C]/20 focus:border-[#3B694C] transition-colors"
+                      className="w-full text-[13px] rounded-xl border border-gray-200 px-3 py-2.5 outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand transition-colors"
                     />
                   </div>
                   <div>
@@ -240,7 +240,7 @@ export default function ContactListsPage() {
                       onChange={(e) => setDescription(e.target.value)}
                       placeholder="What is this list for?"
                       rows={3}
-                      className="w-full text-[13px] rounded-xl border border-gray-200 px-3 py-2.5 outline-none focus:ring-2 focus:ring-[#3B694C]/20 focus:border-[#3B694C] transition-colors resize-none"
+                      className="w-full text-[13px] rounded-xl border border-gray-200 px-3 py-2.5 outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand transition-colors resize-none"
                     />
                   </div>
                 </div>
@@ -253,7 +253,7 @@ export default function ContactListsPage() {
                     type="button"
                     onClick={goToMethodStep}
                     disabled={!name.trim()}
-                    className="flex-1 py-2.5 rounded-xl bg-[#3B694C] hover:bg-[#2f5840] disabled:opacity-50 disabled:cursor-not-allowed text-[13px] font-semibold text-white transition-colors cursor-pointer"
+                    className="flex-1 py-2.5 rounded-xl bg-brand hover:bg-[#2f5840] disabled:opacity-50 disabled:cursor-not-allowed text-[13px] font-semibold text-white transition-colors cursor-pointer"
                   >
                     Next →
                   </button>
@@ -270,25 +270,25 @@ export default function ContactListsPage() {
                     type="button"
                     onClick={chooseSelectFromContacts}
                     disabled={creating}
-                    className="flex flex-col items-center gap-2.5 p-5 rounded-2xl border-2 border-gray-200 hover:border-[#3B694C] hover:bg-[#EEF6F1] disabled:opacity-50 transition-colors cursor-pointer"
+                    className="flex flex-col items-center gap-2.5 p-5 rounded-2xl border-2 border-gray-200 hover:border-brand hover:bg-brand-100 disabled:opacity-50 transition-colors cursor-pointer"
                   >
-                    <Users className="w-6 h-6 text-[#3B694C]" />
+                    <Users className="w-6 h-6 text-brand-fg" />
                     <span className="text-[13px] font-semibold text-gray-800 text-center">Select from Contacts</span>
                   </button>
                   <button
                     type="button"
                     onClick={chooseImportCSV}
                     disabled={creating}
-                    className="flex flex-col items-center gap-2.5 p-5 rounded-2xl border-2 border-gray-200 hover:border-[#3B694C] hover:bg-[#EEF6F1] disabled:opacity-50 transition-colors cursor-pointer"
+                    className="flex flex-col items-center gap-2.5 p-5 rounded-2xl border-2 border-gray-200 hover:border-brand hover:bg-brand-100 disabled:opacity-50 transition-colors cursor-pointer"
                   >
-                    <svg className="w-6 h-6 text-[#3B694C]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
+                    <svg className="w-6 h-6 text-brand-fg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
                     <span className="text-[13px] font-semibold text-gray-800 text-center">Import CSV</span>
                   </button>
                 </div>
                 {createError && <p className="text-[12px] text-red-500">{createError}</p>}
                 {creating && (
                   <div className="flex justify-center">
-                    <svg className="w-5 h-5 animate-spin text-[#3B694C]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
+                    <svg className="w-5 h-5 animate-spin text-brand-fg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
                   </div>
                 )}
                 <button type="button" onClick={() => setCreateStep("info")} disabled={creating} className="text-[12px] font-semibold text-gray-500 hover:text-gray-700 cursor-pointer">

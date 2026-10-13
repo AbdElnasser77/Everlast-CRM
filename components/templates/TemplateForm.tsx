@@ -346,7 +346,7 @@ export default function TemplateForm({
                 maxLength={LIMITS.name}
                 placeholder="e.g. Wellness Check"
                 required
-                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-[14px] text-gray-800 outline-none focus:border-[#3B694C] focus:ring-1 focus:ring-[#3B694C]/20"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-[14px] text-gray-800 outline-none focus:border-brand focus:ring-1 focus:ring-brand/20"
               />
             </div>
 
@@ -360,7 +360,7 @@ export default function TemplateForm({
                   onChange={(e) =>
                     setCategory(e.target.value as TemplateCategory)
                   }
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-[14px] text-gray-800 outline-none focus:border-[#3B694C] bg-white"
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-[14px] text-gray-800 outline-none focus:border-brand bg-white"
                 >
                   <option value="GENERAL" disabled={isCarousel}>General{isCarousel ? " (not for carousels)" : ""}</option>
                   <option value="RE_ENGAGEMENT">Re-engagement</option>
@@ -374,7 +374,7 @@ export default function TemplateForm({
                 <select
                   value={language}
                   onChange={(e) => setLanguage(e.target.value)}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-[14px] text-gray-800 outline-none focus:border-[#3B694C] bg-white"
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-[14px] text-gray-800 outline-none focus:border-brand bg-white"
                 >
                   <option value="en_US">English (en_US)</option>
                   <option value="ar">Arabic (ar)</option>
@@ -398,9 +398,9 @@ export default function TemplateForm({
                       setError(null);
                       if (value === "CAROUSEL" && category === "GENERAL") setCategory("CAMPAIGN");
                     }}
-                    className={`text-left px-3 py-2 rounded-lg border transition-colors cursor-pointer ${format === value ? "border-[#3B694C] bg-[#EEF6F1]" : "border-gray-200 hover:bg-gray-50"}`}
+                    className={`text-left px-3 py-2 rounded-lg border transition-colors cursor-pointer ${format === value ? "border-brand bg-brand-100" : "border-gray-200 hover:bg-gray-50"}`}
                   >
-                    <span className={`block text-[13px] font-semibold ${format === value ? "text-[#3B694C]" : "text-gray-700"}`}>{label}</span>
+                    <span className={`block text-[13px] font-semibold ${format === value ? "text-brand-fg" : "text-gray-700"}`}>{label}</span>
                     <span className="block text-[11px] text-gray-400">{hint}</span>
                   </button>
                 ))}
@@ -421,7 +421,7 @@ export default function TemplateForm({
                     onClick={() => handleHeaderTypeChange(opt.value)}
                     className={`flex flex-col items-center gap-1 py-2 rounded-lg border text-[11px] font-medium transition-colors cursor-pointer ${
                       headerType === opt.value
-                        ? "border-[#3B694C] bg-[#EEF6F1] text-[#3B694C]"
+                        ? "border-brand bg-brand-100 text-brand-fg"
                         : "border-gray-200 text-gray-500 hover:bg-gray-50"
                     }`}
                   >
@@ -444,7 +444,7 @@ export default function TemplateForm({
                       {...headerAc.fieldProps}
                       maxLength={LIMITS.header}
                       placeholder="e.g. Hi {{first_name}}"
-                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-[14px] text-gray-800 outline-none focus:border-[#3B694C] focus:ring-1 focus:ring-[#3B694C]/20"
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-[14px] text-gray-800 outline-none focus:border-brand focus:ring-1 focus:ring-brand/20"
                     />
                     {headerAc.menu}
                   </div>
@@ -491,7 +491,7 @@ export default function TemplateForm({
                     <button
                       type="button"
                       onClick={() => setShowMediaPicker(true)}
-                      className="flex-1 flex items-center justify-center gap-1.5 text-[12px] font-semibold text-[#3B694C] border border-[#3B694C]/30 bg-[#EEF6F1] px-3 py-2 rounded-xl hover:bg-[#DCF2E3] transition-colors cursor-pointer"
+                      className="flex-1 flex items-center justify-center gap-1.5 text-[12px] font-semibold text-brand-fg border border-brand/30 bg-brand-100 px-3 py-2 rounded-xl hover:bg-brand-200 transition-colors cursor-pointer"
                     >
                       <ImageIcon className="w-3.5 h-3.5" />
                       Library
@@ -542,7 +542,7 @@ export default function TemplateForm({
                   placeholder={`Hi {{customer_name}}, we'd love to reconnect. (Type {{ for placeholders)`}
                   rows={4}
                   required
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-[14px] text-gray-800 outline-none focus:border-[#3B694C] focus:ring-1 focus:ring-[#3B694C]/20 resize-none"
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-[14px] text-gray-800 outline-none focus:border-brand focus:ring-1 focus:ring-brand/20 resize-none"
                 />
                 {bodyAc.menu}
               </div>
@@ -564,7 +564,7 @@ export default function TemplateForm({
                   <button
                     type="button"
                     onClick={() => { setShowPersonalize((v) => !v); setShowEmoji(false); }}
-                    className={`text-[11px] font-medium px-2 py-1 rounded-md border transition-colors cursor-pointer ${showPersonalize ? "border-[#3B694C] text-[#3B694C] bg-[#EEF6F1]" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}
+                    className={`text-[11px] font-medium px-2 py-1 rounded-md border transition-colors cursor-pointer ${showPersonalize ? "border-brand text-brand-fg bg-brand-100" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}
                   >
                     Personalize ▾
                   </button>
@@ -587,7 +587,7 @@ export default function TemplateForm({
                   <button
                     type="button"
                     onClick={() => { setShowEmoji((v) => !v); setShowPersonalize(false); }}
-                    className={`p-1.5 rounded-md transition-colors cursor-pointer ${showEmoji ? "text-[#3B694C] bg-[#EEF6F1]" : "text-gray-500 hover:bg-gray-100 hover:text-gray-800"}`}
+                    className={`p-1.5 rounded-md transition-colors cursor-pointer ${showEmoji ? "text-brand-fg bg-brand-100" : "text-gray-500 hover:bg-gray-100 hover:text-gray-800"}`}
                   >
                     <Smile className="w-3.5 h-3.5" />
                   </button>
@@ -633,7 +633,7 @@ export default function TemplateForm({
                 onChange={(e) => { setFooter(e.target.value); setOptOutOn(e.target.value === OPT_OUT_TEXT); }}
                 maxLength={LIMITS.footer}
                 placeholder="e.g. Everlast Wellness Center"
-                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-[14px] text-gray-800 outline-none focus:border-[#3B694C] focus:ring-1 focus:ring-[#3B694C]/20"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-[14px] text-gray-800 outline-none focus:border-brand focus:ring-1 focus:ring-brand/20"
               />
               <label className="flex items-center gap-2 mt-2 cursor-pointer select-none w-fit">
                 <button
@@ -641,7 +641,7 @@ export default function TemplateForm({
                   role="switch"
                   aria-checked={optOutOn}
                   onClick={toggleOptOut}
-                  className={`relative w-8 h-[18px] rounded-full transition-colors cursor-pointer shrink-0 ${optOutOn ? "bg-[#3B694C]" : "bg-gray-200"}`}
+                  className={`relative w-8 h-[18px] rounded-full transition-colors cursor-pointer shrink-0 ${optOutOn ? "bg-brand" : "bg-gray-200"}`}
                 >
                   <span className={`absolute top-[2px] w-3.5 h-3.5 rounded-full bg-white transition-transform ${optOutOn ? "translate-x-[18px]" : "translate-x-[2px]"}`} />
                 </button>
@@ -669,8 +669,8 @@ export default function TemplateForm({
                   title={buttons.length >= 3 ? "Maximum 3 buttons reached" : undefined}
                   className={`flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-lg border transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
                     showAddButtonMenu
-                      ? "border-[#3B694C] bg-[#DCF2E3] text-[#3B694C]"
-                      : "border-[#3B694C]/30 bg-[#EEF6F1] text-[#3B694C] hover:bg-[#DCF2E3]"
+                      ? "border-brand bg-brand-200 text-brand-fg"
+                      : "border-brand/30 bg-brand-100 text-brand-fg hover:bg-brand-200"
                   }`}
                 >
                   <Plus className="w-3.5 h-3.5" /> Add Button
@@ -696,7 +696,7 @@ export default function TemplateForm({
                           disabled={disabled}
                           className="w-full flex items-start gap-2.5 px-3 py-2 text-left transition-colors cursor-pointer hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                         >
-                          {Icon && <Icon className="w-4 h-4 text-[#3B694C] shrink-0 mt-0.5" />}
+                          {Icon && <Icon className="w-4 h-4 text-brand-fg shrink-0 mt-0.5" />}
                           <span className="flex-1 min-w-0">
                             <span className="block text-[13px] font-medium text-gray-800">{meta.label}</span>
                             {reason && <span className="block text-[10.5px] text-gray-400 mt-0.5">{reason}</span>}
@@ -722,7 +722,7 @@ export default function TemplateForm({
                         onChange={(e) => updateButton(i, { title: e.target.value.replace(/[{}]/g, "") })}
                         placeholder="Button name"
                         maxLength={LIMITS.button}
-                        className="flex-1 border border-gray-200 rounded-lg px-2.5 py-1.5 text-[13px] text-gray-800 outline-none focus:border-[#3B694C]"
+                        className="flex-1 border border-gray-200 rounded-lg px-2.5 py-1.5 text-[13px] text-gray-800 outline-none focus:border-brand"
                       />
                       <CharCount val={btn.title} max={LIMITS.button} />
                       <button
@@ -746,7 +746,7 @@ export default function TemplateForm({
                           updateButton(i, { url: next });
                         }}
                         placeholder="https://example.com or https://example.com/{{1}}"
-                        className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-[13px] text-gray-800 outline-none focus:border-[#3B694C] font-mono"
+                        className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-[13px] text-gray-800 outline-none focus:border-brand font-mono"
                       />
                     )}
                     {btn.type === "PHONE_NUMBER" && (
@@ -755,7 +755,7 @@ export default function TemplateForm({
                         value={btn.phoneNumber ?? ""}
                         onChange={(e) => updateButton(i, { phoneNumber: e.target.value })}
                         placeholder="+971501234567"
-                        className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-[13px] text-gray-800 outline-none focus:border-[#3B694C] font-mono"
+                        className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-[13px] text-gray-800 outline-none focus:border-brand font-mono"
                       />
                     )}
                   </div>
@@ -811,7 +811,7 @@ export default function TemplateForm({
             {/* Chat body */}
             <div className="px-3 py-4 bg-[#f0ece4]/40">
               <div className="flex justify-end">
-                <div className="bg-[#3B694C] rounded-2xl rounded-br-sm px-3.5 py-3 max-w-[95%] shadow-sm">
+                <div className="bg-brand rounded-2xl rounded-br-sm px-3.5 py-3 max-w-[95%] shadow-sm">
                   {!isCarousel && <HeaderPreview headerType={headerType} header={header} headerMediaUrl={headerMediaUrl} />}
                   <p className="text-[13px] text-white leading-relaxed whitespace-pre-wrap">
                     {body.trim() ? (
@@ -876,7 +876,7 @@ export default function TemplateForm({
           form="tpl-form"
           disabled={saving || !!buttonsError}
           title={buttonsError ?? undefined}
-          className="py-2.5 px-5 rounded-xl bg-[#3B694C] hover:bg-[#2f5840] disabled:opacity-60 disabled:cursor-not-allowed text-[14px] font-semibold text-white cursor-pointer transition-colors"
+          className="py-2.5 px-5 rounded-xl bg-brand hover:bg-[#2f5840] disabled:opacity-60 disabled:cursor-not-allowed text-[14px] font-semibold text-white cursor-pointer transition-colors"
         >
           {saving
             ? "Saving…"

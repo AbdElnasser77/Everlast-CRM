@@ -151,7 +151,7 @@ export function RejectReasonDialog({
         autoFocus
         rows={3}
         placeholder="e.g. Wrong audience — exclude patients seen this month."
-        className="w-full px-3 py-2.5 text-[13px] border border-gray-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-[#3B694C]/20 focus:border-[#3B694C]"
+        className="w-full px-3 py-2.5 text-[13px] border border-gray-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
       />
       <div className="flex justify-end gap-2 mt-4">
         <button
@@ -221,8 +221,8 @@ function ApproveDialog({
   return (
     <Modal onClose={onCancel} busy={busy}>
       <div className="flex items-start gap-3 mb-4">
-        <div className="w-10 h-10 rounded-full bg-[#EEF6F1] flex items-center justify-center shrink-0">
-          <CheckCircle2 className="w-5 h-5 text-[#3B694C]" />
+        <div className="w-10 h-10 rounded-full bg-brand-100 flex items-center justify-center shrink-0">
+          <CheckCircle2 className="w-5 h-5 text-brand-fg" />
         </div>
         <div className="min-w-0">
           <h3 className="text-[15px] font-bold text-gray-900">Approve “{target.name}”?</h3>
@@ -261,7 +261,7 @@ function ApproveDialog({
           onClick={() => onConfirm(over)}
           disabled={busy}
           className={`flex items-center gap-1.5 text-[13px] font-semibold text-white px-4 py-2 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer ${
-            over ? "bg-amber-500 hover:bg-amber-600" : "bg-[#3B694C] hover:bg-[#2f5540]"
+            over ? "bg-amber-500 hover:bg-amber-600" : "bg-brand hover:bg-[#2f5540]"
           }`}
         >
           {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { apiLogin } from "@/lib/api";
 import { homePathFor } from "@/lib/permissions";
+import { ThemeSwitcher } from "@/components/ThemeToggle";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -41,7 +42,7 @@ export default function LoginPage() {
   return (
     <div className="flex h-screen font-[family-name:var(--font-geist-sans)]">
       {/* Left Panel */}
-      <div className="relative hidden lg:flex w-[45%] flex-col justify-end p-10 bg-[#2d4f35] overflow-hidden">
+      <div className="relative hidden lg:flex w-[45%] flex-col justify-end p-10 bg-[#2d4f35] text-white overflow-hidden">
         {/* Decorative circles */}
         <div className="pointer-events-none absolute bottom-[-80px] right-[-80px] w-[520px] h-[520px] rounded-full border border-white/10" />
         <div className="pointer-events-none absolute bottom-[40px] right-[40px] w-[340px] h-[340px] rounded-full border border-white/10" />
@@ -90,7 +91,8 @@ export default function LoginPage() {
       </div>
 
       {/* Right Panel */}
-      <div className="flex flex-1 items-center justify-center bg-white px-8">
+      <div className="relative flex flex-1 items-center justify-center bg-white px-8">
+        <ThemeSwitcher className="absolute top-4 right-4" />
         <div className="w-full max-w-[420px] space-y-8">
           {/* Header */}
           <div className="space-y-2">

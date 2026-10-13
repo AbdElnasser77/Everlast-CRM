@@ -28,7 +28,7 @@ const STYLES: Record<
   ToastType,
   { icon: React.ComponentType<{ className?: string }>; border: string; iconColor: string }
 > = {
-  success: { icon: CheckCircle2, border: "border-green-200", iconColor: "text-[#3B694C]" },
+  success: { icon: CheckCircle2, border: "border-green-200", iconColor: "text-brand-fg" },
   error: { icon: XCircle, border: "border-red-200", iconColor: "text-red-500" },
   info: { icon: Info, border: "border-gray-200", iconColor: "text-gray-500" },
 };

@@ -27,11 +27,16 @@ import { useActiveNumber } from "@/components/WhatsAppNumberProvider";
 import { WaitChip, PRESENCE } from "../chips";
 import { formatMinutes, messagePreview, patientName, personInitials, personName, timeAgo } from "../format";
 import { TONE, describeActivity, type Tone } from "./activity";
+import { ThemeToggleButton } from "@/components/ThemeToggle";
 
 // ── Live wall ───────────────────────────────────────────────────────────────
 //
-// A dark, high-contrast operations board meant to be left on a TV: KPIs, every
+// A high-contrast operations board meant to be left on a TV: KPIs, every
 // agent, who needs a reply now, and a live feed of what the team is doing.
+// Follows the app's light/dark theme (toggle in the top bar). Colours come from
+// the wall-* tokens in app/globals.css: `wall-ink` is the text / hairline
+// colour (near-black on light, white on dark), and accents use the -700 shades,
+// which the dark palette maps back to the bright -300s.
 // It is a fixed full-viewport layer over the app (the sidebar never shows);
 // "Full screen" additionally hides the browser chrome via the Fullscreen API.
 //
@@ -58,9 +63,9 @@ const LIVE_EVENTS = [
 const PRESENCE_ORDER = { ONLINE: 0, ON_BREAK: 1, OFFLINE: 2 } as const;
 
 const SCROLL =
-  "overflow-y-auto [scrollbar-width:thin] [scrollbar-color:rgba(255,255,255,0.15)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white/15 [&::-webkit-scrollbar-thumb]:rounded-full";
+  "overflow-y-auto [scrollbar-width:thin] [scrollbar-color:color-mix(in_oklab,var(--color-wall-ink)_15%,transparent)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-wall-ink/15 [&::-webkit-scrollbar-thumb]:rounded-full";
 
-const PANEL = "bg-[#111b16] border border-white/[0.07] rounded-2xl";
+const PANEL = "bg-wall-panel border border-wall-ink/[0.07] rounded-2xl shadow-[0_1px_2px_rgba(15,29,22,0.05)] dark:shadow-none";
 
 type Toast = { id: string; tone: Tone; icon: ReactNode; title: string; body: string | null; conversationId: number | null };
 type FeedState = { key: string; items: SupervisionActivity[]; error: boolean };
@@ -85,11 +90,11 @@ function DubaiClock() {
   const date = d.toLocaleDateString("en-GB", { timeZone: "Asia/Dubai", weekday: "short", day: "numeric", month: "short" });
   return (
     <div className="flex items-baseline gap-2 tabular-nums" title="Dubai time">
-      <span className="text-[28px] 2xl:text-[34px] font-bold text-white leading-none">
+      <span className="text-[28px] 2xl:text-[34px] font-bold text-wall-ink leading-none">
         {time}
-        <span className="text-white/35 text-[0.6em] ml-0.5">:{secs}</span>
+        <span className="text-wall-ink/35 text-[0.6em] ml-0.5">:{secs}</span>
       </span>
-      <span className="text-[13px] text-white/50 font-medium hidden md:inline">{date} · Dubai</span>
+      <span className="text-[13px] text-wall-ink/50 font-medium hidden md:inline">{date} · Dubai</span>
     </div>
   );
 }
@@ -104,7 +109,7 @@ function UpdatedAgo({ at, stale }: { at: number | null; stale: boolean }) {
   const label = s === null ? "Connecting…" : s < 5 ? "Updated just now" : s < 60 ? `Updated ${s}s ago` : `Updated ${Math.floor(s / 60)}m ago`;
   const bad = stale || (s !== null && s > 60);
   return (
-    <span className={`flex items-center gap-2 text-[13px] font-medium tabular-nums ${bad ? "text-amber-300" : "text-white/60"}`}>
+    <span className={`flex items-center gap-2 text-[13px] font-medium tabular-nums ${bad ? "text-amber-700" : "text-wall-ink/60"}`}>
       <span className="relative flex w-2.5 h-2.5">
         {!bad && <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60 animate-ping" />}
         <span className={`relative inline-flex w-2.5 h-2.5 rounded-full ${bad ? "bg-amber-400" : "bg-emerald-400"}`} />
@@ -135,17 +140,17 @@ function Kpi({
     <div className={`${PANEL} relative px-5 py-4 flex flex-col min-w-0 overflow-hidden ${alert ? "!border-red-400/40 !bg-red-500/[0.08]" : ""}`}>
       {alert && <span aria-hidden className="absolute left-0 top-4 bottom-4 w-1 rounded-r-full bg-red-400" />}
       <span className="flex items-center justify-between gap-2">
-        <span className="text-[12px] 2xl:text-[13px] font-semibold uppercase tracking-wider text-white/50 truncate">{label}</span>
-        <span className={alert ? "text-red-300" : good ? "text-emerald-300" : "text-white/30"}>{icon}</span>
+        <span className="text-[12px] 2xl:text-[13px] font-semibold uppercase tracking-wider text-wall-ink/50 truncate">{label}</span>
+        <span className={alert ? "text-red-700" : good ? "text-emerald-700" : "text-wall-ink/30"}>{icon}</span>
       </span>
       <span
         className={`text-[40px] 2xl:text-[52px] font-bold leading-none tabular-nums mt-2 ${
-          alert ? "text-red-300" : good ? "text-emerald-300" : "text-white"
+          alert ? "text-red-700" : good ? "text-emerald-700" : "text-wall-ink"
         }`}
       >
         {value}
       </span>
-      <span className="text-[13px] 2xl:text-[14px] font-medium text-white/50 mt-2 truncate min-h-[18px]">{sub}</span>
+      <span className="text-[13px] 2xl:text-[14px] font-medium text-wall-ink/50 mt-2 truncate min-h-[18px]">{sub}</span>
     </div>
   );
 }
@@ -174,11 +179,11 @@ function KpiRow({ overview }: { overview: SupervisionOverview | null }) {
             "Nobody is waiting"
           ) : k.waitingOverSla > 0 ? (
             <>
-              <span className="text-red-300 font-bold">{k.waitingOverSla} over {sla} min</span> · longest {formatMinutes(k.longestWaitMinutes)}
+              <span className="text-red-700 font-bold">{k.waitingOverSla} over {sla} min</span> · longest {formatMinutes(k.longestWaitMinutes)}
             </>
           ) : (
             <>
-              <span className="text-emerald-300">All under {sla} min</span> · longest {formatMinutes(k.longestWaitMinutes)}
+              <span className="text-emerald-700">All under {sla} min</span> · longest {formatMinutes(k.longestWaitMinutes)}
             </>
           )
         }
@@ -187,7 +192,7 @@ function KpiRow({ overview }: { overview: SupervisionOverview | null }) {
         label="Gone cold"
         icon={<Snowflake className="w-5 h-5" />}
         value={k.goneCold}
-        sub={k.goneCold > 0 ? <span className="text-amber-300">Waiting over a day</span> : "None waiting over a day"}
+        sub={k.goneCold > 0 ? <span className="text-amber-700">Waiting over a day</span> : "None waiting over a day"}
       />
       <Kpi
         label="Booking requests"
@@ -200,12 +205,12 @@ function KpiRow({ overview }: { overview: SupervisionOverview | null }) {
           ) : (
             <>
               {(k.bookingRequestsNew ?? 0) > 0 ? (
-                <span className="text-amber-300 font-semibold">{k.bookingRequestsNew} not picked up</span>
+                <span className="text-amber-700 font-semibold">{k.bookingRequestsNew} not picked up</span>
               ) : (
-                <span className="text-emerald-300">All picked up</span>
+                <span className="text-emerald-700">All picked up</span>
               )}
               {(k.bookingRequestsOverSla ?? 0) > 0 && (
-                <span className="text-red-300 font-bold"> · {k.bookingRequestsOverSla} over {sla} min</span>
+                <span className="text-red-700 font-bold"> · {k.bookingRequestsOverSla} over {sla} min</span>
               )}
             </>
           )
@@ -224,7 +229,7 @@ function KpiRow({ overview }: { overview: SupervisionOverview | null }) {
         value={formatMinutes(k.avgFirstResponseMinutes)}
         alert={k.avgFirstResponseMinutes !== null && k.avgFirstResponseMinutes >= sla}
         sub={
-          k.unansweredToday > 0 ? <span className="text-red-300 font-semibold">{k.unansweredToday} unanswered today</span> : "Today · working time"
+          k.unansweredToday > 0 ? <span className="text-red-700 font-semibold">{k.unansweredToday} unanswered today</span> : "Today · working time"
         }
       />
       <Kpi
@@ -232,7 +237,7 @@ function KpiRow({ overview }: { overview: SupervisionOverview | null }) {
         icon={<Inbox className="w-5 h-5" />}
         value={k.followUpsDue}
         alert={k.followUpsDue > 0}
-        sub={k.followUpsDue > 0 ? <span className="text-red-300 font-semibold">Due now or overdue</span> : "Nothing due"}
+        sub={k.followUpsDue > 0 ? <span className="text-red-700 font-semibold">Due now or overdue</span> : "Nothing due"}
       />
     </div>
   );
@@ -245,12 +250,12 @@ function AgentStat({ label, value, tone }: { label: string; value: string | numb
     <div className="min-w-0">
       <p
         className={`text-[20px] 2xl:text-[22px] font-bold leading-none tabular-nums ${
-          tone === "red" ? "text-red-300" : tone === "green" ? "text-emerald-300" : tone === "muted" ? "text-white/25" : "text-white"
+          tone === "red" ? "text-red-700" : tone === "green" ? "text-emerald-700" : tone === "muted" ? "text-wall-ink/25" : "text-wall-ink"
         }`}
       >
         {value}
       </p>
-      <p className="text-[10.5px] 2xl:text-[11px] font-semibold text-white/40 uppercase tracking-wider mt-1 truncate">{label}</p>
+      <p className="text-[10.5px] 2xl:text-[11px] font-semibold text-wall-ink/40 uppercase tracking-wider mt-1 truncate">{label}</p>
     </div>
   );
 }
@@ -270,25 +275,25 @@ function AgentTile({ agent, slaMinutes, now }: { agent: SupervisionAgent; slaMin
         <span className="relative shrink-0">
           <span
             className={`w-11 h-11 rounded-full flex items-center justify-center text-[14px] font-bold ${
-              online ? "bg-[#3B694C] text-white" : "bg-white/10 text-white/60"
+              online ? "bg-brand text-white" : "bg-wall-ink/10 text-wall-ink/60"
             }`}
           >
             {personInitials(agent)}
           </span>
-          <span className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full ring-[3px] ring-[#111b16] ${presence.dot}`} />
+          <span className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full ring-[3px] ring-wall-panel ${presence.dot}`} />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-[16px] 2xl:text-[17px] font-bold text-white truncate leading-tight">{personName(agent)}</p>
+          <p className="text-[16px] 2xl:text-[17px] font-bold text-wall-ink truncate leading-tight">{personName(agent)}</p>
           <p className="text-[12.5px] truncate mt-0.5">
-            <span className={online ? "text-emerald-300" : agent.status === "ON_BREAK" ? "text-amber-300" : "text-white/40"}>{presence.label}</span>
-            <span className={quiet ? "text-amber-300 font-semibold" : "text-white/45"}>
+            <span className={online ? "text-emerald-700" : agent.status === "ON_BREAK" ? "text-amber-700" : "text-wall-ink/40"}>{presence.label}</span>
+            <span className={quiet ? "text-amber-700 font-semibold" : "text-wall-ink/45"}>
               {" · "}
               {agent.lastReplyAt ? `replied ${timeAgo(agent.lastReplyAt, now)}` : "no replies yet today"}
             </span>
           </p>
         </div>
       </div>
-      <div className="grid grid-cols-5 gap-2 mt-3 pt-3 border-t border-white/[0.06]">
+      <div className="grid grid-cols-5 gap-2 mt-3 pt-3 border-t border-wall-ink/[0.06]">
         <AgentStat label="Open" value={agent.openChats} tone={agent.openChats === 0 ? "muted" : undefined} />
         <AgentStat
           label={late ? `${agent.waitingOverSla} late` : "Waiting"}
@@ -308,18 +313,18 @@ function AgentTile({ agent, slaMinutes, now }: { agent: SupervisionAgent; slaMin
 function SectionHead({ icon, title, right }: { icon: ReactNode; title: string; right?: ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3 px-1 mb-2.5 shrink-0">
-      <h2 className="flex items-center gap-2 text-[13px] 2xl:text-[14px] font-bold uppercase tracking-[0.12em] text-white/70">
+      <h2 className="flex items-center gap-2 text-[13px] 2xl:text-[14px] font-bold uppercase tracking-[0.12em] text-wall-ink/70">
         {icon}
         {title}
       </h2>
-      {right && <div className="text-[13px] text-white/50 font-medium">{right}</div>}
+      {right && <div className="text-[13px] text-wall-ink/50 font-medium">{right}</div>}
     </div>
   );
 }
 
 function LineChip({ label }: { label: string }) {
   return (
-    <span className="inline-flex items-center text-[11px] font-semibold text-white/60 bg-white/[0.07] border border-white/[0.08] rounded px-1.5 py-px max-w-[150px] truncate">
+    <span className="inline-flex items-center text-[11px] font-semibold text-wall-ink/60 bg-wall-ink/[0.07] border border-wall-ink/[0.08] rounded px-1.5 py-px max-w-[150px] truncate">
       {label}
     </span>
   );
@@ -671,18 +676,18 @@ export function LiveWall() {
 
   return (
     <div
-      className={`fixed inset-0 z-[60] bg-[#0a110d] text-white flex flex-col overflow-y-auto lg:overflow-hidden ${SCROLL} antialiased`}
-      style={{ backgroundImage: "radial-gradient(1200px 500px at 85% -10%, rgba(59,105,76,0.22), transparent 60%)" }}
+      className={`fixed inset-0 z-[60] bg-wall text-wall-ink flex flex-col overflow-y-auto lg:overflow-hidden ${SCROLL} antialiased`}
+      style={{ backgroundImage: "radial-gradient(1200px 500px at 85% -10%, var(--wall-glow), transparent 60%)" }}
     >
       {/* Top bar */}
-      <header className="shrink-0 flex items-center gap-4 flex-wrap px-5 2xl:px-7 py-3 border-b border-white/[0.07]">
+      <header className="shrink-0 flex items-center gap-4 flex-wrap px-5 2xl:px-7 py-3 border-b border-wall-ink/[0.07]">
         <div className="flex items-center gap-3 min-w-0">
-          <span className="w-9 h-9 rounded-xl bg-[#3B694C] flex items-center justify-center shrink-0">
+          <span className="w-9 h-9 rounded-xl bg-brand flex items-center justify-center shrink-0">
             <Activity className="w-5 h-5 text-white" />
           </span>
           <h1 className="text-[20px] 2xl:text-[22px] font-bold tracking-tight whitespace-nowrap">
-            <span className="text-emerald-300">Live</span>
-            <span className="text-white/30 mx-2">·</span>
+            <span className="text-emerald-700">Live</span>
+            <span className="text-wall-ink/30 mx-2">·</span>
             Supervision
           </h1>
         </div>
@@ -694,7 +699,7 @@ export function LiveWall() {
               value={numberId ?? ""}
               onChange={(e) => setNumberId(e.target.value ? Number(e.target.value) : undefined)}
               aria-label="WhatsApp line"
-              className="h-9 text-[13px] font-medium text-white bg-white/[0.06] border border-white/10 hover:border-white/20 rounded-lg pl-3 pr-8 outline-none focus:border-emerald-400/50 cursor-pointer [&>option]:text-gray-900"
+              className="h-9 text-[13px] font-medium text-wall-ink bg-wall-ink/[0.06] border border-wall-ink/10 hover:border-wall-ink/20 rounded-lg pl-3 pr-8 outline-none focus:border-emerald-400/50 cursor-pointer [&>option]:text-gray-900"
             >
               <option value="">All lines</option>
               {numbers.map((n) => (
@@ -705,13 +710,14 @@ export function LiveWall() {
               ))}
             </select>
           )}
+          <ThemeToggleButton className="h-9 w-9 flex items-center justify-center rounded-lg border bg-wall-ink/[0.06] border-wall-ink/10 text-wall-ink/60 hover:text-wall-ink transition-colors cursor-pointer" />
           <button
             type="button"
             onClick={toggleSound}
             aria-pressed={sound}
             title={sound ? "Sound on — click to mute" : "Sound off — click for a soft beep on notifications"}
             className={`h-9 w-9 flex items-center justify-center rounded-lg border transition-colors cursor-pointer ${
-              sound ? "bg-[#3B694C] border-[#3B694C] text-white" : "bg-white/[0.06] border-white/10 text-white/60 hover:text-white"
+              sound ? "bg-brand border-brand text-white" : "bg-wall-ink/[0.06] border-wall-ink/10 text-wall-ink/60 hover:text-wall-ink"
             }`}
           >
             {sound ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
@@ -720,7 +726,7 @@ export function LiveWall() {
             type="button"
             onClick={toggleFullscreen}
             title={isFullscreen ? "Exit full screen (Esc)" : "Full screen"}
-            className="h-9 flex items-center gap-1.5 px-3 rounded-lg bg-white/[0.06] border border-white/10 text-[13px] font-semibold text-white/80 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+            className="h-9 flex items-center gap-1.5 px-3 rounded-lg bg-wall-ink/[0.06] border border-wall-ink/10 text-[13px] font-semibold text-wall-ink/80 hover:text-wall-ink hover:bg-wall-ink/10 transition-colors cursor-pointer"
           >
             {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
             <span className="hidden sm:inline">{isFullscreen ? "Exit full screen" : "Full screen"}</span>
@@ -729,7 +735,7 @@ export function LiveWall() {
             type="button"
             onClick={() => void leaveTo(`/supervision${numberId ? `?number=${numberId}` : ""}`)}
             title="Back to Supervision"
-            className="h-9 flex items-center gap-1.5 px-3 rounded-lg text-[13px] font-semibold text-white/50 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+            className="h-9 flex items-center gap-1.5 px-3 rounded-lg text-[13px] font-semibold text-wall-ink/50 hover:text-wall-ink hover:bg-wall-ink/10 transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
             Exit
@@ -745,7 +751,7 @@ export function LiveWall() {
           <div className="min-h-0 flex flex-col gap-3 2xl:gap-4">
             <section className="shrink-0 flex flex-col min-h-0 lg:max-h-[46%]">
               <SectionHead
-                icon={<Users className="w-4 h-4 text-emerald-300" />}
+                icon={<Users className="w-4 h-4 text-emerald-700" />}
                 title="Team"
                 right={ov ? `${onlineCount} of ${agents.length} online` : null}
               />
@@ -757,7 +763,7 @@ export function LiveWall() {
                     ))}
                   </div>
                 ) : agents.length === 0 ? (
-                  <div className={`${PANEL} px-5 py-6 text-[14px] text-white/50`}>No agents on the team yet.</div>
+                  <div className={`${PANEL} px-5 py-6 text-[14px] text-wall-ink/50`}>No agents on the team yet.</div>
                 ) : (
                   <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3">
                     {agents.map((a) => (
@@ -771,13 +777,13 @@ export function LiveWall() {
             <section className={`${PANEL} flex-1 min-h-[280px] lg:min-h-0 flex flex-col pt-3.5 overflow-hidden`}>
               <div className="px-4">
                 <SectionHead
-                  icon={<AlertTriangle className={`w-4 h-4 ${overCount > 0 ? "text-red-300" : "text-amber-300"}`} />}
+                  icon={<AlertTriangle className={`w-4 h-4 ${overCount > 0 ? "text-red-700" : "text-amber-700"}`} />}
                   title="Needs attention now"
                   right={
                     att ? (
                       <>
                         {att.total} waiting
-                        {overCount > 0 && <span className="text-red-300 font-bold"> · {overCount} over {slaMinutes} min</span>}
+                        {overCount > 0 && <span className="text-red-700 font-bold"> · {overCount} over {slaMinutes} min</span>}
                       </>
                     ) : null
                   }
@@ -787,32 +793,32 @@ export function LiveWall() {
                 {!att ? (
                   <div className="px-4 space-y-2.5 animate-pulse">
                     {Array.from({ length: 5 }).map((_, i) => (
-                      <div key={i} className="h-12 bg-white/[0.04] rounded-lg" />
+                      <div key={i} className="h-12 bg-wall-ink/[0.04] rounded-lg" />
                     ))}
                   </div>
                 ) : att.rows.length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center text-center py-10">
-                    <span className="w-14 h-14 rounded-full bg-[#3B694C]/40 flex items-center justify-center mb-3">
-                      <CalendarCheck className="w-7 h-7 text-emerald-300" />
+                    <span className="w-14 h-14 rounded-full bg-emerald-400/15 dark:bg-brand/40 flex items-center justify-center mb-3">
+                      <CalendarCheck className="w-7 h-7 text-emerald-700" />
                     </span>
-                    <p className="text-[18px] font-bold text-white">Nobody is waiting</p>
-                    <p className="text-[14px] text-white/50 mt-1">Every patient has had a reply.</p>
+                    <p className="text-[18px] font-bold text-wall-ink">Nobody is waiting</p>
+                    <p className="text-[14px] text-wall-ink/50 mt-1">Every patient has had a reply.</p>
                   </div>
                 ) : (
-                  <ul className="divide-y divide-white/[0.05]">
+                  <ul className="divide-y divide-wall-ink/[0.05]">
                     {att.rows.map((r) => (
                       <li key={r.id}>
                         <button
                           type="button"
                           onClick={() => openChat(r.id)}
-                          className={`w-full text-left grid grid-cols-[minmax(0,1.1fr)_minmax(0,0.8fr)_auto] xl:grid-cols-[minmax(0,1fr)_minmax(0,150px)_minmax(0,1.4fr)_auto] items-center gap-3 px-4 py-2.5 hover:bg-white/[0.04] transition-colors cursor-pointer ${
+                          className={`w-full text-left grid grid-cols-[minmax(0,1.1fr)_minmax(0,0.8fr)_auto] xl:grid-cols-[minmax(0,1fr)_minmax(0,150px)_minmax(0,1.4fr)_auto] items-center gap-3 px-4 py-2.5 hover:bg-wall-ink/[0.04] transition-colors cursor-pointer ${
                             r.overSla ? "bg-red-500/[0.06]" : ""
                           }`}
                         >
                           <span className="min-w-0">
                             <span className="flex items-center gap-2 min-w-0">
                               {r.overSla && <span className="w-2 h-2 rounded-full bg-red-400 shrink-0 animate-pulse" />}
-                              <span className="text-[15px] 2xl:text-[16px] font-bold text-white truncate">{patientName(r.customer)}</span>
+                              <span className="text-[15px] 2xl:text-[16px] font-bold text-wall-ink truncate">{patientName(r.customer)}</span>
                             </span>
                             {showLines && (
                               <span className="block mt-0.5">
@@ -822,12 +828,12 @@ export function LiveWall() {
                           </span>
                           <span className="min-w-0 text-[13.5px] truncate">
                             {r.assignedAgent ? (
-                              <span className="text-white/80 font-medium">{personName(r.assignedAgent)}</span>
+                              <span className="text-wall-ink/80 font-medium">{personName(r.assignedAgent)}</span>
                             ) : (
-                              <span className="text-amber-300 font-semibold">Unassigned</span>
+                              <span className="text-amber-700 font-semibold">Unassigned</span>
                             )}
                           </span>
-                          <span className="hidden xl:block min-w-0 text-[13px] text-white/50 truncate">
+                          <span className="hidden xl:block min-w-0 text-[13px] text-wall-ink/50 truncate">
                             {r.lastMessage ? messagePreview({ content: r.lastMessage }) : "—"}
                           </span>
                           <span className="justify-self-end">
@@ -853,21 +859,21 @@ export function LiveWall() {
                   </span>
                 }
                 title="Live feed"
-                right={feedNow?.error ? <span className="text-amber-300">Reconnecting…</span> : "Every 5s"}
+                right={feedNow?.error ? <span className="text-amber-700">Reconnecting…</span> : "Every 5s"}
               />
             </div>
             <div className={`flex-1 min-h-0 ${SCROLL} px-3 pb-3`}>
               {!feedNow ? (
                 <div className="space-y-2.5 px-1 animate-pulse">
                   {Array.from({ length: 7 }).map((_, i) => (
-                    <div key={i} className="h-[68px] bg-white/[0.04] rounded-xl" />
+                    <div key={i} className="h-[68px] bg-wall-ink/[0.04] rounded-xl" />
                   ))}
                 </div>
               ) : feedNow.items.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-center py-10">
-                  <Activity className="w-8 h-8 text-white/20 mb-2" />
-                  <p className="text-[15px] font-semibold text-white/70">{feedNow.error ? "Couldn't load the feed" : "Quiet for now"}</p>
-                  <p className="text-[13px] text-white/40 mt-1">Messages, hand-offs and bookings show up here as they happen.</p>
+                  <Activity className="w-8 h-8 text-wall-ink/20 mb-2" />
+                  <p className="text-[15px] font-semibold text-wall-ink/70">{feedNow.error ? "Couldn't load the feed" : "Quiet for now"}</p>
+                  <p className="text-[13px] text-wall-ink/40 mt-1">Messages, hand-offs and bookings show up here as they happen.</p>
                 </div>
               ) : (
                 <ul className="space-y-1.5">
@@ -882,19 +888,19 @@ export function LiveWall() {
                         <button
                           type="button"
                           onClick={() => openChat(a.conversationId)}
-                          className="relative w-full text-left flex gap-3 rounded-xl bg-white/[0.03] hover:bg-white/[0.07] border border-white/[0.05] pl-4 pr-3 py-2.5 transition-colors cursor-pointer overflow-hidden"
+                          className="relative w-full text-left flex gap-3 rounded-xl bg-wall-ink/[0.03] hover:bg-wall-ink/[0.07] border border-wall-ink/[0.05] pl-4 pr-3 py-2.5 transition-colors cursor-pointer overflow-hidden"
                         >
                           <span aria-hidden className={`absolute left-0 top-2 bottom-2 w-[3px] rounded-r-full ${tone.bar}`} />
                           <span className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${tone.icon}`}>{d.icon}</span>
                           <span className="flex-1 min-w-0">
                             <span className="flex items-baseline gap-2">
-                              <span className="flex-1 min-w-0 text-[14px] 2xl:text-[15px] text-white/75 leading-snug truncate">{d.title}</span>
-                              <span className="text-[12px] text-white/40 tabular-nums shrink-0" title={new Date(a.at).toLocaleString()}>
+                              <span className="flex-1 min-w-0 text-[14px] 2xl:text-[15px] text-wall-ink/75 leading-snug truncate">{d.title}</span>
+                              <span className="text-[12px] text-wall-ink/40 tabular-nums shrink-0" title={new Date(a.at).toLocaleString()}>
                                 {timeAgo(a.at, now)}
                               </span>
                             </span>
                             {d.text && (
-                              <span className="block text-[13px] 2xl:text-[14px] text-white/55 leading-snug mt-0.5 line-clamp-2 break-words">{d.text}</span>
+                              <span className="block text-[13px] 2xl:text-[14px] text-wall-ink/55 leading-snug mt-0.5 line-clamp-2 break-words">{d.text}</span>
                             )}
                             {showLines && (
                               <span className="block mt-1">
@@ -920,7 +926,7 @@ export function LiveWall() {
           return (
             <div
               key={t.id}
-              className="pointer-events-auto relative flex gap-3 rounded-2xl bg-[#17241d]/95 backdrop-blur border border-white/10 shadow-2xl shadow-black/50 pl-4 pr-2 py-3 overflow-hidden transition-[opacity,transform] duration-300 ease-out starting:opacity-0 starting:translate-x-6"
+              className="pointer-events-auto relative flex gap-3 rounded-2xl bg-wall-raised/95 backdrop-blur border border-wall-ink/10 shadow-2xl shadow-black/10 dark:shadow-black/50 pl-4 pr-2 py-3 overflow-hidden transition-[opacity,transform] duration-300 ease-out starting:opacity-0 starting:translate-x-6"
             >
               <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-1 ${tone.bar}`} />
               <span className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${tone.icon}`}>{t.icon}</span>
@@ -930,14 +936,14 @@ export function LiveWall() {
                 onClick={() => t.conversationId !== null && openChat(t.conversationId)}
                 className="flex-1 min-w-0 text-left enabled:cursor-pointer"
               >
-                <span className="block text-[15px] font-bold text-white leading-snug">{t.title}</span>
-                {t.body && <span className="block text-[13px] text-white/60 leading-snug mt-0.5 line-clamp-2">{t.body}</span>}
+                <span className="block text-[15px] font-bold text-wall-ink leading-snug">{t.title}</span>
+                {t.body && <span className="block text-[13px] text-wall-ink/60 leading-snug mt-0.5 line-clamp-2">{t.body}</span>}
               </button>
               <button
                 type="button"
                 onClick={() => dismiss(t.id)}
                 aria-label="Dismiss"
-                className="self-start p-1 rounded-md text-white/40 hover:text-white hover:bg-white/10 cursor-pointer"
+                className="self-start p-1 rounded-md text-wall-ink/40 hover:text-wall-ink hover:bg-wall-ink/10 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>

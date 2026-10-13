@@ -3,19 +3,21 @@
 import { useState } from "react";
 import { UserRoundCheck } from "lucide-react";
 import {
-  ApiError, apiBookRequest, apiClaimBookingRequest, apiNotBookedRequest, apiReopenBookingRequest,
+  ApiError, apiBookRequest, apiClaimBookingRequest, apiNotBookedRequest, apiReopenBookingRequest, apiSetBookingRequestSource,
 } from "@/lib/api";
 import type { BookingRequest, PersonRef } from "@/types";
 import { useToast } from "@/components/ui/toast";
 import { personName } from "@/lib/chatOutcome";
-import { notBookedLabel, notifyRequestChanged } from "@/lib/bookingRequests";
+import { notBookedLabel, notifyRequestChanged, requestSource } from "@/lib/bookingRequests";
 import { BookDialog } from "@/components/bookings/BookDialog";
 import { NotBookedDialog } from "@/components/bookings/NotBookedDialog";
 import { DialogShell } from "@/components/bookings/DialogShell";
+import { ChangeSourceDialog, toSaveError } from "@/components/bookings/LeadSourcePicker";
 
 type Dialog =
   | { kind: "book"; req: BookingRequest }
   | { kind: "not_booked"; req: BookingRequest }
+  | { kind: "source"; req: BookingRequest }
   | { kind: "takeover"; req: BookingRequest; by: string };
 
 export type RequestBusy = { id: number; action: "claim" | "reopen" } | null;
@@ -29,7 +31,7 @@ function claimedByName(details: ApiError["details"]): string {
 }
 
 /**
- * Take it / Book / Couldn't book / Reopen for a booking request, with their
+ * Take it / Book / Couldn't book / Reopen / Change source for a booking request, with their
  * dialogs. Shared by the Bookings page, the chat banner and the contact panel.
  * Render `dialogs` somewhere in the tree.
  */
@@ -89,16 +91,34 @@ export function useRequestActions(
         requested={dialog.req.requested}
         patient={patientOf(dialog.req)}
         adding={dialog.req.status === "BOOKED"}
+        sourceRequest={dialog.req}
         onCancel={close}
-        onSave={async (appointments) => {
+        onSave={async (appointments, source) => {
           try {
-            const res = await apiBookRequest(dialog.req.id, appointments);
+            const res = await apiBookRequest(dialog.req.id, appointments, source);
             setDialog(null);
             toast.success(appointments.length > 1 ? `${appointments.length} appointments recorded` : "Appointment recorded");
             changed(res.data);
             return null;
           } catch (err) {
-            return errMsg(err, "Couldn't save the booking");
+            return toSaveError(err, "Couldn't save the booking");
+          }
+        }}
+      />
+    ) : dialog.kind === "source" ? (
+      <ChangeSourceDialog
+        key={`src-${dialog.req.id}`}
+        req={dialog.req}
+        onCancel={close}
+        onSave={async (source) => {
+          try {
+            const res = await apiSetBookingRequestSource(dialog.req.id, source);
+            setDialog(null);
+            toast.success(`Source saved · ${requestSource(res.data)}`);
+            changed(res.data);
+            return null;
+          } catch (err) {
+            return toSaveError(err, "Couldn't save the source");
           }
         }}
       />
@@ -156,6 +176,7 @@ export function useRequestActions(
     claim: (req: BookingRequest) => claim(req),
     book: (req: BookingRequest) => setDialog({ kind: "book", req }),
     notBooked: (req: BookingRequest) => setDialog({ kind: "not_booked", req }),
+    changeSource: (req: BookingRequest) => setDialog({ kind: "source", req }),
     reopen,
     dialogs,
   };

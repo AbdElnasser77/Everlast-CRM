@@ -166,7 +166,7 @@ export default function DevCostTracker() {
       {open && (
         <div className="mb-3 w-[400px] max-w-[calc(100vw-2.5rem)] max-h-[75vh] flex flex-col bg-white border border-gray-200 rounded-2xl shadow-2xl overflow-hidden">
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-900 text-white">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-900 text-white dark:text-gray-50">
             <div>
               <p className="text-[13px] font-semibold">Message cost tracker</p>
               <p className="text-[11px] text-gray-400">
@@ -198,7 +198,7 @@ export default function DevCostTracker() {
                   onClick={() => setRange({ range: r.value })}
                   className={`px-2.5 py-1 rounded-full text-[11px] font-medium border cursor-pointer transition-colors ${
                     range.range === r.value
-                      ? "bg-gray-900 text-white border-gray-900"
+                      ? "bg-gray-900 text-white dark:text-gray-50 border-gray-900"
                       : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
                   }`}
                 >
@@ -206,7 +206,7 @@ export default function DevCostTracker() {
                 </button>
               ))}
               {range.range === "reset" && (
-                <span className="px-2.5 py-1 rounded-full text-[11px] font-medium bg-gray-900 text-white">Since reset</span>
+                <span className="px-2.5 py-1 rounded-full text-[11px] font-medium bg-gray-900 text-white dark:text-gray-50">Since reset</span>
               )}
             </div>
 
@@ -313,7 +313,7 @@ export default function DevCostTracker() {
       <button
         onClick={() => setOpen((v) => !v)}
         title="Message cost tracker (dev only)"
-        className="flex items-center gap-2 pl-3 pr-4 h-11 rounded-full bg-gray-900 text-white shadow-xl hover:bg-gray-800 transition-colors cursor-pointer relative"
+        className="flex items-center gap-2 pl-3 pr-4 h-11 rounded-full bg-gray-900 text-white dark:text-gray-50 shadow-xl hover:bg-gray-800 transition-colors cursor-pointer relative"
       >
         <Receipt className="w-4 h-4" />
         <span className="text-[13px] font-semibold">{t ? usd(t.costUsd) : "$—"}</span>

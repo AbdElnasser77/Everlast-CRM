@@ -3,7 +3,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CalendarDays, Eye, MessagesSquare, MonitorPlay, RefreshCw } from "lucide-react";
+import { CalendarDays, Eye, FileText, MessagesSquare, MonitorPlay, RefreshCw } from "lucide-react";
 import { apiGetSupervisionConversations, apiGetSupervisionOverview } from "@/lib/api";
 import { getSocket } from "@/lib/socket";
 import { homePathFor } from "@/lib/permissions";
@@ -42,7 +42,7 @@ type View = "chats" | "bookings";
 type ListState = { key: string; rows: SupervisionConversation[] | null; total: number | null; error: Error | null };
 
 const SECTION_SCROLL =
-  "[&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-[#3B694C]/25 [&::-webkit-scrollbar-thumb]:rounded-full";
+  "[&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-brand/25 [&::-webkit-scrollbar-thumb]:rounded-full";
 
 function parseAgent(v: string | null): AgentFilter {
   if (v === "unassigned") return "unassigned";
@@ -67,7 +67,7 @@ function AccessRestricted() {
   const router = useRouter();
   const { me } = useCurrentUser();
   return (
-    <div className="flex-1 overflow-y-auto bg-[#f9f9f8] px-6">
+    <div className="flex-1 overflow-y-auto bg-canvas px-6">
       <div className="max-w-md mx-auto mt-16 bg-white rounded-xl border border-gray-200 shadow-sm p-12 text-center">
         <svg className="w-12 h-12 text-gray-300 mx-auto mb-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
           <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
@@ -78,7 +78,7 @@ function AccessRestricted() {
         <button
           type="button"
           onClick={() => router.push(homePathFor(me))}
-          className="mt-6 inline-flex items-center gap-2 bg-[#3B694C] hover:bg-[#2f5840] active:bg-[#264a33] text-white text-[13px] font-semibold px-5 py-2.5 rounded-xl transition-colors cursor-pointer"
+          className="mt-6 inline-flex items-center gap-2 bg-brand hover:bg-[#2f5840] active:bg-[#264a33] text-white text-[13px] font-semibold px-5 py-2.5 rounded-xl transition-colors cursor-pointer"
         >
           Go back
         </button>
@@ -315,13 +315,13 @@ function SupervisionScreen() {
   }
 
   return (
-    <div className={`flex-1 overflow-y-auto bg-[#f9f9f8] ${SECTION_SCROLL}`}>
+    <div className={`flex-1 overflow-y-auto bg-canvas ${SECTION_SCROLL}`}>
       <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-6 space-y-5">
         {/* Header */}
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-[22px] font-bold text-gray-900 flex items-center gap-2">
-              <Eye className="w-5 h-5 text-[#3B694C]" />
+              <Eye className="w-5 h-5 text-brand-fg" />
               Supervision
             </h1>
             <p className="text-[13px] text-gray-400 mt-0.5">
@@ -341,7 +341,7 @@ function SupervisionScreen() {
                   type="button"
                   onClick={() => setView(key)}
                   className={`flex items-center gap-1.5 text-[13px] font-semibold rounded-md px-3 py-1.5 transition-colors cursor-pointer ${
-                    view === key ? "bg-[#3B694C] text-white" : "text-gray-500 hover:text-gray-800"
+                    view === key ? "bg-brand text-white" : "text-gray-500 hover:text-gray-800"
                   }`}
                 >
                   <Icon className="w-3.5 h-3.5" />
@@ -354,7 +354,7 @@ function SupervisionScreen() {
                 value={numberId ?? ""}
                 onChange={(e) => setNumberId(e.target.value ? Number(e.target.value) : undefined)}
                 aria-label="WhatsApp line"
-                className="h-[38px] text-[13px] font-medium text-gray-700 bg-white border border-gray-200 hover:border-gray-300 rounded-xl pl-3 pr-8 outline-none focus:border-[#3B694C]/50 cursor-pointer"
+                className="h-[38px] text-[13px] font-medium text-gray-700 bg-white border border-gray-200 hover:border-gray-300 rounded-xl pl-3 pr-8 outline-none focus:border-brand/50 cursor-pointer"
               >
                 <option value="">All lines</option>
                 {numbers.map((n) => (
@@ -368,10 +368,18 @@ function SupervisionScreen() {
             <Link
               href={`/supervision/live${numberId ? `?number=${numberId}` : ""}`}
               title="Full-screen live dashboard for a wall screen"
-              className="flex items-center gap-1.5 h-[38px] text-[13px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5840] px-3.5 rounded-xl transition-colors"
+              className="flex items-center gap-1.5 h-[38px] text-[13px] font-semibold text-white bg-brand hover:bg-[#2f5840] px-3.5 rounded-xl transition-colors"
             >
               <MonitorPlay className="w-4 h-4" />
               Live view
+            </Link>
+            <Link
+              href={`/supervision/reports${numberId ? `?number=${numberId}` : ""}`}
+              title="Supervisor reports for a period — PDF, CSV and Excel"
+              className="flex items-center gap-1.5 h-[38px] text-[13px] font-semibold text-brand-fg bg-white border border-brand/30 hover:bg-brand-100 px-3.5 rounded-xl transition-colors"
+            >
+              <FileText className="w-4 h-4" />
+              Report
             </Link>
             <button
               type="button"
@@ -447,7 +455,7 @@ function SupervisionScreen() {
                 />
               </div>
             ) : (
-              <div className="hidden lg:flex flex-col items-center justify-center text-center px-8 bg-[#f9f9f8]">
+              <div className="hidden lg:flex flex-col items-center justify-center text-center px-8 bg-canvas">
                 <div className="w-12 h-12 rounded-2xl bg-white border border-gray-100 flex items-center justify-center mb-3">
                   <MessagesSquare className="w-5 h-5 text-gray-300" />
                 </div>

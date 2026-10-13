@@ -1,11 +1,11 @@
 export default function ChatsPage() {
   return (
-    <div className="flex flex-1 h-full items-center justify-center bg-[#f5f4f0]">
+    <div className="flex flex-1 h-full items-center justify-center bg-canvas-warm">
       <div className="flex flex-col items-center gap-5 text-center max-w-sm px-6">
         {/* Icon */}
-        <div className="w-[72px] h-[72px] rounded-2xl bg-[#DCF2E3] flex items-center justify-center">
+        <div className="w-[72px] h-[72px] rounded-2xl bg-brand-200 flex items-center justify-center">
           <svg
-            className="w-8 h-8 text-[#3B694C]"
+            className="w-8 h-8 text-brand-fg"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -27,7 +27,7 @@ export default function ChatsPage() {
             Messages from clients land in your inbox in real-time.{" "}
             <br />
             Toggle{" "}
-            <span className="text-[#3B694C] font-semibold">AI auto-reply</span>{" "}
+            <span className="text-brand-fg font-semibold">AI auto-reply</span>{" "}
             on any thread to have it handled automatically.
           </p>
         </div>

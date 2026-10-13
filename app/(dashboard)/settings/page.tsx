@@ -63,18 +63,18 @@ function SettingsContent() {
               type="button"
               onClick={() => selectTab(t.key)}
               className={`relative px-3 py-3 text-[13px] font-semibold whitespace-nowrap transition-colors cursor-pointer ${
-                active ? "text-[#3B694C]" : "text-gray-500 hover:text-gray-800"
+                active ? "text-brand-fg" : "text-gray-500 hover:text-gray-800"
               }`}
             >
               {t.label}
-              {active && <span className="absolute left-2 right-2 -bottom-px h-0.5 rounded-full bg-[#3B694C]" />}
+              {active && <span className="absolute left-2 right-2 -bottom-px h-0.5 rounded-full bg-brand" />}
             </button>
           );
         })}
       </div>
 
       {/* Active tab — keyed so switching always starts it fresh */}
-      <div className="flex-1 min-h-0 flex flex-col overflow-auto bg-[#f9f9f8] [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb]:rounded-full">
+      <div className="flex-1 min-h-0 flex flex-col overflow-auto bg-canvas [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb]:rounded-full">
         {tab === "users" && <UsersPanel key="users" />}
         {tab === "numbers" && <WhatsAppNumbersPanel key="numbers" />}
         {tab === "quiet-hours" && <QuietHoursPanel key="quiet-hours" />}
@@ -124,7 +124,7 @@ export default function SettingsPage() {
           <button
             type="button"
             onClick={() => router.push("/dashboard")}
-            className="mt-6 inline-flex items-center gap-2 bg-[#3B694C] hover:bg-[#2f5840] active:bg-[#264a33] text-white text-[13px] font-semibold px-5 py-2.5 rounded-xl transition-colors cursor-pointer"
+            className="mt-6 inline-flex items-center gap-2 bg-brand hover:bg-[#2f5840] active:bg-[#264a33] text-white text-[13px] font-semibold px-5 py-2.5 rounded-xl transition-colors cursor-pointer"
           >
             Go to Dashboard
           </button>

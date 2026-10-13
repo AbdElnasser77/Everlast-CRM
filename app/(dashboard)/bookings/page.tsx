@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft, CalendarCheck2, CalendarDays, CalendarPlus, CircleSlash, ClipboardList, Hourglass, Loader2,
-  MessageCircle, RefreshCw, RotateCcw, Search, UserRoundCheck, X,
+  MessageCircle, Pencil, RefreshCw, RotateCcw, Search, UserRoundCheck, X,
 } from "lucide-react";
 import { apiGetBookingRequest, apiGetBookingRequestCounts, apiGetBookingRequests } from "@/lib/api";
 import { getSocket } from "@/lib/socket";
@@ -13,11 +13,11 @@ import { useCurrentUser } from "@/components/CurrentUserProvider";
 import { PageSpinner } from "@/components/ui/spinner";
 import { ErrorPanel } from "@/components/ErrorPanel";
 import { NoAccess } from "@/components/NoAccess";
-import { AppointmentCard, RequestStatusChip, RequestedDetails } from "@/components/bookings/RequestParts";
+import { AppointmentCard, LeadSourceChip, RequestStatusChip, RequestedDetails } from "@/components/bookings/RequestParts";
 import { useRequestActions } from "@/components/bookings/useRequestActions";
 import { fmtWhen, personName, sortBookings } from "@/lib/chatOutcome";
 import {
-  isOpenRequest, notBookedLabel, onRequestChanged, requestAge, requestPreferred, requestService, requestSource,
+  isOpenRequest, notBookedLabel, onRequestChanged, requestAge, requestPreferred, requestService,
 } from "@/lib/bookingRequests";
 
 // ── Bookings ──────────────────────────────────────────────────────────────────
@@ -50,7 +50,7 @@ const DEBOUNCE_MS = 400;
 const LIVE_EVENTS = ["booking_request.created", "booking_request.updated", "conversation.outcome", "connect"];
 
 const SCROLL =
-  "[&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-[#3B694C]/25 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[#3B694C]/50";
+  "[&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-brand/25 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-brand/50";
 
 type ListState = { key: string; pages: number; rows: BookingRequest[]; total: number };
 
@@ -174,13 +174,13 @@ function BookingsBoard() {
   const totalOpen = counts?.open ?? null;
 
   return (
-    <div className={`flex-1 overflow-y-auto bg-[#f9f9f8] ${SCROLL}`}>
+    <div className={`flex-1 overflow-y-auto bg-canvas ${SCROLL}`}>
       <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-6 space-y-5">
         {/* Header */}
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-[22px] font-bold text-gray-900 flex items-center gap-2">
-              <CalendarPlus className="w-5 h-5 text-[#3B694C]" />
+              <CalendarPlus className="w-5 h-5 text-brand-fg" />
               Bookings
             </h1>
             <p className="text-[13px] text-gray-400 mt-0.5">
@@ -192,7 +192,7 @@ function BookingsBoard() {
               <div className="hidden sm:flex items-center gap-3 h-[38px] px-3.5 bg-white border border-gray-100 rounded-xl text-[12px] text-gray-500">
                 <span><span className="font-bold text-gray-900 tabular-nums">{totalOpen}</span> open</span>
                 <span className="w-px h-4 bg-gray-100" />
-                <span><span className="font-bold text-[#3B694C] tabular-nums">{counts.bookedToday}</span> booked today</span>
+                <span><span className="font-bold text-brand-fg tabular-nums">{counts.bookedToday}</span> booked today</span>
               </div>
             )}
             <button
@@ -234,7 +234,7 @@ function BookingsBoard() {
             </div>
 
             {/* Tabs */}
-            <div role="tablist" aria-label="Booking requests" className="flex gap-4 px-4 border-b border-gray-100 overflow-x-auto shrink-0 [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-thumb]:bg-[#3B694C]/25 [&::-webkit-scrollbar-thumb]:rounded-full">
+            <div role="tablist" aria-label="Booking requests" className="flex gap-4 px-4 border-b border-gray-100 overflow-x-auto shrink-0 [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-thumb]:bg-brand/25 [&::-webkit-scrollbar-thumb]:rounded-full">
               {TABS.map((t) => {
                 const active = tab === t.value;
                 const n = t.count && counts ? counts[t.count] : 0;
@@ -247,13 +247,13 @@ function BookingsBoard() {
                     onClick={() => setTab(t.value)}
                     title={t.value === "booked" ? `${n} booked today` : undefined}
                     className={`shrink-0 flex items-center gap-1.5 pb-2 -mb-px border-b-2 text-[13px] transition-colors cursor-pointer ${
-                      active ? "border-[#3B694C] text-[#3B694C] font-semibold" : "border-transparent text-gray-500 hover:text-gray-700"
+                      active ? "border-brand text-brand-fg font-semibold" : "border-transparent text-gray-500 hover:text-gray-700"
                     }`}
                   >
                     {t.label}
                     {n > 0 && (
                       <span className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10.5px] font-semibold flex items-center justify-center tabular-nums ${
-                        t.value === "new" ? "bg-sky-100 text-sky-700" : active ? "bg-[#DCF2E3] text-[#3B694C]" : "bg-gray-100 text-gray-500"
+                        t.value === "new" ? "bg-sky-100 text-sky-700" : active ? "bg-brand-200 text-brand-fg" : "bg-gray-100 text-gray-500"
                       }`}>
                         {t.value === "booked" ? `${n > 99 ? "99+" : n} today` : n > 99 ? "99+" : n}
                       </span>
@@ -288,8 +288,8 @@ function BookingsBoard() {
                 ))
               ) : current.rows.length === 0 ? (
                 <div className="flex flex-col items-center justify-center text-center px-8 py-16">
-                  <div className="w-12 h-12 rounded-2xl bg-[#F5FAF7] border border-[#3B694C]/10 flex items-center justify-center mb-3">
-                    <ClipboardList className="w-5 h-5 text-[#3B694C]/50" />
+                  <div className="w-12 h-12 rounded-2xl bg-brand-50 border border-brand/10 flex items-center justify-center mb-3">
+                    <ClipboardList className="w-5 h-5 text-brand-fg/50" />
                   </div>
                   <p className="text-[13px] font-semibold text-gray-700">{query ? `No requests match “${query}”` : activeTab.empty}</p>
                   {query && <p className="text-[12px] text-gray-400 mt-1">Try another name, number or service, or another tab.</p>}
@@ -329,7 +329,7 @@ function BookingsBoard() {
               />
             </div>
           ) : (
-            <div className="hidden lg:flex flex-col items-center justify-center text-center px-8 bg-[#f9f9f8]">
+            <div className="hidden lg:flex flex-col items-center justify-center text-center px-8 bg-canvas">
               <div className="w-12 h-12 rounded-2xl bg-white border border-gray-100 flex items-center justify-center mb-3">
                 <CalendarDays className="w-5 h-5 text-gray-300" />
               </div>
@@ -364,18 +364,18 @@ function RequestRow({ req: r, active, meId, showStatus, onSelect }: {
   const conv = r.conversation;
   const lastBy = conv?.lastSenderType === "BOT" ? "⚡ " : conv?.lastSenderType === "AGENT" ? "You: " : "";
   const liveAppts = (r.bookings || []).filter((b) => b.status === "BOOKED").length;
-  const rail = active ? "bg-[#3B694C]" : open && r.status === "NEW" ? "bg-sky-400" : "bg-transparent";
+  const rail = active ? "bg-brand" : open && r.status === "NEW" ? "bg-sky-400" : "bg-transparent";
 
   return (
     <button
       type="button"
       onClick={onSelect}
       aria-current={active ? "true" : undefined}
-      className={`group relative w-full text-left flex gap-3 px-4 py-3 border-b border-gray-100 transition-colors cursor-pointer ${active ? "bg-[#EEF6F1]" : "bg-white hover:bg-gray-50"}`}
+      className={`group relative w-full text-left flex gap-3 px-4 py-3 border-b border-gray-100 transition-colors cursor-pointer ${active ? "bg-brand-100" : "bg-white hover:bg-gray-50"}`}
     >
       <span aria-hidden className={`absolute left-0 top-2 bottom-2 w-[3px] rounded-r-full ${rail}`} />
       <div className="shrink-0 mt-0.5">
-        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-[12px] ${active || r.status === "NEW" ? "bg-[#DCF2E3] text-[#2f5840]" : "bg-[#EEF1EF] text-gray-500"}`}>
+        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-[12px] ${active || r.status === "NEW" ? "bg-brand-200 text-brand-strong" : "bg-[#EEF1EF] text-gray-500"}`}>
           {initialsOf(r.customer?.name || r.customer?.phone)}
         </div>
       </div>
@@ -399,7 +399,7 @@ function RequestRow({ req: r, active, meId, showStatus, onSelect }: {
         {/* What they asked for */}
         <div className="flex items-center gap-1.5 mt-1 min-w-0 flex-wrap">
           {service && (
-            <span className="max-w-[60%] truncate text-[11px] font-semibold text-[#3B694C] bg-[#EEF6F1] border border-[#3B694C]/20 rounded px-1.5 py-px">{service}</span>
+            <span className="max-w-[60%] truncate text-[11px] font-semibold text-brand-fg bg-brand-100 border border-brand/20 rounded px-1.5 py-px">{service}</span>
           )}
           {preferred && (
             <span className="max-w-[60%] truncate inline-flex items-center gap-1 text-[11px] font-medium text-gray-600 bg-gray-50 border border-gray-200 rounded px-1.5 py-px">
@@ -407,7 +407,7 @@ function RequestRow({ req: r, active, meId, showStatus, onSelect }: {
             </span>
           )}
           {!service && !preferred && <span className="text-[11px] text-gray-400 italic">No details collected</span>}
-          <span className="min-w-0 truncate text-[11px] text-gray-400">{requestSource(r)}</span>
+          <LeadSourceChip req={r} className="min-w-0" />
         </div>
 
         {/* The chat's last message */}
@@ -422,7 +422,7 @@ function RequestRow({ req: r, active, meId, showStatus, onSelect }: {
           {open ? (
             r.claimedBy ? (
               <span className="inline-flex items-center gap-1.5 min-w-0">
-                <span className={`w-5 h-5 rounded-full text-[9px] font-bold flex items-center justify-center shrink-0 ${mine ? "bg-[#3B694C] text-white" : "bg-gray-200 text-gray-600"}`}>
+                <span className={`w-5 h-5 rounded-full text-[9px] font-bold flex items-center justify-center shrink-0 ${mine ? "bg-brand text-white" : "bg-gray-200 text-gray-600"}`}>
                   {initialsOf(personName(r.claimedBy))}
                 </span>
                 <span className="truncate text-gray-600">{mine ? "You" : personName(r.claimedBy)}</span>
@@ -432,7 +432,7 @@ function RequestRow({ req: r, active, meId, showStatus, onSelect }: {
             )
           ) : r.status === "BOOKED" ? (
             <span className="truncate text-gray-600">
-              <span className="font-semibold text-[#3B694C]">{liveAppts || r.bookings?.length || 0} appointment{(liveAppts || r.bookings?.length || 0) === 1 ? "" : "s"}</span>
+              <span className="font-semibold text-brand-fg">{liveAppts || r.bookings?.length || 0} appointment{(liveAppts || r.bookings?.length || 0) === 1 ? "" : "s"}</span>
               {" · "}by {personName(r.handledBy)}
             </span>
           ) : (
@@ -501,7 +501,7 @@ function RequestDetail({ initial, refreshKey, meId, canWork, actions, onClose }:
           <ArrowLeft className="w-4 h-4 lg:hidden" />
           <X className="w-4 h-4 hidden lg:block" />
         </button>
-        <span className="w-10 h-10 rounded-full bg-[#EEF6F1] text-[#3B694C] flex items-center justify-center font-bold text-[13px] shrink-0">
+        <span className="w-10 h-10 rounded-full bg-brand-100 text-brand-fg flex items-center justify-center font-bold text-[13px] shrink-0">
           {initialsOf(r.customer?.name || r.customer?.phone)}
         </span>
         <div className="flex-1 min-w-0">
@@ -516,13 +516,13 @@ function RequestDetail({ initial, refreshKey, meId, canWork, actions, onClose }:
       {/* Actions */}
       <div className="flex flex-wrap items-center gap-2 px-4 sm:px-5 py-3 border-b border-gray-100 bg-[#FAFBFA] shrink-0">
         {canWork && open && (r.status === "NEW" || someoneElse) && (
-          <button type="button" onClick={() => actions.claim(r)} disabled={claiming} className={`${btn} text-[#3B694C] bg-white border border-[#3B694C]/30 hover:bg-[#EEF6F1]`}>
+          <button type="button" onClick={() => actions.claim(r)} disabled={claiming} className={`${btn} text-brand-fg bg-white border border-brand/30 hover:bg-brand-100`}>
             {claiming ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserRoundCheck className="w-4 h-4" />}
             {someoneElse ? "Take over" : "Take it"}
           </button>
         )}
         {canWork && (open || r.status === "BOOKED") && (
-          <button type="button" onClick={() => actions.book(r)} className={`${btn} text-white bg-[#3B694C] hover:bg-[#2f5840]`}>
+          <button type="button" onClick={() => actions.book(r)} className={`${btn} text-white bg-brand hover:bg-[#2f5840]`}>
             <CalendarCheck2 className="w-4 h-4" /> {r.status === "BOOKED" ? "Add appointment" : "Book"}
           </button>
         )}
@@ -532,12 +532,12 @@ function RequestDetail({ initial, refreshKey, meId, canWork, actions, onClose }:
           </button>
         )}
         {canWork && r.status === "NOT_BOOKED" && (
-          <button type="button" onClick={() => actions.reopen(r)} disabled={reopening} className={`${btn} text-[#3B694C] bg-white border border-[#3B694C]/30 hover:bg-[#EEF6F1]`}>
+          <button type="button" onClick={() => actions.reopen(r)} disabled={reopening} className={`${btn} text-brand-fg bg-white border border-brand/30 hover:bg-brand-100`}>
             {reopening ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />} Reopen
           </button>
         )}
         <Link href={`/chats/${r.conversationId}`} className={`${btn} ml-auto text-gray-700 bg-white border border-gray-200 hover:bg-gray-50`}>
-          <MessageCircle className="w-4 h-4 text-[#3B694C]" /> Open chat
+          <MessageCircle className="w-4 h-4 text-brand-fg" /> Open chat
         </Link>
       </div>
 
@@ -559,12 +559,21 @@ function RequestDetail({ initial, refreshKey, meId, canWork, actions, onClose }:
         {/* The request */}
         <DetailSection title="Request">
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-[12.5px]">
-            <dt className="text-gray-400">Source</dt>
-            <dd className="text-gray-800">
-              {r.campaign ? (
-                <>From campaign: <Link href={`/campaigns/${r.campaign.id}`} className="font-medium text-[#3B694C] hover:underline">{r.campaign.name}</Link></>
-              ) : requestSource(r)}
+            <dt className="text-gray-400">Came from</dt>
+            <dd className="text-gray-800 flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
+              <LeadSourceChip req={r} campaignHref={(cid) => `/campaigns/${cid}`} />
+              {canWork && (
+                <button
+                  type="button"
+                  onClick={() => actions.changeSource(r)}
+                  className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-brand-fg hover:underline underline-offset-2 cursor-pointer"
+                >
+                  <Pencil className="w-3 h-3" /> {r.sourceStatus === "SUGGESTED" ? "Confirm or change" : "Change source"}
+                </button>
+              )}
             </dd>
+            <dt className="text-gray-400">Opened via</dt>
+            <dd className="text-gray-800">{r.source === "FLOW" ? "Booking flow" : "Agent"}</dd>
             <dt className="text-gray-400">Opened</dt>
             <dd className="text-gray-800">{fmtDateTime(r.createdAt)}</dd>
             {age && (
@@ -627,9 +636,9 @@ function RequestDetail({ initial, refreshKey, meId, canWork, actions, onClose }:
         {/* The chat */}
         {conv && (
           <DetailSection title="Chat">
-            <Link href={`/chats/${r.conversationId}`} className="block rounded-xl border border-gray-100 hover:border-[#3B694C]/30 hover:bg-[#F5FAF7] transition-colors p-3">
+            <Link href={`/chats/${r.conversationId}`} className="block rounded-xl border border-gray-100 hover:border-brand/30 hover:bg-brand-50 transition-colors p-3">
               <div className="flex items-center gap-2 text-[11px] text-gray-400">
-                <span className={`font-semibold px-1.5 py-px rounded ${conv.status === "RESOLVED" ? "bg-gray-100 text-gray-500" : conv.status === "PENDING" ? "bg-amber-50 text-amber-600" : "bg-[#EEF6F1] text-[#3B694C]"}`}>
+                <span className={`font-semibold px-1.5 py-px rounded ${conv.status === "RESOLVED" ? "bg-gray-100 text-gray-500" : conv.status === "PENDING" ? "bg-amber-50 text-amber-600" : "bg-brand-100 text-brand-fg"}`}>
                   {conv.status === "OPEN" ? "Open" : conv.status === "PENDING" ? "Pending" : "Resolved"}
                 </span>
                 <span>{conv.assignedAgent ? `with ${personName(conv.assignedAgent)}` : "Unassigned"}</span>

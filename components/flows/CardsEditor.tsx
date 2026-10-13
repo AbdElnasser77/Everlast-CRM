@@ -39,7 +39,7 @@ function withLayout(card: FlowCard, layout: Layout, template?: FlowCard): FlowCa
   };
 }
 
-const inputCls = "w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-[13px] text-gray-800 outline-none focus:border-[#3B694C] bg-white";
+const inputCls = "w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-[13px] text-gray-800 outline-none focus:border-brand bg-white";
 
 export function CardsEditor({ cards, onChange }: { cards: FlowCard[]; onChange: (cards: FlowCard[]) => void }) {
   const layout = layoutOf(cards);
@@ -110,7 +110,7 @@ export function CardsEditor({ cards, onChange }: { cards: FlowCard[]; onChange: 
             {isOpen && (
               <div className="p-2.5 space-y-2.5 border-t border-gray-100">
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <button type="button" onClick={() => setPickerFor(i)} className="flex items-center gap-1 text-[12px] font-semibold text-[#3B694C] border border-[#3B694C]/30 bg-[#EEF6F1] px-2.5 py-1.5 rounded-lg hover:bg-[#DCF2E3]">
+                  <button type="button" onClick={() => setPickerFor(i)} className="flex items-center gap-1 text-[12px] font-semibold text-brand-fg border border-brand/30 bg-brand-100 px-2.5 py-1.5 rounded-lg hover:bg-brand-200">
                     <ImageIcon className="w-3.5 h-3.5" /> Library
                   </button>
                   <button
@@ -180,7 +180,7 @@ export function CardsEditor({ cards, onChange }: { cards: FlowCard[]; onChange: 
         <button
           type="button"
           onClick={() => { onChange([...cards, withLayout(newFlowCard(2), layout, cards[0])]); setOpen(cards.length); }}
-          className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-[#3B694C] hover:underline"
+          className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-brand-fg hover:underline"
         >
           <Plus className="w-3.5 h-3.5" /> Add card ({cards.length}/{CARD_LIMITS.max})
         </button>

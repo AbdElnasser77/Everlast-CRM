@@ -287,7 +287,7 @@ function CustomerDetailDrawer({ customer, conv, onClose, onSaved, onDeleted }: D
         type="button"
         onClick={saveField}
         disabled={saving}
-        className="flex items-center gap-1 text-[12px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5840] disabled:opacity-60 px-3 py-1 rounded-lg transition-colors cursor-pointer"
+        className="flex items-center gap-1 text-[12px] font-semibold text-white bg-brand hover:bg-[#2f5840] disabled:opacity-60 px-3 py-1 rounded-lg transition-colors cursor-pointer"
       >
         {saving ? (
           <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
@@ -335,7 +335,7 @@ function CustomerDetailDrawer({ customer, conv, onClose, onSaved, onDeleted }: D
             <div className="shrink-0 px-5 pt-5 pb-4 border-b border-gray-100">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <div className="w-11 h-11 rounded-full bg-[#DCF2E3] flex items-center justify-center text-[#3B694C] font-bold text-[14px] shrink-0">
+                  <div className="w-11 h-11 rounded-full bg-brand-200 flex items-center justify-center text-brand-fg font-bold text-[14px] shrink-0">
                     {getInitials(c)}
                   </div>
                   <div className="min-w-0 flex-1">
@@ -347,7 +347,7 @@ function CustomerDetailDrawer({ customer, conv, onClose, onSaved, onDeleted }: D
                           value={editValue}
                           onChange={(e) => setEditValue(e.target.value)}
                           onKeyDown={(e) => { if (e.key === "Enter") saveField(); if (e.key === "Escape") cancelEdit(); }}
-                          className="w-full text-[15px] font-bold text-gray-900 border border-[#3B694C] rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-[#3B694C]/20"
+                          className="w-full text-[15px] font-bold text-gray-900 border border-brand rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-brand/20"
                         />
                         <EditActions />
                       </div>
@@ -372,7 +372,7 @@ function CustomerDetailDrawer({ customer, conv, onClose, onSaved, onDeleted }: D
               </div>
               {fetching && (
                 <div className="mt-2 h-0.5 rounded-full bg-gray-100 overflow-hidden">
-                  <div className="h-full w-1/2 bg-[#3B694C]/30 animate-pulse rounded-full" />
+                  <div className="h-full w-1/2 bg-brand/30 animate-pulse rounded-full" />
                 </div>
               )}
             </div>
@@ -389,7 +389,7 @@ function CustomerDetailDrawer({ customer, conv, onClose, onSaved, onDeleted }: D
                   <FieldLabel label="Chart Number" field="chartNumber" />
                   {editing === "chartNumber" ? (
                     <div>
-                      <input autoFocus type="text" value={editValue} onChange={(e) => setEditValue(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") saveField(); if (e.key === "Escape") cancelEdit(); }} placeholder="e.g. CH-00123" className="w-full text-[14px] text-gray-800 border border-[#3B694C] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[#3B694C]/20 placeholder:text-gray-300" />
+                      <input autoFocus type="text" value={editValue} onChange={(e) => setEditValue(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") saveField(); if (e.key === "Escape") cancelEdit(); }} placeholder="e.g. CH-00123" className="w-full text-[14px] text-gray-800 border border-brand rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-brand/20 placeholder:text-gray-300" />
                       <EditActions />
                     </div>
                   ) : (
@@ -405,7 +405,7 @@ function CustomerDetailDrawer({ customer, conv, onClose, onSaved, onDeleted }: D
                       <div className="flex gap-2">
                         {(["MALE", "FEMALE"] as const).map((g) => (
                           <button key={g} type="button" onClick={() => setEditGender((prev) => (prev === g ? "" : g))}
-                            className={`flex-1 py-2 rounded-lg border text-[13px] font-semibold transition-colors cursor-pointer ${editGender === g ? "border-[#3B694C] bg-[#EEF6F1] text-[#3B694C]" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}>
+                            className={`flex-1 py-2 rounded-lg border text-[13px] font-semibold transition-colors cursor-pointer ${editGender === g ? "border-brand bg-brand-100 text-brand-fg" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}>
                             {GENDER_LABEL[g]}
                           </button>
                         ))}
@@ -422,7 +422,7 @@ function CustomerDetailDrawer({ customer, conv, onClose, onSaved, onDeleted }: D
                   <FieldLabel label="Date of Birth" field="dateOfBirth" />
                   {editing === "dateOfBirth" ? (
                     <div>
-                      <input autoFocus type="date" value={editValue} onChange={(e) => setEditValue(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") saveField(); if (e.key === "Escape") cancelEdit(); }} className="w-full text-[14px] text-gray-800 border border-[#3B694C] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[#3B694C]/20" />
+                      <input autoFocus type="date" value={editValue} onChange={(e) => setEditValue(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") saveField(); if (e.key === "Escape") cancelEdit(); }} className="w-full text-[14px] text-gray-800 border border-brand rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-brand/20" />
                       <EditActions />
                     </div>
                   ) : (
@@ -439,7 +439,7 @@ function CustomerDetailDrawer({ customer, conv, onClose, onSaved, onDeleted }: D
                   <FieldLabel label="Nationality" field="nationality" />
                   {editing === "nationality" ? (
                     <div>
-                      <input autoFocus type="text" value={editValue} onChange={(e) => setEditValue(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") saveField(); if (e.key === "Escape") cancelEdit(); }} placeholder="e.g. Egyptian" className="w-full text-[14px] text-gray-800 border border-[#3B694C] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[#3B694C]/20 placeholder:text-gray-300" />
+                      <input autoFocus type="text" value={editValue} onChange={(e) => setEditValue(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") saveField(); if (e.key === "Escape") cancelEdit(); }} placeholder="e.g. Egyptian" className="w-full text-[14px] text-gray-800 border border-brand rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-brand/20 placeholder:text-gray-300" />
                       <EditActions />
                     </div>
                   ) : (
@@ -452,7 +452,7 @@ function CustomerDetailDrawer({ customer, conv, onClose, onSaved, onDeleted }: D
                   <FieldLabel label="Join Date" field="joinDate" />
                   {editing === "joinDate" ? (
                     <div>
-                      <input autoFocus type="date" value={editValue} onChange={(e) => setEditValue(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") saveField(); if (e.key === "Escape") cancelEdit(); }} className="w-full text-[14px] text-gray-800 border border-[#3B694C] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[#3B694C]/20" />
+                      <input autoFocus type="date" value={editValue} onChange={(e) => setEditValue(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") saveField(); if (e.key === "Escape") cancelEdit(); }} className="w-full text-[14px] text-gray-800 border border-brand rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-brand/20" />
                       <EditActions />
                     </div>
                   ) : (
@@ -465,11 +465,11 @@ function CustomerDetailDrawer({ customer, conv, onClose, onSaved, onDeleted }: D
                   <FieldLabel label="Departments" field="departments" />
                   {editing === "departments" ? (
                     <div>
-                      <div className="border border-[#3B694C] rounded-lg px-3 py-2 focus-within:ring-2 focus-within:ring-[#3B694C]/20 bg-white">
+                      <div className="border border-brand rounded-lg px-3 py-2 focus-within:ring-2 focus-within:ring-brand/20 bg-white">
                         {editDepts.length > 0 && (
                           <div className="flex flex-wrap gap-1.5 mb-2">
                             {editDepts.map((dep, idx) => (
-                              <span key={dep} className={`inline-flex items-center gap-1 text-[12px] font-medium px-2 py-0.5 rounded-full ${idx === 0 ? "bg-[#3B694C] text-white" : "bg-gray-100 text-gray-600"}`}>
+                              <span key={dep} className={`inline-flex items-center gap-1 text-[12px] font-medium px-2 py-0.5 rounded-full ${idx === 0 ? "bg-brand text-white" : "bg-gray-100 text-gray-600"}`}>
                                 {idx === 0 && <span className="text-[10px] opacity-80">TOP</span>}
                                 {dep}
                                 <button type="button" onClick={() => setEditDepts((p) => p.filter((d) => d !== dep))} className="w-3.5 h-3.5 flex items-center justify-center rounded-full hover:bg-black/10 cursor-pointer leading-none">×</button>
@@ -490,7 +490,7 @@ function CustomerDetailDrawer({ customer, conv, onClose, onSaved, onDeleted }: D
                     c.departments && c.departments.length > 0 ? (
                       <div className="flex flex-wrap gap-1.5">
                         {c.departments.map((dep, idx) => (
-                          <span key={dep} className={`text-[12px] font-medium px-2.5 py-0.5 rounded-full ${idx === 0 ? "bg-[#3B694C] text-white" : "bg-gray-100 text-gray-600"}`}>
+                          <span key={dep} className={`text-[12px] font-medium px-2.5 py-0.5 rounded-full ${idx === 0 ? "bg-brand text-white" : "bg-gray-100 text-gray-600"}`}>
                             {idx === 0 ? `Top: ${dep}` : dep}
                           </span>
                         ))}
@@ -519,7 +519,7 @@ function CustomerDetailDrawer({ customer, conv, onClose, onSaved, onDeleted }: D
                         onChange={(e) => setEditValue(e.target.value)}
                         onKeyDown={(e) => { if (e.key === "Enter") saveField(); if (e.key === "Escape") cancelEdit(); }}
                         placeholder="name@example.com"
-                        className="w-full text-[14px] text-gray-800 border border-[#3B694C] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[#3B694C]/20 placeholder:text-gray-300"
+                        className="w-full text-[14px] text-gray-800 border border-brand rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-brand/20 placeholder:text-gray-300"
                       />
                       <EditActions />
                     </div>
@@ -535,7 +535,7 @@ function CustomerDetailDrawer({ customer, conv, onClose, onSaved, onDeleted }: D
                   <FieldLabel label="Tags" field="tags" />
                   {editing === "tags" ? (
                     <div>
-                      <div className="border border-[#3B694C] rounded-lg px-3 py-2 focus-within:ring-2 focus-within:ring-[#3B694C]/20 bg-white">
+                      <div className="border border-brand rounded-lg px-3 py-2 focus-within:ring-2 focus-within:ring-brand/20 bg-white">
                         {editTags.length > 0 && (
                           <div className="flex flex-wrap gap-1.5 mb-2">
                             {editTags.map((tag) => (
@@ -584,7 +584,7 @@ function CustomerDetailDrawer({ customer, conv, onClose, onSaved, onDeleted }: D
                         onKeyDown={(e) => { if (e.key === "Escape") cancelEdit(); }}
                         rows={4}
                         placeholder="Add notes…"
-                        className="w-full text-[13.5px] text-gray-800 border border-[#3B694C] rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[#3B694C]/20 resize-none placeholder:text-gray-300"
+                        className="w-full text-[13.5px] text-gray-800 border border-brand rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-brand/20 resize-none placeholder:text-gray-300"
                       />
                       <EditActions />
                     </div>
@@ -636,7 +636,7 @@ function CustomerDetailDrawer({ customer, conv, onClose, onSaved, onDeleted }: D
                     <button
                       type="button"
                       onClick={() => { onClose(); router.push(`/chats/${conv.id}`); }}
-                      className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[#3B694C] hover:bg-[#2f5840] text-white text-[13px] font-semibold transition-colors cursor-pointer"
+                      className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-brand hover:bg-[#2f5840] text-white text-[13px] font-semibold transition-colors cursor-pointer"
                     >
                       Open Conversation
                       <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
@@ -825,7 +825,7 @@ function NewCustomerDrawer({ open, onClose, onCreated }: NewDrawerProps) {
     `w-full text-[14px] text-gray-800 border rounded-xl px-4 py-3 outline-none placeholder:text-gray-400 transition-colors ${
       errors[field]
         ? "border-red-400 bg-red-50 focus:ring-2 focus:ring-red-200"
-        : "border-gray-200 bg-white focus:ring-2 focus:ring-[#3B694C]/20 focus:border-[#3B694C]"
+        : "border-gray-200 bg-white focus:ring-2 focus:ring-brand/20 focus:border-brand"
     }`;
 
   return (
@@ -901,7 +901,7 @@ function NewCustomerDrawer({ open, onClose, onCreated }: NewDrawerProps) {
                     onClick={() => setGender((prev) => (prev === g ? "" : g))}
                     className={`flex-1 py-3 rounded-xl border text-[13px] font-semibold transition-colors cursor-pointer ${
                       gender === g
-                        ? "border-[#3B694C] bg-[#EEF6F1] text-[#3B694C]"
+                        ? "border-brand bg-brand-100 text-brand-fg"
                         : "border-gray-200 text-gray-600 hover:bg-gray-50"
                     }`}
                   >
@@ -934,11 +934,11 @@ function NewCustomerDrawer({ open, onClose, onCreated }: NewDrawerProps) {
           {/* Departments (ordered — first = top department) */}
           <div className="space-y-1.5">
             <label className="text-[13px] font-medium text-gray-700">Departments <span className="text-gray-400 font-normal">— first is the top department</span></label>
-            <div className="border border-gray-200 rounded-xl px-3 py-2.5 bg-white focus-within:ring-2 focus-within:ring-[#3B694C]/20 focus-within:border-[#3B694C] transition-colors">
+            <div className="border border-gray-200 rounded-xl px-3 py-2.5 bg-white focus-within:ring-2 focus-within:ring-brand/20 focus-within:border-brand transition-colors">
               {departments.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mb-2">
                   {departments.map((dep, idx) => (
-                    <span key={dep} className={`inline-flex items-center gap-1 text-[12px] font-medium px-2 py-0.5 rounded-full ${idx === 0 ? "bg-[#3B694C] text-white" : "bg-gray-100 text-gray-600"}`}>
+                    <span key={dep} className={`inline-flex items-center gap-1 text-[12px] font-medium px-2 py-0.5 rounded-full ${idx === 0 ? "bg-brand text-white" : "bg-gray-100 text-gray-600"}`}>
                       {idx === 0 && <span className="text-[10px] opacity-80">TOP</span>}
                       {dep}
                       <button type="button" onClick={() => setDepartments((p) => p.filter((d) => d !== dep))} className="w-3.5 h-3.5 flex items-center justify-center rounded-full hover:bg-black/10 transition-colors cursor-pointer leading-none">×</button>
@@ -968,7 +968,7 @@ function NewCustomerDrawer({ open, onClose, onCreated }: NewDrawerProps) {
           {/* Tags */}
           <div className="space-y-1.5">
             <label className="text-[13px] font-medium text-gray-700">Tags</label>
-            <div className="border border-gray-200 rounded-xl px-3 py-2.5 bg-white focus-within:ring-2 focus-within:ring-[#3B694C]/20 focus-within:border-[#3B694C] transition-colors">
+            <div className="border border-gray-200 rounded-xl px-3 py-2.5 bg-white focus-within:ring-2 focus-within:ring-brand/20 focus-within:border-brand transition-colors">
               {tags.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mb-2">
                   {tags.map((tag) => (
@@ -1016,7 +1016,7 @@ function NewCustomerDrawer({ open, onClose, onCreated }: NewDrawerProps) {
 
           <div className="flex gap-3 pt-1">
             <button type="button" onClick={onClose} className="flex-1 py-3 rounded-xl border border-gray-200 text-[13px] font-semibold text-gray-600 hover:bg-gray-50 transition-colors cursor-pointer">Cancel</button>
-            <button type="submit" disabled={submitting} className="flex-1 py-3 rounded-xl bg-[#3B694C] hover:bg-[#2f5840] disabled:opacity-60 disabled:cursor-not-allowed text-[13px] font-semibold text-white transition-colors cursor-pointer">{submitting ? "Creating…" : "Create Contact"}</button>
+            <button type="submit" disabled={submitting} className="flex-1 py-3 rounded-xl bg-brand hover:bg-[#2f5840] disabled:opacity-60 disabled:cursor-not-allowed text-[13px] font-semibold text-white transition-colors cursor-pointer">{submitting ? "Creating…" : "Create Contact"}</button>
           </div>
         </form>
       </div>
@@ -1119,7 +1119,7 @@ function SendTemplateDrawer({ customer, onClose, onSent }: SendTemplateDrawerPro
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb]:rounded-full">
           {loadingTemplates ? (
             <div className="flex items-center justify-center py-12">
-              <svg className="w-5 h-5 animate-spin text-[#3B694C]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+              <svg className="w-5 h-5 animate-spin text-brand-fg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
             </div>
           ) : templates.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-12 text-center">
@@ -1137,7 +1137,7 @@ function SendTemplateDrawer({ customer, onClose, onSent }: SendTemplateDrawerPro
                 onClick={() => setSelected(t.id)}
                 className={`w-full text-left rounded-xl border px-4 py-3.5 transition-colors cursor-pointer ${
                   selected === t.id
-                    ? "border-[#3B694C] bg-[#EEF6F1] ring-1 ring-[#3B694C]/20"
+                    ? "border-brand bg-brand-100 ring-1 ring-brand/20"
                     : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
                 }`}
               >
@@ -1168,7 +1168,7 @@ function SendTemplateDrawer({ customer, onClose, onSent }: SendTemplateDrawerPro
               {selectedTemplate.buttons && selectedTemplate.buttons.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 pt-1 border-t border-gray-100">
                   {selectedTemplate.buttons.map((btn) => (
-                    <span key={btn.id} className="text-[11px] font-semibold text-[#3B694C] border border-[#3B694C]/30 rounded-lg px-2 py-0.5">{btn.title}</span>
+                    <span key={btn.id} className="text-[11px] font-semibold text-brand-fg border border-brand/30 rounded-lg px-2 py-0.5">{btn.title}</span>
                   ))}
                 </div>
               )}
@@ -1191,7 +1191,7 @@ function SendTemplateDrawer({ customer, onClose, onSent }: SendTemplateDrawerPro
               type="button"
               onClick={handleSend}
               disabled={selected == null || sending}
-              className="flex-1 py-2.5 rounded-xl bg-[#3B694C] hover:bg-[#2f5840] disabled:opacity-50 disabled:cursor-not-allowed text-[13px] font-semibold text-white transition-colors cursor-pointer flex items-center justify-center gap-2"
+              className="flex-1 py-2.5 rounded-xl bg-brand hover:bg-[#2f5840] disabled:opacity-50 disabled:cursor-not-allowed text-[13px] font-semibold text-white transition-colors cursor-pointer flex items-center justify-center gap-2"
             >
               {sending ? (
                 <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
@@ -1636,7 +1636,7 @@ export default function CRMPage() {
           <button
             type="button"
             onClick={() => setShowNew(true)}
-            className="flex items-center gap-2 bg-[#3B694C] hover:bg-[#2f5840] active:bg-[#264a33] text-white text-[13px] font-semibold px-4 py-2 rounded-xl transition-colors cursor-pointer"
+            className="flex items-center gap-2 bg-brand hover:bg-[#2f5840] active:bg-[#264a33] text-white text-[13px] font-semibold px-4 py-2 rounded-xl transition-colors cursor-pointer"
           >
             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
             New Contact
@@ -1647,7 +1647,7 @@ export default function CRMPage() {
       {/* Search + filter */}
       <div className="shrink-0 px-6 py-4">
         <div className="flex items-center gap-2.5 flex-wrap">
-          <div className="flex items-center gap-2.5 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 w-full max-w-sm focus-within:ring-2 focus-within:ring-[#3B694C]/20 focus-within:border-[#3B694C] transition-colors">
+          <div className="flex items-center gap-2.5 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 w-full max-w-sm focus-within:ring-2 focus-within:ring-brand/20 focus-within:border-brand transition-colors">
           <svg className="w-4 h-4 text-gray-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
           </svg>
@@ -1670,14 +1670,14 @@ export default function CRMPage() {
             onClick={() => setShowFilters((v) => !v)}
             className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl border text-[13px] font-semibold transition-colors cursor-pointer ${
               activeRuleCount > 0 || showFilters
-                ? "border-[#3B694C] bg-[#EEF6F1] text-[#3B694C]"
+                ? "border-brand bg-brand-100 text-brand-fg"
                 : "border-gray-200 text-gray-600 hover:bg-gray-50"
             }`}
           >
             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" /></svg>
             Filter
             {activeRuleCount > 0 && (
-              <span className="bg-[#3B694C] text-white text-[10px] font-bold rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center">
+              <span className="bg-brand text-white text-[10px] font-bold rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center">
                 {activeRuleCount}
               </span>
             )}
@@ -1689,7 +1689,7 @@ export default function CRMPage() {
               <button
                 type="button"
                 onClick={() => setShowSaveSegment(true)}
-                className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-gray-200 text-[13px] font-semibold text-gray-600 hover:bg-[#EEF6F1] hover:border-[#3B694C] hover:text-[#3B694C] transition-colors cursor-pointer"
+                className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-gray-200 text-[13px] font-semibold text-gray-600 hover:bg-brand-100 hover:border-brand hover:text-brand-fg transition-colors cursor-pointer"
                 title="Turn this filter into a reusable segment"
               >
                 Save as segment
@@ -1735,7 +1735,7 @@ export default function CRMPage() {
                   ref={(el) => { if (el) el.indeterminate = !selectAllMatching && someLoadedSelected; }}
                   onChange={toggleSelectAll}
                   disabled={loading || selectingAll || customers.length === 0}
-                  className="w-4 h-4 rounded border-gray-300 text-[#3B694C] accent-[#3B694C] cursor-pointer align-middle"
+                  className="w-4 h-4 rounded border-gray-300 text-brand-fg accent-brand cursor-pointer align-middle"
                 />
               </th>
               {["Patient", "Gender", "Age", "Nationality", "Top Dept", "Join Date", "Email", "Activity", ""].map((h, hi) => (
@@ -1761,7 +1761,7 @@ export default function CRMPage() {
                     Selected the first <span className="font-semibold">{matchCap.reachable.toLocaleString()}</span> of{" "}
                     <span className="font-semibold">{matchCap.total.toLocaleString()}</span> matching — the maximum at once.
                     Actions apply to these; narrow your search to reach the rest.
-                    <button type="button" onClick={clearSelection} className="ml-2 font-semibold text-[#3B694C] hover:underline cursor-pointer">
+                    <button type="button" onClick={clearSelection} className="ml-2 font-semibold text-brand-fg hover:underline cursor-pointer">
                       Clear
                     </button>
                   </span>
@@ -1786,7 +1786,7 @@ export default function CRMPage() {
                       {search ? "Try a different search term." : "Add your first contact to get started."}
                     </p>
                     {!search && (
-                      <button type="button" onClick={() => setShowNew(true)} className="mt-1 flex items-center gap-1.5 bg-[#3B694C] hover:bg-[#2f5840] text-white text-[13px] font-semibold px-4 py-2 rounded-xl transition-colors cursor-pointer">
+                      <button type="button" onClick={() => setShowNew(true)} className="mt-1 flex items-center gap-1.5 bg-brand hover:bg-[#2f5840] text-white text-[13px] font-semibold px-4 py-2 rounded-xl transition-colors cursor-pointer">
                         <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
                         New Contact
                       </button>
@@ -1807,7 +1807,7 @@ export default function CRMPage() {
                   <tr
                     key={id != null ? String(id) : i}
                     onClick={() => setDetailCustomer(customer)}
-                    className={`border-b border-gray-100 hover:bg-[#EEF6F1] active:bg-[#DCF2E3] transition-colors duration-100 group cursor-pointer select-none ${isSelected(customer) ? "bg-[#EEF6F1]" : ""}`}
+                    className={`border-b border-gray-100 hover:bg-brand-100 active:bg-brand-200 transition-colors duration-100 group cursor-pointer select-none ${isSelected(customer) ? "bg-brand-100" : ""}`}
                   >
                     {/* Select checkbox */}
                     <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
@@ -1816,14 +1816,14 @@ export default function CRMPage() {
                         aria-label={`Select ${customer.name || customer.phone}`}
                         checked={isSelected(customer)}
                         onChange={() => toggleCustomer(customer)}
-                        className="w-4 h-4 rounded border-gray-300 text-[#3B694C] accent-[#3B694C] cursor-pointer align-middle"
+                        className="w-4 h-4 rounded border-gray-300 text-brand-fg accent-brand cursor-pointer align-middle"
                       />
                     </td>
 
                     {/* Patient: name + mobile + chart # */}
                     <td className="px-4 py-3.5">
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-[#DCF2E3] flex items-center justify-center text-[#3B694C] font-semibold text-[12px] shrink-0">
+                        <div className="w-9 h-9 rounded-full bg-brand-200 flex items-center justify-center text-brand-fg font-semibold text-[12px] shrink-0">
                           {getInitials(customer)}
                         </div>
                         <div className="min-w-0">
@@ -1869,7 +1869,7 @@ export default function CRMPage() {
                     <td className="px-4 py-3.5">
                       {topDept ? (
                         <div className="flex items-center gap-1.5">
-                          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-[#3B694C]/10 text-[#3B694C]">{topDept}</span>
+                          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-brand/10 text-brand-fg">{topDept}</span>
                           {extraDepts > 0 && (
                             <span className="text-[11px] font-medium text-gray-400">+{extraDepts}</span>
                           )}
@@ -1919,7 +1919,7 @@ export default function CRMPage() {
                           canOpenChat && <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); router.push(`/chats/${conv.id}`); }}
-                            className="flex items-center gap-1.5 text-[12px] font-semibold text-[#3B694C] bg-[#3B694C]/10 hover:bg-[#3B694C]/20 px-3 py-1.5 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
+                            className="flex items-center gap-1.5 text-[12px] font-semibold text-brand-fg bg-brand/10 hover:bg-brand/20 px-3 py-1.5 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
                           >
                             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
                             Open Chat
@@ -1967,7 +1967,7 @@ export default function CRMPage() {
           type="button"
           onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" })}
           aria-label="Back to top"
-          className="fixed bottom-6 right-6 z-[55] w-11 h-11 flex items-center justify-center rounded-full bg-white border border-gray-200 shadow-lg text-gray-500 hover:text-[#3B694C] hover:border-[#3B694C]/40 transition-colors cursor-pointer"
+          className="fixed bottom-6 right-6 z-[55] w-11 h-11 flex items-center justify-center rounded-full bg-white border border-gray-200 shadow-lg text-gray-500 hover:text-brand-fg hover:border-brand/40 transition-colors cursor-pointer"
         >
           <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
         </button>
@@ -1992,7 +1992,7 @@ export default function CRMPage() {
           <button
             type="button"
             onClick={createCampaignFromSelected}
-            className="flex items-center gap-1.5 text-[13px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5840] px-3.5 py-2 rounded-xl transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 text-[13px] font-semibold text-white bg-brand hover:bg-[#2f5840] px-3.5 py-2 rounded-xl transition-colors cursor-pointer"
           >
             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2 11 13M22 2 15 22l-4-9-9-4 20-7z"/></svg>
             Create campaign
@@ -2041,7 +2041,7 @@ export default function CRMPage() {
                 placeholder="e.g. Lapsed dermatology patients"
                 autoFocus
                 onKeyDown={(e) => { if (e.key === "Enter") saveFilterAsSegment(); }}
-                className="w-full text-[13px] rounded-xl border border-gray-200 px-3 py-2.5 outline-none focus:ring-2 focus:ring-[#3B694C]/20 focus:border-[#3B694C] transition-colors"
+                className="w-full text-[13px] rounded-xl border border-gray-200 px-3 py-2.5 outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand transition-colors"
               />
             </div>
             {saveSegmentError && <p className="text-[12px] text-red-500">{saveSegmentError}</p>}
@@ -2057,7 +2057,7 @@ export default function CRMPage() {
                 type="button"
                 onClick={saveFilterAsSegment}
                 disabled={!segmentName.trim() || savingSegment}
-                className="flex-1 py-2.5 rounded-xl bg-[#3B694C] text-white text-[13px] font-semibold hover:bg-[#2f5840] disabled:opacity-50 transition-colors cursor-pointer"
+                className="flex-1 py-2.5 rounded-xl bg-brand text-white text-[13px] font-semibold hover:bg-[#2f5840] disabled:opacity-50 transition-colors cursor-pointer"
               >
                 {savingSegment ? "Saving…" : "Save segment"}
               </button>

@@ -17,7 +17,7 @@ import type { SegmentDefinition, SegmentPreview } from "@/types";
 const EMPTY: SegmentDefinition = { match: "ALL", rules: [] };
 
 const inputCls =
-  "w-full text-[13px] rounded-xl border border-gray-200 px-3 py-2.5 outline-none focus:ring-2 focus:ring-[#3B694C]/20 focus:border-[#3B694C] transition-colors";
+  "w-full text-[13px] rounded-xl border border-gray-200 px-3 py-2.5 outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand transition-colors";
 
 /**
  * The create and edit screens are the same screen — the only difference is
@@ -95,7 +95,7 @@ export default function SegmentEditor({ segmentId }: { segmentId?: number }) {
   if (access === "checking" || loading) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <svg className="w-6 h-6 animate-spin text-[#3B694C]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
+        <svg className="w-6 h-6 animate-spin text-brand-fg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
       </div>
     );
   }
@@ -122,8 +122,8 @@ export default function SegmentEditor({ segmentId }: { segmentId?: number }) {
         >
           <ArrowLeft className="w-4.5 h-4.5" />
         </button>
-        <div className="w-9 h-9 rounded-xl bg-[#EEF6F1] flex items-center justify-center shrink-0">
-          <Filter className="w-4 h-4 text-[#3B694C]" />
+        <div className="w-9 h-9 rounded-xl bg-brand-100 flex items-center justify-center shrink-0">
+          <Filter className="w-4 h-4 text-brand-fg" />
         </div>
         <div className="min-w-0">
           <h1 className="text-[20px] font-bold text-gray-900 tracking-tight truncate">
@@ -196,7 +196,7 @@ export default function SegmentEditor({ segmentId }: { segmentId?: number }) {
             onClick={() => handleSave(true)}
             disabled={!canSave || !preview?.reachable}
             title={!preview?.reachable ? "Nobody matches these rules yet" : undefined}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 text-[13px] font-semibold text-gray-600 hover:bg-[#EEF6F1] hover:border-[#3B694C] hover:text-[#3B694C] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:border-gray-200 disabled:hover:text-gray-600 transition-colors cursor-pointer"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 text-[13px] font-semibold text-gray-600 hover:bg-brand-100 hover:border-brand hover:text-brand-fg disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:border-gray-200 disabled:hover:text-gray-600 transition-colors cursor-pointer"
           >
             <Megaphone className="w-4 h-4" />
             Save &amp; create campaign
@@ -205,7 +205,7 @@ export default function SegmentEditor({ segmentId }: { segmentId?: number }) {
             type="button"
             onClick={() => handleSave(false)}
             disabled={!canSave}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#3B694C] text-white text-[13px] font-semibold hover:bg-[#325a41] disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand text-white text-[13px] font-semibold hover:bg-[#325a41] disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
           >
             <Save className="w-4 h-4" />
             {saving ? "Saving…" : isEdit ? "Save changes" : "Create segment"}

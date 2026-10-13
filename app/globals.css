@@ -1,6 +1,32 @@
 @import "tailwindcss";
 
+/* `dark:` utilities follow the `dark` class ThemeProvider puts on <html>. */
 @custom-variant dark (&:where(.dark, .dark *));
+
+/* ── App colour tokens ───────────────────────────────────────────────────────
+   The values here are the light theme, and are exactly the hex codes the
+   classes used to hard-code (bg-[#3B694C] is now bg-brand, and so on), so light
+   mode is unchanged. The `.dark` block further down re-points them. */
+@theme {
+  /* Brand green. `brand` is for fills / borders / rings (white text sits on
+     it); `brand-fg` is brand-coloured TEXT and icons, which lighten in dark. */
+  --color-brand: #3B694C;
+  --color-brand-fg: #3B694C;
+  --color-brand-strong: #2f5840;
+  /* Brand tints: selected rows, active nav, soft chips. */
+  --color-brand-50: #F5FAF7;
+  --color-brand-100: #EEF6F1;
+  --color-brand-200: #DCF2E3;
+  /* Page backgrounds. */
+  --color-canvas: #f9f9f8;
+  --color-canvas-warm: #f5f4f0;
+  /* Supervision live wall (components/supervision/live). `wall-ink` is its
+     text / hairline colour, used with opacity (text-wall-ink/50 …). */
+  --color-wall: #eef2f0;
+  --color-wall-panel: #ffffff;
+  --color-wall-raised: #ffffff;
+  --color-wall-ink: #0f1d16;
+}
 
 @layer base {
   :root {
@@ -24,55 +50,303 @@
     --input: 240 5.9% 90%;
     --ring: 240 5.9% 10%;
     --radius: 0.5rem;
+
+    /* React Flow canvas (components/flows/FlowBuilder.tsx). */
+    --flow-grid: #e5e7eb;
+    --flow-edge: #9CA3AF;
+    /* Glow behind the live wall's top-right corner. */
+    --wall-glow: rgba(59, 105, 76, 0.10);
   }
 
-  .dark {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 240 10% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 240 5.9% 10%;
-    --secondary: 240 3.7% 15.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 240 4.9% 83.9%;
+  /* ════════════════════════════════════════════════════════════════════════
+     DARK THEME
+     Tailwind 4 utilities read the palette through variables (bg-white is
+     `background-color: var(--color-white)`), so re-pointing the variables
+     here re-colours every bg-white / text-gray-900 / border-gray-100 /
+     bg-red-50 in the app without touching components:
+       · white             → the card surface
+       · gray / slate      → inverted: 50 is a faint fill, 900 near-white text
+       · coloured 50–300   → dark tinted surfaces and borders
+       · coloured 600–950  → the light end of the scale, so text stays readable
+       · 400 / 500, black  → unchanged (dots, badges, overlays read fine)
+     Screen only: printing always uses the light palette.
+     ════════════════════════════════════════════════════════════════════════ */
+  @media screen {
+    .dark {
+      --surface: #161a18;
+
+      --color-white: var(--surface);
+
+      --color-gray-50: #1c211e;
+      --color-gray-100: #232926;
+      --color-gray-200: #2e3531;
+      --color-gray-300: #414944;
+      --color-gray-400: #7b847f;
+      --color-gray-500: #9aa29d;
+      --color-gray-600: #b2b9b5;
+      --color-gray-700: #c8cecb;
+      --color-gray-800: #dce1de;
+      --color-gray-900: #ecefed;
+      --color-gray-950: #f6f8f7;
+
+      --color-slate-50: #1c2024;
+      --color-slate-100: #23282d;
+      --color-slate-200: #2e343a;
+      --color-slate-300: #414950;
+      --color-slate-400: #7b8590;
+      --color-slate-500: #9aa3ad;
+      --color-slate-600: #b2bac3;
+      --color-slate-700: #c8ced6;
+      --color-slate-800: #dce1e7;
+      --color-slate-900: #eceff3;
+      --color-slate-950: #f6f8fa;
+
+      /* Coloured families: 50–300 are the 500 mixed into the surface;
+         600–950 take the original 400–50 values. */
+      /* red */
+      --color-red-50: color-mix(in oklab, oklch(63.7% 0.237 25.331) 13%, var(--surface));
+      --color-red-100: color-mix(in oklab, oklch(63.7% 0.237 25.331) 19%, var(--surface));
+      --color-red-200: color-mix(in oklab, oklch(63.7% 0.237 25.331) 30%, var(--surface));
+      --color-red-300: color-mix(in oklab, oklch(63.7% 0.237 25.331) 44%, var(--surface));
+      --color-red-600: oklch(70.4% 0.191 22.216);
+      --color-red-700: oklch(80.8% 0.114 19.571);
+      --color-red-800: oklch(88.5% 0.062 18.334);
+      --color-red-900: oklch(93.6% 0.032 17.717);
+      --color-red-950: oklch(97.1% 0.013 17.38);
+      /* orange */
+      --color-orange-50: color-mix(in oklab, oklch(70.5% 0.213 47.604) 13%, var(--surface));
+      --color-orange-100: color-mix(in oklab, oklch(70.5% 0.213 47.604) 19%, var(--surface));
+      --color-orange-200: color-mix(in oklab, oklch(70.5% 0.213 47.604) 30%, var(--surface));
+      --color-orange-300: color-mix(in oklab, oklch(70.5% 0.213 47.604) 44%, var(--surface));
+      --color-orange-600: oklch(75% 0.183 55.934);
+      --color-orange-700: oklch(83.7% 0.128 66.29);
+      --color-orange-800: oklch(90.1% 0.076 70.697);
+      --color-orange-900: oklch(95.4% 0.038 75.164);
+      --color-orange-950: oklch(98% 0.016 73.684);
+      /* amber */
+      --color-amber-50: color-mix(in oklab, oklch(76.9% 0.188 70.08) 13%, var(--surface));
+      --color-amber-100: color-mix(in oklab, oklch(76.9% 0.188 70.08) 19%, var(--surface));
+      --color-amber-200: color-mix(in oklab, oklch(76.9% 0.188 70.08) 30%, var(--surface));
+      --color-amber-300: color-mix(in oklab, oklch(76.9% 0.188 70.08) 44%, var(--surface));
+      --color-amber-600: oklch(82.8% 0.189 84.429);
+      --color-amber-700: oklch(87.9% 0.169 91.605);
+      --color-amber-800: oklch(92.4% 0.12 95.746);
+      --color-amber-900: oklch(96.2% 0.059 95.617);
+      --color-amber-950: oklch(98.7% 0.022 95.277);
+      /* yellow */
+      --color-yellow-50: color-mix(in oklab, oklch(79.5% 0.184 86.047) 13%, var(--surface));
+      --color-yellow-100: color-mix(in oklab, oklch(79.5% 0.184 86.047) 19%, var(--surface));
+      --color-yellow-200: color-mix(in oklab, oklch(79.5% 0.184 86.047) 30%, var(--surface));
+      --color-yellow-300: color-mix(in oklab, oklch(79.5% 0.184 86.047) 44%, var(--surface));
+      --color-yellow-600: oklch(85.2% 0.199 91.936);
+      --color-yellow-700: oklch(90.5% 0.182 98.111);
+      --color-yellow-800: oklch(94.5% 0.129 101.54);
+      --color-yellow-900: oklch(97.3% 0.071 103.193);
+      --color-yellow-950: oklch(98.7% 0.026 102.212);
+      /* green */
+      --color-green-50: color-mix(in oklab, oklch(72.3% 0.219 149.579) 13%, var(--surface));
+      --color-green-100: color-mix(in oklab, oklch(72.3% 0.219 149.579) 19%, var(--surface));
+      --color-green-200: color-mix(in oklab, oklch(72.3% 0.219 149.579) 30%, var(--surface));
+      --color-green-300: color-mix(in oklab, oklch(72.3% 0.219 149.579) 44%, var(--surface));
+      --color-green-600: oklch(79.2% 0.209 151.711);
+      --color-green-700: oklch(87.1% 0.15 154.449);
+      --color-green-800: oklch(92.5% 0.084 155.995);
+      --color-green-900: oklch(96.2% 0.044 156.743);
+      --color-green-950: oklch(98.2% 0.018 155.826);
+      /* emerald */
+      --color-emerald-50: color-mix(in oklab, oklch(69.6% 0.17 162.48) 13%, var(--surface));
+      --color-emerald-100: color-mix(in oklab, oklch(69.6% 0.17 162.48) 19%, var(--surface));
+      --color-emerald-200: color-mix(in oklab, oklch(69.6% 0.17 162.48) 30%, var(--surface));
+      --color-emerald-300: color-mix(in oklab, oklch(69.6% 0.17 162.48) 44%, var(--surface));
+      --color-emerald-600: oklch(76.5% 0.177 163.223);
+      --color-emerald-700: oklch(84.5% 0.143 164.978);
+      --color-emerald-800: oklch(90.5% 0.093 164.15);
+      --color-emerald-900: oklch(95% 0.052 163.051);
+      --color-emerald-950: oklch(97.9% 0.021 166.113);
+      /* teal */
+      --color-teal-50: color-mix(in oklab, oklch(70.4% 0.14 182.503) 13%, var(--surface));
+      --color-teal-100: color-mix(in oklab, oklch(70.4% 0.14 182.503) 19%, var(--surface));
+      --color-teal-200: color-mix(in oklab, oklch(70.4% 0.14 182.503) 30%, var(--surface));
+      --color-teal-300: color-mix(in oklab, oklch(70.4% 0.14 182.503) 44%, var(--surface));
+      --color-teal-600: oklch(77.7% 0.152 181.912);
+      --color-teal-700: oklch(85.5% 0.138 181.071);
+      --color-teal-800: oklch(91% 0.096 180.426);
+      --color-teal-900: oklch(95.3% 0.051 180.801);
+      --color-teal-950: oklch(98.4% 0.014 180.72);
+      /* sky */
+      --color-sky-50: color-mix(in oklab, oklch(68.5% 0.169 237.323) 13%, var(--surface));
+      --color-sky-100: color-mix(in oklab, oklch(68.5% 0.169 237.323) 19%, var(--surface));
+      --color-sky-200: color-mix(in oklab, oklch(68.5% 0.169 237.323) 30%, var(--surface));
+      --color-sky-300: color-mix(in oklab, oklch(68.5% 0.169 237.323) 44%, var(--surface));
+      --color-sky-600: oklch(74.6% 0.16 232.661);
+      --color-sky-700: oklch(82.8% 0.111 230.318);
+      --color-sky-800: oklch(90.1% 0.058 230.902);
+      --color-sky-900: oklch(95.1% 0.026 236.824);
+      --color-sky-950: oklch(97.7% 0.013 236.62);
+      /* blue */
+      --color-blue-50: color-mix(in oklab, oklch(62.3% 0.214 259.815) 13%, var(--surface));
+      --color-blue-100: color-mix(in oklab, oklch(62.3% 0.214 259.815) 19%, var(--surface));
+      --color-blue-200: color-mix(in oklab, oklch(62.3% 0.214 259.815) 30%, var(--surface));
+      --color-blue-300: color-mix(in oklab, oklch(62.3% 0.214 259.815) 44%, var(--surface));
+      --color-blue-600: oklch(70.7% 0.165 254.624);
+      --color-blue-700: oklch(80.9% 0.105 251.813);
+      --color-blue-800: oklch(88.2% 0.059 254.128);
+      --color-blue-900: oklch(93.2% 0.032 255.585);
+      --color-blue-950: oklch(97% 0.014 254.604);
+      /* indigo */
+      --color-indigo-50: color-mix(in oklab, oklch(58.5% 0.233 277.117) 13%, var(--surface));
+      --color-indigo-100: color-mix(in oklab, oklch(58.5% 0.233 277.117) 19%, var(--surface));
+      --color-indigo-200: color-mix(in oklab, oklch(58.5% 0.233 277.117) 30%, var(--surface));
+      --color-indigo-300: color-mix(in oklab, oklch(58.5% 0.233 277.117) 44%, var(--surface));
+      --color-indigo-600: oklch(67.3% 0.182 276.935);
+      --color-indigo-700: oklch(78.5% 0.115 274.713);
+      --color-indigo-800: oklch(87% 0.065 274.039);
+      --color-indigo-900: oklch(93% 0.034 272.788);
+      --color-indigo-950: oklch(96.2% 0.018 272.314);
+      /* violet */
+      --color-violet-50: color-mix(in oklab, oklch(60.6% 0.25 292.717) 13%, var(--surface));
+      --color-violet-100: color-mix(in oklab, oklch(60.6% 0.25 292.717) 19%, var(--surface));
+      --color-violet-200: color-mix(in oklab, oklch(60.6% 0.25 292.717) 30%, var(--surface));
+      --color-violet-300: color-mix(in oklab, oklch(60.6% 0.25 292.717) 44%, var(--surface));
+      --color-violet-600: oklch(70.2% 0.183 293.541);
+      --color-violet-700: oklch(81.1% 0.111 293.571);
+      --color-violet-800: oklch(89.4% 0.057 293.283);
+      --color-violet-900: oklch(94.3% 0.029 294.588);
+      --color-violet-950: oklch(96.9% 0.016 293.756);
+      /* purple */
+      --color-purple-50: color-mix(in oklab, oklch(62.7% 0.265 303.9) 13%, var(--surface));
+      --color-purple-100: color-mix(in oklab, oklch(62.7% 0.265 303.9) 19%, var(--surface));
+      --color-purple-200: color-mix(in oklab, oklch(62.7% 0.265 303.9) 30%, var(--surface));
+      --color-purple-300: color-mix(in oklab, oklch(62.7% 0.265 303.9) 44%, var(--surface));
+      --color-purple-600: oklch(71.4% 0.203 305.504);
+      --color-purple-700: oklch(82.7% 0.119 306.383);
+      --color-purple-800: oklch(90.2% 0.063 306.703);
+      --color-purple-900: oklch(94.6% 0.033 307.174);
+      --color-purple-950: oklch(97.7% 0.014 308.299);
+      /* rose */
+      --color-rose-50: color-mix(in oklab, oklch(64.5% 0.246 16.439) 13%, var(--surface));
+      --color-rose-100: color-mix(in oklab, oklch(64.5% 0.246 16.439) 19%, var(--surface));
+      --color-rose-200: color-mix(in oklab, oklch(64.5% 0.246 16.439) 30%, var(--surface));
+      --color-rose-300: color-mix(in oklab, oklch(64.5% 0.246 16.439) 44%, var(--surface));
+      --color-rose-600: oklch(71.2% 0.194 13.428);
+      --color-rose-700: oklch(81% 0.117 11.638);
+      --color-rose-800: oklch(89.2% 0.058 10.001);
+      --color-rose-900: oklch(94.1% 0.03 12.58);
+      --color-rose-950: oklch(96.9% 0.015 12.422);
+
+      /* App tokens */
+      --color-brand: #427a58;
+      --color-brand-fg: #7cc49a;
+      --color-brand-strong: #a3d9b8;
+      --color-brand-50: #18221c;
+      --color-brand-100: #1b2b22;
+      --color-brand-200: #22392b;
+      --color-canvas: #0f1211;
+      --color-canvas-warm: #0f1211;
+      --color-wall: #0a110d;
+      --color-wall-panel: #111b16;
+      --color-wall-raised: #17241d;
+      --color-wall-ink: #ffffff;
+      --wall-glow: rgba(59, 105, 76, 0.22);
+      --flow-grid: #2a302d;
+      --flow-edge: #5f6964;
+
+      /* shadcn tokens (components/ui) — the same surfaces as above */
+      --background: 150 8% 9.4%;
+      --foreground: 150 8% 93%;
+      --card: 150 8% 9.4%;
+      --card-foreground: 150 8% 93%;
+      --popover: 150 8% 9.4%;
+      --popover-foreground: 150 8% 93%;
+      --primary: 150 8% 93%;
+      --primary-foreground: 150 8% 9.4%;
+      --secondary: 150 8% 15%;
+      --secondary-foreground: 150 8% 93%;
+      --muted: 150 8% 15%;
+      --muted-foreground: 145 4% 62%;
+      --accent: 150 8% 15%;
+      --accent-foreground: 150 8% 93%;
+      --destructive: 0 62.8% 45%;
+      --destructive-foreground: 0 0% 98%;
+      --border: 146 7% 19%;
+      --input: 146 7% 19%;
+      --ring: 145 30% 55%;
+    }
+
+    .dark body {
+      background-color: var(--color-canvas);
+      color: var(--color-gray-900);
+    }
+
+    /* `text-white` means "on a coloured / dark fill" (brand buttons, red
+       badges, media overlays, the login panel). Those must stay WHITE, so the
+       real white is put back on them — and on their children, which covers
+       the bg-white/20 chips and border-white/10 hairlines inside such fills. */
+    .dark :is(
+      .text-white,
+      .text-white\/20, .text-white\/25, .text-white\/30, .text-white\/35, .text-white\/40,
+      .text-white\/45, .text-white\/50, .text-white\/55, .text-white\/60, .text-white\/65,
+      .text-white\/70, .text-white\/75, .text-white\/80, .text-white\/85, .text-white\/90,
+      .hover\:text-white:hover,
+      .group:hover .group-hover\:text-white
+    ) {
+      --color-white: #fff;
+    }
+
+    .dark ::selection {
+      background-color: rgba(124, 196, 154, 0.35);
+    }
   }
 }
 
-@theme inline {
-  --color-background: hsl(var(--background));
-  --color-foreground: hsl(var(--foreground));
-  --color-card: hsl(var(--card));
-  --color-card-foreground: hsl(var(--card-foreground));
-  --color-popover: hsl(var(--popover));
-  --color-popover-foreground: hsl(var(--popover-foreground));
-  --color-primary: hsl(var(--primary));
-  --color-primary-foreground: hsl(var(--primary-foreground));
-  --color-secondary: hsl(var(--secondary));
-  --color-secondary-foreground: hsl(var(--secondary-foreground));
-  --color-muted: hsl(var(--muted));
-  --color-muted-foreground: hsl(var(--muted-foreground));
-  --color-accent: hsl(var(--accent));
-  --color-accent-foreground: hsl(var(--accent-foreground));
-  --color-destructive: hsl(var(--destructive));
-  --color-destructive-foreground: hsl(var(--destructive-foreground));
-  --color-border: hsl(var(--border));
-  --color-input: hsl(var(--input));
-  --color-ring: hsl(var(--ring));
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+@layer utilities {
+  /* ── Dark versions of the remaining one-off hex classes ──────────────────
+     (The frequent ones became the tokens above.) :where() keeps specificity
+     at one class, so hover: / focus: variants on the same element still win. */
+  @media screen {
+    /* Chat canvas, bubbles and their borders (app/(dashboard)/chats/[id]),
+       and the WhatsApp-style flow simulator. */
+    :where(.dark) .bg-\[\#E7ECE9\],
+    :where(.dark) .bg-\[\#ECE5DD\] { background-color: #0c100e; }
+    :where(.dark) .bg-\[\#f0f2f5\] { background-color: #0f1211; }
+    :where(.dark) .bg-\[\#D3EBDC\],
+    :where(.dark) .bg-\[\#DCF8C6\] { background-color: #1d3a29; }
+    :where(.dark) .border-\[\#B5D8C2\] { border-color: #2b5039; }
+    :where(.dark) .bg-\[\#E1E8F0\],
+    :where(.dark) .bg-\[\#EEF2F6\] { background-color: #1c2430; }
+    :where(.dark) .border-\[\#C9D3DF\],
+    :where(.dark) .border-\[\#DCE3EB\] { border-color: #2c3846; }
+    :where(.dark) .text-\[\#64748B\] { color: #9aa8bb; }
+    :where(.dark) .text-\[\#1F2A24\] { color: #e2e9e5; }
+    :where(.dark) .border-\[\#D6DED9\],
+    :where(.dark) .border-\[\#E5EAE7\] { border-color: #2e3531; }
+    :where(.dark) .hover\:bg-\[\#c9ead4\]:hover { background-color: #24432f; }
+
+    /* Neutral avatar / panel fills */
+    :where(.dark) .bg-\[\#EEF1EF\] { background-color: #232926; }
+    :where(.dark) .bg-\[\#FAFBFA\] { background-color: #1a1e1c; }
+    :where(.dark) .bg-\[\#F4F6F3\] { background-color: #111513; }
+    :where(.dark) .bg-\[\#f6faf7\] { background-color: #18241d; }
+    :where(.dark) .bg-\[\#f0ece4\]\/40 { background-color: rgb(255 255 255 / 0.03); }
+
+    /* Dark-green hover text on brand-coloured links */
+    :where(.dark) .hover\:text-\[\#2f5540\]:hover,
+    :where(.dark) .hover\:text-\[\#2d5239\]:hover,
+    :where(.dark) .hover\:text-\[\#1f3d2c\]:hover { color: #a3d9b8; }
+
+    /* Login inputs' focus colour (dark green → a green you can see) */
+    :where(.dark) .focus-within\:border-\[\#2d4f35\]:focus-within { border-color: #4f8f68; }
+    :where(.dark) .focus-within\:ring-\[\#2d4f35\]\/20:focus-within { --tw-ring-color: rgb(79 143 104 / 0.35); }
+  }
+}
+
+/* Printing is always light, whatever the screen theme (the Supervisor report
+   in particular): the dark palette above is screen-only, and this puts the
+   native colour scheme back too. */
+@media print {
+  html {
+    color-scheme: light !important;
+  }
 }
 
 body {
@@ -110,4 +384,16 @@ body {
   --em-rgb-accent: 59, 105, 76;
   --em-rgb-background: 238, 246, 241;
   --em-rgb-color: 26, 61, 43;
+}
+.dark .emoji-picker-green em-emoji-picker {
+  --em-color-background: #1b2b22;
+  --em-color-border: #2b4a37;
+  --em-color-button-over: #24392c;
+  --em-color-button-active: #2b4a37;
+  --em-color-accent: #7cc49a;
+  --em-color-text: #e2e9e5;
+  --em-color-text-secondary: #9fbfac;
+  --em-rgb-accent: 124, 196, 154;
+  --em-rgb-background: 27, 43, 34;
+  --em-rgb-color: 226, 233, 229;
 }

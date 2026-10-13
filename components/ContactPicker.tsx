@@ -72,7 +72,7 @@ export default function ContactPicker({
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
             </button>
           </div>
-          <div className="mt-3 flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 focus-within:ring-2 focus-within:ring-[#3B694C]/20 focus-within:border-[#3B694C] transition-colors">
+          <div className="mt-3 flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 focus-within:ring-2 focus-within:ring-brand/20 focus-within:border-brand transition-colors">
             <svg className="w-4 h-4 text-gray-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /></svg>
             <input
               value={search}
@@ -99,7 +99,7 @@ export default function ContactPicker({
                         type="checkbox"
                         checked={checked}
                         onChange={() => toggle(id)}
-                        className="w-4 h-4 rounded accent-[#3B694C] cursor-pointer shrink-0"
+                        className="w-4 h-4 rounded accent-brand cursor-pointer shrink-0"
                       />
                       <div className="min-w-0 flex-1">
                         <p className="text-[13px] font-medium text-gray-800 truncate">{c.name || "—"}</p>
@@ -115,14 +115,14 @@ export default function ContactPicker({
           )}
           {loading && (
             <div className="flex justify-center py-4">
-              <svg className="w-5 h-5 animate-spin text-[#3B694C]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
+              <svg className="w-5 h-5 animate-spin text-brand-fg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
             </div>
           )}
           {!loading && page < totalPages && (
             <button
               type="button"
               onClick={() => load(page + 1, search, true)}
-              className="w-full text-center text-[12px] font-semibold text-[#3B694C] hover:underline py-2 cursor-pointer"
+              className="w-full text-center text-[12px] font-semibold text-brand-fg hover:underline py-2 cursor-pointer"
             >
               Load more
             </button>
@@ -139,7 +139,7 @@ export default function ContactPicker({
               type="button"
               onClick={() => onConfirm([...selected])}
               disabled={selected.size === 0}
-              className="py-2.5 px-4 rounded-xl bg-[#3B694C] hover:bg-[#2f5840] disabled:opacity-50 disabled:cursor-not-allowed text-[13px] font-semibold text-white transition-colors cursor-pointer"
+              className="py-2.5 px-4 rounded-xl bg-brand hover:bg-[#2f5840] disabled:opacity-50 disabled:cursor-not-allowed text-[13px] font-semibold text-white transition-colors cursor-pointer"
             >
               {confirmLabel}{selected.size > 0 ? ` (${selected.size})` : ""}
             </button>

@@ -57,7 +57,7 @@ export function NotBookedDialog({
               <label
                 key={r.value}
                 className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-[13px] cursor-pointer transition-colors ${
-                  active ? "bg-[#EEF6F1] border-[#3B694C] text-[#3B694C] font-semibold" : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                  active ? "bg-brand-100 border-brand text-brand-fg font-semibold" : "border-gray-200 text-gray-600 hover:bg-gray-50"
                 }`}
               >
                 <input
@@ -66,7 +66,7 @@ export function NotBookedDialog({
                   value={r.value}
                   checked={active}
                   onChange={() => { setReason(r.value); setError(null); setNoteError(false); }}
-                  className="accent-[#3B694C]"
+                  className="accent-brand"
                 />
                 {r.label}
               </label>

@@ -326,7 +326,7 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
             onDoubleClick={resetWidth}
             className="hidden md:block absolute top-0 -right-1 z-20 h-full w-2 cursor-col-resize group"
           >
-            <div className="mx-auto h-full w-px bg-transparent group-hover:bg-[#3B694C]/40 group-active:bg-[#3B694C]/60 transition-colors" />
+            <div className="mx-auto h-full w-px bg-transparent group-hover:bg-brand/40 group-active:bg-brand/60 transition-colors" />
           </div>
           {/* Header */}
           <div className="flex items-center gap-2.5 px-4 pt-4 pb-3">
@@ -335,11 +335,11 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
               alt="Everlast Wellness"
               width={32}
               height={32}
-              className="shrink-0 [filter:brightness(0)_saturate(100%)_invert(33%)_sepia(50%)_saturate(600%)_hue-rotate(110deg)_brightness(90%)]"
+              className="shrink-0 [filter:brightness(0)_saturate(100%)_invert(33%)_sepia(50%)_saturate(600%)_hue-rotate(110deg)_brightness(90%)] dark:[filter:brightness(0)_saturate(100%)_invert(75%)_sepia(30%)_saturate(400%)_hue-rotate(90deg)]"
             />
             <span className="font-bold text-[16px] text-gray-900">Inbox</span>
             {unreadChats > 0 && (
-              <span className="text-[12px] font-semibold text-[#3B694C] bg-[#DCF2E3] px-2 py-0.5 rounded-full">
+              <span className="text-[12px] font-semibold text-brand-fg bg-brand-200 px-2 py-0.5 rounded-full">
                 {unreadChats} unread {unreadChats === 1 ? "chat" : "chats"}
               </span>
             )}
@@ -363,7 +363,7 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
           </div>
 
           {/* Views (server-side) */}
-          <div role="tablist" aria-label="Inbox view" className="flex gap-4 px-4 mb-3 border-b border-gray-100 overflow-x-auto [scrollbar-width:thin] [scrollbar-color:rgba(59,105,76,0.25)_transparent] [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-[#3B694C]/25 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[#3B694C]/50">
+          <div role="tablist" aria-label="Inbox view" className="flex gap-4 px-4 mb-3 border-b border-gray-100 overflow-x-auto [scrollbar-width:thin] [scrollbar-color:rgba(59,105,76,0.25)_transparent] [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-brand/25 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-brand/50">
             {VIEWS.map((v) => {
               const active = view === v.value;
               const n = v.count && counts ? counts[v.count] : 0;
@@ -375,13 +375,13 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
                   aria-selected={active}
                   onClick={() => setView(v.value)}
                   className={`shrink-0 flex items-center gap-1.5 pb-2 -mb-px border-b-2 text-[13px] transition-colors cursor-pointer ${
-                    active ? "border-[#3B694C] text-[#3B694C] font-semibold" : "border-transparent text-gray-500 hover:text-gray-700"
+                    active ? "border-brand text-brand-fg font-semibold" : "border-transparent text-gray-500 hover:text-gray-700"
                   }`}
                 >
                   {v.label}
                   {n > 0 && (
                     <span className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10.5px] font-semibold flex items-center justify-center ${
-                      v.value === "unassigned" ? "bg-amber-100 text-amber-700" : active ? "bg-[#DCF2E3] text-[#3B694C]" : "bg-gray-100 text-gray-500"
+                      v.value === "unassigned" ? "bg-amber-100 text-amber-700" : active ? "bg-brand-200 text-brand-fg" : "bg-gray-100 text-gray-500"
                     }`}>
                       {n > 99 ? "99+" : n}
                     </span>
@@ -404,7 +404,7 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
                     active && f === "Window closed"
                       ? "bg-red-50 border-red-400 text-red-600 font-semibold"
                       : active
-                      ? "bg-[#DCF2E3] border-[#3B694C] text-[#3B694C] font-semibold"
+                      ? "bg-brand-200 border-brand text-brand-fg font-semibold"
                       : "border-gray-200 text-gray-500 hover:bg-gray-50"
                   }`}
                 >
@@ -420,7 +420,7 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
               const el = e.currentTarget;
               if (el.scrollHeight - el.scrollTop - el.clientHeight < 150) loadMore();
             }}
-            className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-[#3B694C]/25 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[#3B694C]/50"
+            className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-brand/25 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-brand/50"
           >
             {loading ? (
               Array.from({ length: 6 }).map((_, i) => (
@@ -460,21 +460,21 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
                     key={cid || i}
                     href={`/chats/${cid}`}
                     className={`group relative flex gap-3 px-4 py-2.5 border-b border-gray-100 transition-colors ${
-                      isActive ? "bg-[#EEF6F1]" : windowClosed ? "bg-red-50 hover:bg-red-100/70" : unread > 0 ? "bg-white hover:bg-[#F5FAF7]" : "bg-white hover:bg-gray-50"
+                      isActive ? "bg-brand-100" : windowClosed ? "bg-red-50 hover:bg-red-100/70" : unread > 0 ? "bg-white hover:bg-brand-50" : "bg-white hover:bg-gray-50"
                     }`}
                   >
                     {/* Left rail: open chat or unread */}
                     <span
                       aria-hidden
                       className={`absolute left-0 top-2 bottom-2 w-[3px] rounded-r-full ${
-                        isActive ? "bg-[#3B694C]" : windowClosed ? "bg-red-500" : unread > 0 ? "bg-[#3B694C]/70" : "bg-transparent"
+                        isActive ? "bg-brand" : windowClosed ? "bg-red-500" : unread > 0 ? "bg-brand/70" : "bg-transparent"
                       }`}
                     />
 
                     {/* Avatar */}
                     <div className="shrink-0 mt-0.5">
                       <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-[12px] ${
-                        unread > 0 || isActive ? "bg-[#DCF2E3] text-[#2f5840]" : "bg-[#EEF1EF] text-gray-500"
+                        unread > 0 || isActive ? "bg-brand-200 text-brand-strong" : "bg-[#EEF1EF] text-gray-500"
                       }`}>
                         {initials}
                       </div>
@@ -487,7 +487,7 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
                         <span className={`text-[14px] truncate ${unread > 0 ? "font-bold text-gray-900" : "font-semibold text-gray-800"}`}>
                           {displayName}
                         </span>
-                        <span className={`text-[11px] shrink-0 tabular-nums ${unread > 0 ? "text-[#3B694C] font-semibold" : "text-gray-400"}`}>
+                        <span className={`text-[11px] shrink-0 tabular-nums ${unread > 0 ? "text-brand-fg font-semibold" : "text-gray-400"}`}>
                           {c.lastMessageAt ? formatTime(c.lastMessageAt) : "—"}
                         </span>
                       </div>
@@ -499,7 +499,7 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
                           {c.lastMessage || "No messages yet"}
                         </span>
                         {unread > 0 && (
-                          <span className="shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-[#3B694C] text-white text-[11px] font-semibold flex items-center justify-center tabular-nums">
+                          <span className="shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-brand text-white text-[11px] font-semibold flex items-center justify-center tabular-nums">
                             {unread > 99 ? "99+" : unread}
                           </span>
                         )}
@@ -536,7 +536,7 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
                           <span
                             title={`Assigned to ${c.assignedAgent.name || c.assignedAgent.username}`}
                             className={`w-5 h-5 rounded-full text-[9px] font-bold flex items-center justify-center ${
-                              c.assignedAgent.id === me?.id ? "bg-[#3B694C] text-white" : "bg-gray-200 text-gray-600"
+                              c.assignedAgent.id === me?.id ? "bg-brand text-white" : "bg-gray-200 text-gray-600"
                             }`}
                           >
                             {getInitials(c.assignedAgent.name || c.assignedAgent.username)}
@@ -572,7 +572,7 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
 
           {/* Bottom user bar */}
           <div className="flex items-center gap-3 px-4 py-3 border-t border-gray-100">
-            <div className="w-9 h-9 rounded-full bg-[#3B694C] flex items-center justify-center text-white font-semibold text-[12px] shrink-0">
+            <div className="w-9 h-9 rounded-full bg-brand flex items-center justify-center text-white font-semibold text-[12px] shrink-0">
               {user ? getInitials(user.username) : "—"}
             </div>
             <div className="flex-1 min-w-0">

@@ -8,7 +8,7 @@ import { getSocket } from "@/lib/socket";
 import type { BookingRequest } from "@/types";
 import { useCurrentUser } from "@/components/CurrentUserProvider";
 import { personName, type ProfileWithOutcome } from "@/lib/chatOutcome";
-import { isOpenRequest, onRequestChanged, requestAge, requestPreferred, requestService } from "@/lib/bookingRequests";
+import { isOpenRequest, onRequestChanged, requestAge, requestPreferred, requestService, requestSourceInfo } from "@/lib/bookingRequests";
 import { useRequestActions } from "@/components/bookings/useRequestActions";
 
 /**
@@ -65,20 +65,24 @@ export function BookingRequestBanner({ conversationId, patient }: { conversation
   const someoneElse = req.claimedById != null && !mine;
   const showTake = req.status === "NEW" || someoneElse;
   const claiming = actions.busy?.id === req.id && actions.busy.action === "claim";
+  const src = requestSourceInfo(req);
   const bits = [
     service,
     preferred && `prefers ${preferred}`,
-    req.campaign ? `from ${req.campaign.name} campaign` : req.source === "FLOW" ? "via booking flow" : null,
+    src.tone === "proven" || src.tone === "confirmed" ? (src.campaign ? `from ${src.campaign.name} campaign` : src.text)
+    : src.tone === "suggested" && src.campaign ? `maybe ${src.campaign.name} campaign (not confirmed)`
+    : src.tone === "plain" ? `came via ${src.text}`
+    : req.source === "FLOW" ? "via booking flow" : null,
   ].filter(Boolean) as string[];
 
   return (
-    <div className="relative z-10 shrink-0 flex flex-wrap items-center gap-x-3 gap-y-2 px-4 md:px-5 py-2 bg-[#F5FAF7] border-b border-[#3B694C]/15">
-      <span className="w-7 h-7 rounded-full bg-[#DCF2E3] text-[#3B694C] flex items-center justify-center shrink-0">
+    <div className="relative z-10 shrink-0 flex flex-wrap items-center gap-x-3 gap-y-2 px-4 md:px-5 py-2 bg-brand-50 border-b border-brand/15">
+      <span className="w-7 h-7 rounded-full bg-brand-200 text-brand-fg flex items-center justify-center shrink-0">
         <CalendarPlus className="w-3.5 h-3.5" />
       </span>
       <div className="flex-1 min-w-[180px] text-[12.5px] leading-snug">
         <p className="text-gray-700 truncate" title={["Booking requested", ...bits].join(" · ")}>
-          <Link href="/bookings" className="font-semibold text-[#3B694C] hover:underline">Booking requested</Link>
+          <Link href="/bookings" className="font-semibold text-brand-fg hover:underline">Booking requested</Link>
           {bits.map((b) => <span key={b}><span className="text-gray-300"> · </span>{b}</span>)}
           {open.length > 1 && <span className="text-gray-400"> · +{open.length - 1} more</span>}
         </p>
@@ -100,7 +104,7 @@ export function BookingRequestBanner({ conversationId, patient }: { conversation
               type="button"
               onClick={() => actions.claim(req)}
               disabled={claiming}
-              className="h-8 inline-flex items-center gap-1.5 px-3 rounded-full text-[12px] font-semibold text-[#3B694C] bg-white border border-[#3B694C]/30 hover:bg-[#EEF6F1] transition-colors cursor-pointer disabled:opacity-60"
+              className="h-8 inline-flex items-center gap-1.5 px-3 rounded-full text-[12px] font-semibold text-brand-fg bg-white border border-brand/30 hover:bg-brand-100 transition-colors cursor-pointer disabled:opacity-60"
             >
               {claiming ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserRoundCheck className="w-3.5 h-3.5" />}
               {someoneElse ? "Take over" : "Take it"}
@@ -109,7 +113,7 @@ export function BookingRequestBanner({ conversationId, patient }: { conversation
           <button
             type="button"
             onClick={() => actions.book(req)}
-            className="h-8 inline-flex items-center gap-1.5 px-3 rounded-full text-[12px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5840] transition-colors cursor-pointer"
+            className="h-8 inline-flex items-center gap-1.5 px-3 rounded-full text-[12px] font-semibold text-white bg-brand hover:bg-[#2f5840] transition-colors cursor-pointer"
           >
             <CalendarCheck2 className="w-3.5 h-3.5" /> Book
           </button>

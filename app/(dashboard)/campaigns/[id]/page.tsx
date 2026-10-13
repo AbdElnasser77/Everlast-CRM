@@ -112,7 +112,7 @@ function CampaignFlowCard({ campaign, onChanged }: { campaign: Campaign; onChang
         disabled={saving || !can("campaign:write")}
       />
       {campaign.flow && (
-        <Link href={`/campaigns/flows/${campaign.flow.id}`} className="inline-block mt-3 text-[12px] font-semibold text-[#3B694C] hover:underline">
+        <Link href={`/campaigns/flows/${campaign.flow.id}`} className="inline-block mt-3 text-[12px] font-semibold text-brand-fg hover:underline">
           Open “{campaign.flow.name}” and its responses →
         </Link>
       )}
@@ -169,7 +169,7 @@ export default function CampaignDetailPage() {
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <svg className="w-10 h-10 animate-spin text-[#3B694C]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+        <svg className="w-10 h-10 animate-spin text-brand-fg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
           <path d="M21 12a9 9 0 1 1-6.219-8.56" />
         </svg>
       </div>
@@ -223,7 +223,7 @@ export default function CampaignDetailPage() {
   const approved = !!campaign.reviewedAt && !rejected && !pending && campaign.status !== "DRAFT";
 
   return (
-    <div className="flex-1 overflow-y-auto bg-[#f9f9f8]">
+    <div className="flex-1 overflow-y-auto bg-canvas">
       <div className="max-w-5xl mx-auto px-6 py-8 space-y-6">
 
         {/* Back + header */}
@@ -291,7 +291,7 @@ export default function CampaignDetailPage() {
                 <button
                   onClick={() => review.startApprove(campaign)}
                   disabled={review.reviewing}
-                  className="flex items-center gap-1.5 text-[13px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5540] px-4 py-2 rounded-xl transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center gap-1.5 text-[13px] font-semibold text-white bg-brand hover:bg-[#2f5540] px-4 py-2 rounded-xl transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   Approve
@@ -317,7 +317,7 @@ export default function CampaignDetailPage() {
             {mayEdit && (
               <button
                 onClick={() => router.push(`/campaigns/new?draft=${campaign.id}`)}
-                className="flex items-center gap-1.5 text-[13px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5540] px-4 py-2 rounded-xl transition-colors shrink-0 cursor-pointer"
+                className="flex items-center gap-1.5 text-[13px] font-semibold text-white bg-brand hover:bg-[#2f5540] px-4 py-2 rounded-xl transition-colors shrink-0 cursor-pointer"
               >
                 <Pencil className="w-3.5 h-3.5" />
                 {canSend ? "Edit" : "Edit & resubmit"}
@@ -341,7 +341,7 @@ export default function CampaignDetailPage() {
             label="Booked"
             value={campaign.bookedCount ?? 0}
             sub={`${campaign.bookedCount ?? 0} booked of ${campaign.repliedCount ?? 0} replied`}
-            color={(campaign.bookedCount ?? 0) > 0 ? "text-[#3B694C]" : "text-gray-800"}
+            color={(campaign.bookedCount ?? 0) > 0 ? "text-brand-fg" : "text-gray-800"}
           />
           <StatCard label="Failed" value={campaign.failedCount} sub={pct(campaign.failedCount, campaign.totalRecipients)} color={campaign.failedCount > 0 ? "text-red-500" : "text-gray-800"} />
         </div>
@@ -366,7 +366,7 @@ export default function CampaignDetailPage() {
                     onClick={() => setStatusFilter(s)}
                     className={`text-[11px] font-medium px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
                       statusFilter === s
-                        ? "bg-gray-900 text-white"
+                        ? "bg-gray-900 text-white dark:text-gray-50"
                         : "text-gray-500 hover:text-gray-700"
                     }`}
                   >
@@ -384,7 +384,7 @@ export default function CampaignDetailPage() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search name or phone…"
-                className="text-[13px] border border-gray-200 rounded-xl px-3 py-1.5 outline-none focus:border-[#3B694C] focus:ring-1 focus:ring-[#3B694C]/20 w-48"
+                className="text-[13px] border border-gray-200 rounded-xl px-3 py-1.5 outline-none focus:border-brand focus:ring-1 focus:ring-brand/20 w-48"
               />
             </div>
           </div>
@@ -412,7 +412,7 @@ export default function CampaignDetailPage() {
                     <tr key={r.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-2.5">
-                          <div className="w-7 h-7 rounded-full bg-[#3B694C]/10 flex items-center justify-center text-[11px] font-bold text-[#3B694C] shrink-0">
+                          <div className="w-7 h-7 rounded-full bg-brand/10 flex items-center justify-center text-[11px] font-bold text-brand-fg shrink-0">
                             {initials(r.customer?.name)}
                           </div>
                           <span className="font-medium text-gray-800">{r.customer?.name ?? "—"}</span>

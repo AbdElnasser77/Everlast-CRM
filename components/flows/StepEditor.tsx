@@ -6,7 +6,7 @@ import { BUILT_IN_VARIABLES, FLOW_LIMITS, STEP_META, VARIABLE_RE, carouselSnapsh
 import { CardsEditor } from "./CardsEditor";
 
 const inputCls =
-  "w-full text-[13px] border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#3B694C] focus:ring-2 focus:ring-[#3B694C]/10 bg-white";
+  "w-full text-[13px] border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/10 bg-white";
 const labelCls = "block text-[11px] font-bold tracking-wider uppercase text-gray-400 mb-1.5";
 
 function Counter({ value, max }: { value: string | undefined; max: number }) {
@@ -81,7 +81,7 @@ function OptionsEditor({
         <button
           type="button"
           onClick={() => onChange([...options, { id: uid(noun === "Option" ? "r" : "b"), title: "" }])}
-          className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-[#3B694C] hover:underline"
+          className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-brand-fg hover:underline"
         >
           <Plus className="w-3.5 h-3.5" /> Add {noun.toLowerCase()}
         </button>
@@ -138,7 +138,7 @@ export function StepEditor({ type, data, problems, onChange, onDelete, templates
   const textHelp = (
     <p className="text-[11px] text-gray-400 mt-1 leading-relaxed">
       Insert: {placeholders.map((p) => (
-        <button key={p} type="button" className="font-mono text-[#3B694C] hover:underline mr-1.5" onClick={() => set({ text: `${data.text || ""}{{${p}}}` })}>
+        <button key={p} type="button" className="font-mono text-brand-fg hover:underline mr-1.5" onClick={() => set({ text: `${data.text || ""}{{${p}}}` })}>
           {`{{${p}}}`}
         </button>
       ))}

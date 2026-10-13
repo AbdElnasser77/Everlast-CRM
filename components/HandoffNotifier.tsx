@@ -1,18 +1,23 @@
 "use client";
 
-// Alerts the team when a flow hands a customer to a person ("Connect me" /
-// an Assign step). The server sends "flow.handoff" to every connected user who
-// can reply on that number, whichever line they're viewing. Shown as:
+// Alerts the team, whichever line they're viewing, when:
+//   - a flow hands a customer to a person ("Connect me" / an Assign step) —
+//     "flow.handoff";
+//   - a new booking request comes in — "booking_request.alert".
+// The server sends both to every connected user who can reply on that number,
+// on EVERY line they may use — nothing here filters by the active line. Shown as:
 //   - an alert card that stays until dismissed (a waiting customer shouldn't
 //     vanish after five seconds like a toast),
 //   - a short chime,
 //   - a desktop notification when allowed, for when the CRM is in a background tab.
-// "Open chat" switches to the conversation's number first when needed.
+// Opening one switches to its line first when needed.
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { BellRing, X } from "lucide-react";
+import { BellRing, CalendarPlus, X } from "lucide-react";
+import { getActiveNumber } from "@/lib/api";
 import { getSocket } from "@/lib/socket";
+import { requestPreferred, requestService } from "@/lib/bookingRequests";
 import { useCurrentUser } from "@/components/CurrentUserProvider";
 import { useActiveNumber } from "@/components/WhatsAppNumberProvider";
 
@@ -27,6 +32,18 @@ interface Handoff {
   agentUsername: string | null;
   at: string;
 }
+
+interface BookingAlert {
+  requestId: number;
+  conversationId: number;
+  source: "FLOW" | "AGENT" | string;
+  requested: Record<string, unknown> | null;
+  whatsappNumberId: number;
+}
+
+type Alert =
+  | { kind: "handoff"; key: string; at: string; h: Handoff }
+  | { kind: "booking"; key: string; at: string; b: BookingAlert };
 
 function chime() {
   try {
@@ -52,90 +69,189 @@ function chime() {
 }
 
 const who = (h: Handoff) => h.customerName || `+${h.customerPhone}`;
+const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+/** "Botox · Fri 17 Oct 2026 · evening", or null when the flow collected nothing yet. */
+function bookingWhat(b: BookingAlert): string | null {
+  const req = { requested: b.requested ?? {} };
+  return [requestService(req), requestPreferred(req)].filter(Boolean).join(" · ") || null;
+}
 
 export default function HandoffNotifier() {
   const router = useRouter();
   const { me } = useCurrentUser();
-  const { activeNumberId, switchNumber } = useActiveNumber();
-  const [alerts, setAlerts] = useState<Handoff[]>([]);
+  const { activeNumberId, numbers, switchNumber } = useActiveNumber();
+  const [alerts, setAlerts] = useState<Alert[]>([]);
   const [permission, setPermission] = useState<NotificationPermission | "unsupported">(() =>
     typeof window !== "undefined" && "Notification" in window ? Notification.permission : "unsupported",
   );
 
-  const dismiss = useCallback((conversationId: number) => {
-    setAlerts((list) => list.filter((a) => a.conversationId !== conversationId));
+  const lineLabel = useCallback(
+    (id: number) => numbers.find((n) => n.id === id)?.label ?? `Line #${id}`,
+    [numbers],
+  );
+  // Only worth naming the line when there is more than one.
+  const multiLine = numbers.length > 1;
+
+  const dismiss = useCallback((key: string) => {
+    setAlerts((list) => list.filter((a) => a.key !== key));
   }, []);
 
-  const openChat = useCallback((h: Handoff) => {
-    dismiss(h.conversationId);
-    const go = () => router.push(`/chats/${h.conversationId}`);
-    if (String(h.whatsappNumberId) !== activeNumberId) {
-      switchNumber(h.whatsappNumberId);
+  const push = useCallback((a: Alert) => {
+    setAlerts((list) => [a, ...list.filter((x) => x.key !== a.key)].slice(0, 5));
+  }, []);
+
+  // Switches to the alert's line first when it isn't the one on screen.
+  const goTo = useCallback((numberId: number, path: string) => {
+    const go = () => router.push(path);
+    if (String(numberId) !== activeNumberId) {
+      switchNumber(numberId);
+      // A switch guard (unsaved work elsewhere) may have vetoed it.
+      if (getActiveNumber() !== String(numberId)) return;
       setTimeout(go, 450); // after the switch has re-scoped the app
     } else {
       go();
     }
-  }, [activeNumberId, dismiss, router, switchNumber]);
+  }, [activeNumberId, router, switchNumber]);
+
+  const openHandoff = useCallback((h: Handoff) => {
+    dismiss(`handoff-${h.conversationId}`);
+    goTo(h.whatsappNumberId, `/chats/${h.conversationId}`);
+  }, [dismiss, goTo]);
+
+  const openBooking = useCallback((b: BookingAlert, where: "chat" | "bookings") => {
+    dismiss(`booking-${b.requestId}`);
+    goTo(b.whatsappNumberId, where === "chat" ? `/chats/${b.conversationId}` : "/bookings");
+  }, [dismiss, goTo]);
 
   useEffect(() => {
     const socket = getSocket();
+    const canNotify = () => typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted";
+
     const onHandoff = (h: Handoff) => {
       // Assigned to someone else: that person gets it, not the whole team.
       if (h.agentId && me && h.agentId !== me.id) return;
-      setAlerts((list) => [h, ...list.filter((a) => a.conversationId !== h.conversationId)].slice(0, 5));
+      push({ kind: "handoff", key: `handoff-${h.conversationId}`, at: h.at, h });
       chime();
-      if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+      if (canNotify()) {
         const n = new Notification(`${who(h)} wants to talk to an agent`, {
           body: h.interest ? `Interested in: ${h.interest}` : `From the "${h.flowName}" flow`,
           tag: `handoff-${h.conversationId}`,
         });
-        n.onclick = () => { window.focus(); openChat(h); n.close(); };
+        n.onclick = () => { window.focus(); openHandoff(h); n.close(); };
       }
     };
+
+    const onBooking = (b: BookingAlert) => {
+      // One an agent opened by hand is already theirs ("it's yours") — the
+      // alert is for patients who asked through a flow.
+      if (b.source === "AGENT") return;
+      push({ kind: "booking", key: `booking-${b.requestId}`, at: new Date().toISOString(), b });
+      chime();
+      if (canNotify()) {
+        const what = bookingWhat(b);
+        const n = new Notification("New booking request", {
+          body: [what, multiLine ? lineLabel(b.whatsappNumberId) : null].filter(Boolean).join(" · ") || "A patient wants to book",
+          tag: `booking-${b.requestId}`,
+        });
+        n.onclick = () => { window.focus(); openBooking(b, "chat"); n.close(); };
+      }
+    };
+
     socket.on("flow.handoff", onHandoff);
-    return () => { socket.off("flow.handoff", onHandoff); };
-  }, [me, openChat]);
+    socket.on("booking_request.alert", onBooking);
+    return () => {
+      socket.off("flow.handoff", onHandoff);
+      socket.off("booking_request.alert", onBooking);
+    };
+  }, [me, push, openHandoff, openBooking, lineLabel, multiLine]);
 
   if (alerts.length === 0) return null;
 
+  const enableDesktop = permission === "default" && (
+    <button
+      type="button"
+      onClick={() => Notification.requestPermission().then(setPermission)}
+      className="text-[12px] font-medium text-gray-500 hover:text-gray-800 px-2"
+    >
+      Enable desktop alerts
+    </button>
+  );
+
   return (
     <div className="fixed bottom-4 right-4 z-[9998] w-[340px] max-w-[calc(100vw-2rem)] space-y-2">
-      {alerts.map((h) => (
-        <div key={h.conversationId} className="bg-white rounded-2xl shadow-xl border border-amber-200 overflow-hidden animate-in slide-in-from-bottom-2">
-          <div className="flex items-start gap-3 p-4">
-            <span className="w-9 h-9 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
-              <BellRing className="w-4.5 h-4.5" />
-            </span>
-            <div className="flex-1 min-w-0">
-              <p className="text-[13px] font-bold text-gray-900 leading-snug">
-                {who(h)} wants to talk to an agent
-              </p>
-              {h.interest && <p className="text-[12px] text-gray-600 mt-0.5">Interested in: <span className="font-semibold">{h.interest}</span></p>}
-              <p className="text-[11px] text-gray-400 mt-0.5">
-                {h.agentUsername ? `Assigned to you · ` : "Waiting in Unassigned · "}
-                {h.flowName} · {new Date(h.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-              </p>
+      {alerts.map((a) => {
+        if (a.kind === "handoff") {
+          const h = a.h;
+          const otherLine = multiLine && String(h.whatsappNumberId) !== activeNumberId;
+          return (
+            <div key={a.key} className="bg-white rounded-2xl shadow-xl border border-amber-200 overflow-hidden animate-in slide-in-from-bottom-2">
+              <div className="flex items-start gap-3 p-4">
+                <span className="w-9 h-9 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
+                  <BellRing className="w-4.5 h-4.5" />
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-bold text-gray-900 leading-snug">
+                    {who(h)} wants to talk to an agent
+                  </p>
+                  {h.interest && <p className="text-[12px] text-gray-600 mt-0.5">Interested in: <span className="font-semibold">{h.interest}</span></p>}
+                  <p className="text-[11px] text-gray-400 mt-0.5">
+                    {h.agentUsername ? `Assigned to you · ` : "Waiting in Unassigned · "}
+                    {h.flowName} · {fmtTime(h.at)}
+                    {otherLine && <span className="font-semibold text-amber-700"> · {lineLabel(h.whatsappNumberId)}</span>}
+                  </p>
+                </div>
+                <button type="button" onClick={() => dismiss(a.key)} title="Dismiss" className="w-7 h-7 rounded-full flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-600 shrink-0">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="flex items-center gap-2 px-4 pb-3">
+                <button type="button" onClick={() => openHandoff(h)} className="flex-1 text-[13px] font-semibold text-white bg-brand hover:opacity-90 rounded-xl py-2">
+                  {otherLine ? "Switch line & open chat" : "Open chat"}
+                </button>
+                {enableDesktop}
+              </div>
             </div>
-            <button type="button" onClick={() => dismiss(h.conversationId)} title="Dismiss" className="w-7 h-7 rounded-full flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-600 shrink-0">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-          <div className="flex items-center gap-2 px-4 pb-3">
-            <button type="button" onClick={() => openChat(h)} className="flex-1 text-[13px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5840] rounded-xl py-2">
-              Open chat
-            </button>
-            {permission === "default" && (
-              <button
-                type="button"
-                onClick={() => Notification.requestPermission().then(setPermission)}
-                className="text-[12px] font-medium text-gray-500 hover:text-gray-800 px-2"
-              >
-                Enable desktop alerts
+          );
+        }
+
+        const b = a.b;
+        const what = bookingWhat(b);
+        const otherLine = multiLine && String(b.whatsappNumberId) !== activeNumberId;
+        return (
+          <div key={a.key} className="bg-white rounded-2xl shadow-xl border border-sky-200 overflow-hidden animate-in slide-in-from-bottom-2">
+            <div className="flex items-start gap-3 p-4">
+              <span className="w-9 h-9 rounded-full bg-sky-50 text-sky-700 flex items-center justify-center shrink-0">
+                <CalendarPlus className="w-4.5 h-4.5" />
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-bold text-gray-900 leading-snug">New booking request</p>
+                <p className="text-[12px] text-gray-600 mt-0.5">
+                  {what ? <span className="font-semibold">{what}</span> : "A patient wants to book"}
+                </p>
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  {b.source === "FLOW" ? "From the booking flow" : "New request"} · {fmtTime(a.at)}
+                  {multiLine && (
+                    <span className={otherLine ? "font-semibold text-amber-700" : undefined}> · {lineLabel(b.whatsappNumberId)}</span>
+                  )}
+                </p>
+              </div>
+              <button type="button" onClick={() => dismiss(a.key)} title="Dismiss" className="w-7 h-7 rounded-full flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-600 shrink-0">
+                <X className="w-4 h-4" />
               </button>
-            )}
+            </div>
+            <div className="flex items-center gap-2 px-4 pb-3">
+              <button type="button" onClick={() => openBooking(b, "chat")} className="flex-1 text-[13px] font-semibold text-white bg-brand hover:opacity-90 rounded-xl py-2">
+                {otherLine ? "Switch line & open chat" : "Open chat"}
+              </button>
+              <button type="button" onClick={() => openBooking(b, "bookings")} className="text-[12px] font-semibold text-brand-fg border border-brand/30 hover:bg-brand-100 rounded-xl px-3 py-2">
+                Bookings
+              </button>
+              {enableDesktop}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

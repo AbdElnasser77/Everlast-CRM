@@ -59,7 +59,7 @@ export function carouselError(cards: TemplateCard[]): string | null {
   return null;
 }
 
-const inputCls = "w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-[13px] text-gray-800 outline-none focus:border-[#3B694C]";
+const inputCls = "w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-[13px] text-gray-800 outline-none focus:border-brand";
 
 export function CarouselEditor({ cards, onChange }: { cards: TemplateCard[]; onChange: (cards: TemplateCard[]) => void }) {
   const layout = layoutOf(cards);
@@ -109,7 +109,7 @@ export function CarouselEditor({ cards, onChange }: { cards: TemplateCard[]; onC
                 key={t}
                 type="button"
                 onClick={() => setMediaType(t)}
-                className={`flex items-center justify-center gap-1.5 py-2 rounded-lg border text-[12px] font-medium cursor-pointer ${mediaType === t ? "border-[#3B694C] bg-[#EEF6F1] text-[#3B694C]" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}
+                className={`flex items-center justify-center gap-1.5 py-2 rounded-lg border text-[12px] font-medium cursor-pointer ${mediaType === t ? "border-brand bg-brand-100 text-brand-fg" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}
               >
                 {t === "IMAGE" ? <ImageIcon className="w-3.5 h-3.5" /> : <Video className="w-3.5 h-3.5" />}
                 {t === "IMAGE" ? "Images" : "Videos"}
@@ -119,7 +119,7 @@ export function CarouselEditor({ cards, onChange }: { cards: TemplateCard[]; onC
         </div>
         <div>
           <label className="block text-[12px] font-semibold text-gray-600 mb-1.5">Buttons on every card</label>
-          <select value={layout} onChange={(e) => setLayout(e.target.value as CardLayout)} className="w-full border border-gray-200 rounded-lg px-2.5 py-2 text-[13px] bg-white outline-none focus:border-[#3B694C]">
+          <select value={layout} onChange={(e) => setLayout(e.target.value as CardLayout)} className="w-full border border-gray-200 rounded-lg px-2.5 py-2 text-[13px] bg-white outline-none focus:border-brand">
             {LAYOUTS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
           </select>
           <p className="text-[11px] text-gray-400 mt-1">{LAYOUTS.find((l) => l.value === layout)?.hint}</p>
@@ -146,7 +146,7 @@ export function CarouselEditor({ cards, onChange }: { cards: TemplateCard[]; onC
                 ) : c.mediaUrl ? <Video className="w-4 h-4 text-gray-400" /> : <ImageIcon className="w-4 h-4 text-gray-300" />}
               </div>
               <div className="flex-1 flex flex-wrap gap-1.5">
-                <button type="button" onClick={() => setPickerFor(i)} className="flex items-center gap-1 text-[12px] font-semibold text-[#3B694C] border border-[#3B694C]/30 bg-[#EEF6F1] px-2.5 py-1.5 rounded-lg hover:bg-[#DCF2E3] cursor-pointer">
+                <button type="button" onClick={() => setPickerFor(i)} className="flex items-center gap-1 text-[12px] font-semibold text-brand-fg border border-brand/30 bg-brand-100 px-2.5 py-1.5 rounded-lg hover:bg-brand-200 cursor-pointer">
                   <ImageIcon className="w-3.5 h-3.5" /> Library
                 </button>
                 <button
@@ -194,7 +194,7 @@ export function CarouselEditor({ cards, onChange }: { cards: TemplateCard[]; onC
         <button
           type="button"
           onClick={() => onChange([...cards, newCard(layout, mediaType)])}
-          className="flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-lg border border-[#3B694C]/30 bg-[#EEF6F1] text-[#3B694C] hover:bg-[#DCF2E3] cursor-pointer"
+          className="flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-lg border border-brand/30 bg-brand-100 text-brand-fg hover:bg-brand-200 cursor-pointer"
         >
           <Plus className="w-3.5 h-3.5" /> Add card ({cards.length}/{CAROUSEL_LIMITS.maxCards})
         </button>
@@ -238,7 +238,7 @@ export function CarouselPreview({ cards }: { cards: TemplateCard[] }) {
           <p className="px-2.5 pt-2 text-[12px] text-gray-800 whitespace-pre-wrap line-clamp-4 min-h-[2.5em]">{c.body || <span className="text-gray-300 italic">Card text</span>}</p>
           <div className="p-1.5 space-y-1">
             {c.buttons.map((b) => (
-              <div key={b.id} className="border border-gray-100 rounded-lg py-1.5 text-center text-[12px] font-medium text-[#3B694C]">
+              <div key={b.id} className="border border-gray-100 rounded-lg py-1.5 text-center text-[12px] font-medium text-brand-fg">
                 {b.type === "URL" ? "🔗 " : ""}{b.title || "Button"}
               </div>
             ))}

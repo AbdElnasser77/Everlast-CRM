@@ -10,12 +10,12 @@ import { ApiError } from "@/lib/api";
 // ---------------------------------------------------------------------------
 
 export const inputCls =
-  "w-full text-[14px] text-gray-800 border border-gray-200 rounded-xl px-4 py-3 outline-none placeholder:text-gray-400 bg-white focus:ring-2 focus:ring-[#3B694C]/20 focus:border-[#3B694C] transition-colors";
+  "w-full text-[14px] text-gray-800 border border-gray-200 rounded-xl px-4 py-3 outline-none placeholder:text-gray-400 bg-white focus:ring-2 focus:ring-brand/20 focus:border-brand transition-colors";
 
 export const labelCls = "block text-[13px] font-medium text-gray-700 mb-1.5";
 
 export const primaryBtnCls =
-  "inline-flex items-center justify-center gap-2 bg-[#3B694C] hover:bg-[#2f5840] active:bg-[#264a33] disabled:opacity-60 disabled:cursor-not-allowed text-white text-[13px] font-semibold px-4 py-2.5 rounded-xl transition-colors cursor-pointer";
+  "inline-flex items-center justify-center gap-2 bg-brand hover:bg-[#2f5840] active:bg-[#264a33] disabled:opacity-60 disabled:cursor-not-allowed text-white text-[13px] font-semibold px-4 py-2.5 rounded-xl transition-colors cursor-pointer";
 
 export const secondaryBtnCls =
   "inline-flex items-center justify-center gap-1.5 text-[13px] font-medium text-gray-600 border border-gray-200 hover:bg-gray-50 px-3 py-2 rounded-xl transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed";
@@ -75,7 +75,7 @@ export function Toggle({
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
-        checked ? "bg-[#3B694C]" : "bg-gray-200"
+        checked ? "bg-brand" : "bg-gray-200"
       }`}
     >
       <span

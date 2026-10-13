@@ -136,9 +136,9 @@ function StepDot({
       <div
         className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold transition-colors ${
           state === "done"
-            ? "bg-[#3B694C] text-white"
+            ? "bg-brand text-white"
             : state === "active"
-            ? "bg-[#3B694C] text-white ring-4 ring-[#DCF2E3]"
+            ? "bg-brand text-white ring-4 ring-brand-200"
             : "bg-gray-100 text-gray-400"
         }`}
       >
@@ -146,7 +146,7 @@ function StepDot({
       </div>
       <span
         className={`text-[13px] font-medium ${
-          state === "active" ? "text-gray-900" : state === "done" ? "text-[#3B694C]" : "text-gray-400"
+          state === "active" ? "text-gray-900" : state === "done" ? "text-brand-fg" : "text-gray-400"
         }`}
       >
         {label}
@@ -167,7 +167,7 @@ function WaBubble({ template, sampleName }: { template: Template; sampleName: st
 
   return (
     <div className="max-w-[300px]">
-      <div className="bg-[#3B694C] rounded-2xl rounded-tl-sm px-4 py-3 shadow-md">
+      <div className="bg-brand rounded-2xl rounded-tl-sm px-4 py-3 shadow-md">
         {!isCarousel && (
           <HeaderPreview
             headerType={template.headerType ?? "NONE"}
@@ -240,7 +240,7 @@ function Step1({
                 onClick={() => onSelect(t)}
                 className={`w-full text-left rounded-xl border p-4 transition-all cursor-pointer ${
                   isSelected
-                    ? "border-[#3B694C] bg-[#EEF6F1] ring-1 ring-[#3B694C]"
+                    ? "border-brand bg-brand-100 ring-1 ring-brand"
                     : "border-gray-200 bg-white hover:border-gray-300"
                 }`}
               >
@@ -248,7 +248,7 @@ function Step1({
                   <div className="flex items-center gap-2">
                     <div
                       className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
-                        isSelected ? "border-[#3B694C] bg-[#3B694C]" : "border-gray-300"
+                        isSelected ? "border-brand bg-brand" : "border-gray-300"
                       }`}
                     >
                       {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
@@ -274,19 +274,19 @@ function Step1({
 
         <a
           href="/templates"
-          className="block text-center text-[13px] text-[#3B694C] hover:underline py-3 border border-dashed border-gray-200 rounded-xl cursor-pointer"
+          className="block text-center text-[13px] text-brand-fg hover:underline py-3 border border-dashed border-gray-200 rounded-xl cursor-pointer"
         >
           + New template
         </a>
       </div>
 
       {/* Live preview */}
-      <div className="w-[45%] bg-[#f5f4f0] flex flex-col items-center justify-start p-8 overflow-y-auto">
+      <div className="w-[45%] bg-canvas-warm flex flex-col items-center justify-start p-8 overflow-y-auto">
         <p className="text-[10px] font-bold tracking-widest text-gray-400 uppercase mb-4 self-start">Live Preview</p>
         {selected ? (
           <>
             <div className="self-start flex items-center gap-2.5 mb-4">
-              <div className="w-9 h-9 rounded-full bg-[#3B694C] flex items-center justify-center shrink-0">
+              <div className="w-9 h-9 rounded-full bg-brand flex items-center justify-center shrink-0">
                 <span className="text-white font-bold text-[13px]">{initials(sampleName)}</span>
               </div>
               <div>
@@ -554,9 +554,9 @@ function Step2({
             </div>
           ) : (
             <>
-              <div className="flex items-start gap-2 rounded-xl bg-[#EEF6F1] border border-[#3B694C]/15 px-4 py-3 mb-4">
-                <ShieldCheck className="w-4 h-4 text-[#3B694C] shrink-0 mt-0.5" />
-                <p className="text-[12px] text-[#3B694C] leading-relaxed">
+              <div className="flex items-start gap-2 rounded-xl bg-brand-100 border border-brand/15 px-4 py-3 mb-4">
+                <ShieldCheck className="w-4 h-4 text-brand-fg shrink-0 mt-0.5" />
+                <p className="text-[12px] text-brand-fg leading-relaxed">
                   A segment is re-run on the server when the campaign is created, and its
                   recipients are frozen at that moment. The number you approve is the number
                   that gets messaged.
@@ -576,12 +576,12 @@ function Step2({
                       disabled={broken || empty || (pickingSegmentId !== null && !isLoadingThis)}
                       title={broken ? "This segment&apos;s rules no longer compile" : empty ? "Nobody matches this segment right now" : undefined}
                       className={`text-left rounded-xl border p-4 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
-                        isOn ? "border-[#3B694C] bg-[#EEF6F1] ring-1 ring-[#3B694C]" : "border-gray-200 bg-white hover:border-gray-300"
+                        isOn ? "border-brand bg-brand-100 ring-1 ring-brand" : "border-gray-200 bg-white hover:border-gray-300"
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2 mb-2">
                         <div className="flex items-center gap-2 min-w-0">
-                          <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${isOn ? "border-[#3B694C] bg-[#3B694C]" : "border-gray-300"}`}>
+                          <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${isOn ? "border-brand bg-brand" : "border-gray-300"}`}>
                             {isOn && <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />}
                           </div>
                           <span className="text-[14px] font-semibold text-gray-800 truncate">{sg.name}</span>
@@ -609,7 +609,7 @@ function Step2({
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search by name or phone…"
-                className="w-full pl-9 pr-4 py-2.5 text-[13px] border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3B694C]/20 focus:border-[#3B694C]"
+                className="w-full pl-9 pr-4 py-2.5 text-[13px] border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
               />
             </div>
 
@@ -622,7 +622,7 @@ function Step2({
                   onClick={() => setTagFilter(tag)}
                   className={`text-[12px] font-medium px-3 py-1.5 rounded-full border transition-colors cursor-pointer ${
                     tagFilter === tag
-                      ? "bg-[#3B694C] text-white border-[#3B694C]"
+                      ? "bg-brand text-white border-brand"
                       : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
                   }`}
                 >
@@ -645,7 +645,7 @@ function Step2({
                           type="checkbox"
                           checked={allSelected}
                           onChange={(e) => onToggleAll(filteredIds, e.target.checked)}
-                          className="rounded border-gray-300 accent-[#3B694C]"
+                          className="rounded border-gray-300 accent-brand"
                         />
                       </th>
                       <th className="text-left px-3 py-3 font-semibold text-gray-500 text-[11px] uppercase tracking-wider">Name</th>
@@ -672,13 +672,13 @@ function Step2({
                               disabled={isOptedOut}
                               onChange={() => onToggle(id)}
                               onClick={(e) => e.stopPropagation()}
-                              className="rounded border-gray-300 accent-[#3B694C]"
+                              className="rounded border-gray-300 accent-brand"
                             />
                           </td>
                           <td className="px-3 py-3">
                             <div className="flex items-center gap-2.5">
-                              <div className="w-7 h-7 rounded-full bg-[#EEF6F1] flex items-center justify-center shrink-0">
-                                <span className="text-[10px] font-bold text-[#3B694C]">{initials(c.name)}</span>
+                              <div className="w-7 h-7 rounded-full bg-brand-100 flex items-center justify-center shrink-0">
+                                <span className="text-[10px] font-bold text-brand-fg">{initials(c.name)}</span>
                               </div>
                               <div>
                                 <p className="font-medium text-gray-800 leading-tight">{c.name || "—"}</p>
@@ -729,12 +729,12 @@ function Step2({
                   onClick={() => toggleList(l)}
                   disabled={l.memberCount === 0 || (loadingListId !== null && !isLoadingThis)}
                   className={`text-left rounded-xl border p-4 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
-                    isOn ? "border-[#3B694C] bg-[#EEF6F1] ring-1 ring-[#3B694C]" : "border-gray-200 bg-white hover:border-gray-300"
+                    isOn ? "border-brand bg-brand-100 ring-1 ring-brand" : "border-gray-200 bg-white hover:border-gray-300"
                   }`}
                 >
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <div className="flex items-center gap-2 min-w-0">
-                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${isOn ? "border-[#3B694C] bg-[#3B694C]" : "border-gray-300"}`}>
+                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${isOn ? "border-brand bg-brand" : "border-gray-300"}`}>
                         {isOn && <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />}
                       </div>
                       <span className="text-[14px] font-semibold text-gray-800 truncate">{l.name}</span>
@@ -832,13 +832,13 @@ function TestSendBox({ template }: { template: Template }) {
           onKeyDown={(e) => { if (e.key === "Enter") handleTest(); }}
           placeholder="+971 50 123 4567"
           inputMode="tel"
-          className="flex-1 min-w-0 px-3 py-2 text-[13px] border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3B694C]/20 focus:border-[#3B694C]"
+          className="flex-1 min-w-0 px-3 py-2 text-[13px] border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
         />
         <button
           type="button"
           onClick={handleTest}
           disabled={sending || !phone.trim()}
-          className="flex items-center gap-1.5 text-[13px] font-medium text-[#3B694C] border border-[#3B694C]/30 hover:bg-[#EEF6F1] px-3 py-2 rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shrink-0"
+          className="flex items-center gap-1.5 text-[13px] font-medium text-brand-fg border border-brand/30 hover:bg-brand-100 px-3 py-2 rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shrink-0"
         >
           {sending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
           Test
@@ -846,9 +846,9 @@ function TestSendBox({ template }: { template: Template }) {
       </div>
 
       {result?.ok === true && (
-        <div className="mt-2.5 bg-[#EEF6F1] border border-[#3B694C]/20 rounded-xl p-2.5">
-          <p className="text-[12px] font-semibold text-[#3B694C]">Test sent to +{result.to}</p>
-          <p className="text-[11px] text-[#3B694C]/80 mt-0.5">
+        <div className="mt-2.5 bg-brand-100 border border-brand/20 rounded-xl p-2.5">
+          <p className="text-[12px] font-semibold text-brand-fg">Test sent to +{result.to}</p>
+          <p className="text-[11px] text-brand-fg/80 mt-0.5">
             {result.personalizedFor
               ? "Personalized for " + result.personalizedFor + " — exactly as a recipient will see it."
               : "That number isn't a saved contact, so variables used sample values."}
@@ -1029,7 +1029,7 @@ function Step3({
             value={campaignName}
             onChange={(e) => onNameChange(e.target.value)}
             placeholder="My campaign"
-            className="w-full px-4 py-2.5 text-[14px] border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3B694C]/20 focus:border-[#3B694C]"
+            className="w-full px-4 py-2.5 text-[14px] border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
           />
         </div>
 
@@ -1065,7 +1065,7 @@ function Step3({
         <div className="bg-white border border-gray-200 rounded-2xl p-5">
           <div className="flex items-center justify-between mb-3">
             <p className="text-[10px] font-bold tracking-widest text-gray-400 uppercase">Template</p>
-            <button onClick={() => onGoStep(1)} className="text-[12px] font-medium text-[#3B694C] hover:underline cursor-pointer">Change</button>
+            <button onClick={() => onGoStep(1)} className="text-[12px] font-medium text-brand-fg hover:underline cursor-pointer">Change</button>
           </div>
           <div className="flex items-center gap-2 mb-3">
             <p className="text-[15px] font-semibold text-gray-800">{template.name}</p>
@@ -1085,7 +1085,7 @@ function Step3({
         <div className="bg-white border border-gray-200 rounded-2xl p-5">
           <div className="flex items-center justify-between mb-3">
             <p className="text-[10px] font-bold tracking-widest text-gray-400 uppercase">Recipients</p>
-            <button onClick={() => onGoStep(2)} className="text-[12px] font-medium text-[#3B694C] hover:underline cursor-pointer">Edit</button>
+            <button onClick={() => onGoStep(2)} className="text-[12px] font-medium text-brand-fg hover:underline cursor-pointer">Edit</button>
           </div>
           <div className="flex items-center gap-3">
             <p className="text-[32px] font-bold text-gray-900 leading-none">{count}</p>
@@ -1097,20 +1097,20 @@ function Step3({
               read WHY these people were chosen, not just how many there are —
               a headcount alone is unreviewable. */}
           {segmentAudience && (
-            <div className="mt-3 rounded-xl bg-[#EEF6F1] border border-[#3B694C]/15 px-3.5 py-3">
+            <div className="mt-3 rounded-xl bg-brand-100 border border-brand/15 px-3.5 py-3">
               <div className="flex items-center gap-1.5 mb-1">
-                <ShieldCheck className="w-3.5 h-3.5 text-[#3B694C] shrink-0" />
-                <p className="text-[12px] font-semibold text-[#3B694C]">
+                <ShieldCheck className="w-3.5 h-3.5 text-brand-fg shrink-0" />
+                <p className="text-[12px] font-semibold text-brand-fg">
                   Segment · {segmentAudience.name}
                 </p>
               </div>
-              <p className="text-[11.5px] text-[#3B694C]/85 leading-relaxed">
+              <p className="text-[11.5px] text-brand-fg/85 leading-relaxed">
                 {(segmentAudience.definition?.rules ?? [])
                   .map((r) => describeRule(r, null))
                   .join(segmentAudience.definition?.match === "ANY" ? " or " : " and ")}
                 .
               </p>
-              <p className="text-[11px] text-[#3B694C]/70 mt-1.5 pt-1.5 border-t border-[#3B694C]/10">
+              <p className="text-[11px] text-brand-fg/70 mt-1.5 pt-1.5 border-t border-brand/10">
                 Re-checked and frozen on the server when this campaign is created, so the
                 approved count is the sent count.
               </p>
@@ -1118,8 +1118,8 @@ function Step3({
           )}
           <div className="flex gap-1 mt-3">
             {selectedCustomers.slice(0, 6).map((c) => (
-              <div key={c.id} className="w-7 h-7 rounded-full bg-[#EEF6F1] flex items-center justify-center" title={c.name || ""}>
-                <span className="text-[10px] font-bold text-[#3B694C]">{initials(c.name)}</span>
+              <div key={c.id} className="w-7 h-7 rounded-full bg-brand-100 flex items-center justify-center" title={c.name || ""}>
+                <span className="text-[10px] font-bold text-brand-fg">{initials(c.name)}</span>
               </div>
             ))}
             {count > 6 && (
@@ -1141,7 +1141,7 @@ function Step3({
               onClick={() => setSendMode("now")}
               className={`flex-1 py-2.5 rounded-xl text-[13px] font-medium transition-colors border cursor-pointer ${
                 sendMode === "now"
-                  ? "bg-[#EEF6F1] border-[#3B694C] text-[#3B694C]"
+                  ? "bg-brand-100 border-brand text-brand-fg"
                   : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
               }`}
             >
@@ -1152,7 +1152,7 @@ function Step3({
               onClick={() => setSendMode("later")}
               className={`flex-1 py-2.5 rounded-xl text-[13px] font-medium transition-colors border cursor-pointer ${
                 sendMode === "later"
-                  ? "bg-[#EEF6F1] border-[#3B694C] text-[#3B694C]"
+                  ? "bg-brand-100 border-brand text-brand-fg"
                   : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-gray-800"
               }`}
             >
@@ -1169,7 +1169,7 @@ function Step3({
                   value={schedDate}
                   onChange={(e) => setSchedDate(e.target.value)}
                   min={new Date().toISOString().slice(0, 10)}
-                  className="w-full px-3 py-2.5 text-[13px] border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3B694C]/20 focus:border-[#3B694C]"
+                  className="w-full px-3 py-2.5 text-[13px] border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
                 />
               </div>
               <div className="flex-1">
@@ -1178,7 +1178,7 @@ function Step3({
                   type="time"
                   value={schedTime}
                   onChange={(e) => setSchedTime(e.target.value)}
-                  className="w-full px-3 py-2.5 text-[13px] border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3B694C]/20 focus:border-[#3B694C]"
+                  className="w-full px-3 py-2.5 text-[13px] border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
                 />
               </div>
             </div>
@@ -1248,8 +1248,8 @@ function Step3({
 
         <TierWarning verdict={assessTier(tier, count)} />
 
-        <div className="bg-[#EEF6F1] rounded-xl p-3">
-          <p className="text-[12px] text-[#3B694C]">
+        <div className="bg-brand-100 rounded-xl p-3">
+          <p className="text-[12px] text-brand-fg">
             <span className="font-semibold">Rate-limited:</span> messages send in small batches (~{SEND_SEC_PER_MSG_MIN.toFixed(1)}–{SEND_SEC_PER_MSG_MAX.toFixed(1)}s/msg effective) to keep your number trusted.
           </p>
         </div>
@@ -1265,7 +1265,7 @@ function Step3({
           <button
             onClick={() => onSubmit(scheduledAt)}
             disabled={submitting || !campaignName.trim() || !category || scheduleInQuiet || (sendMode === "later" && (!schedDate || !schedTime))}
-            className="w-full py-3 rounded-xl text-[14px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5540] disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2 cursor-pointer"
+            className="w-full py-3 rounded-xl text-[14px] font-semibold text-white bg-brand hover:bg-[#2f5540] disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2 cursor-pointer"
           >
             {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
             {!canSend
@@ -1287,7 +1287,7 @@ function Step3({
 function NewCampaignLoading() {
   return (
     <div className="flex-1 flex items-center justify-center bg-white">
-      <svg className="w-10 h-10 animate-spin text-[#3B694C]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <svg className="w-10 h-10 animate-spin text-brand-fg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
         <path d="M21 12a9 9 0 1 1-6.219-8.56" />
       </svg>
     </div>
@@ -1700,7 +1700,7 @@ function NewCampaignContent() {
       <div className="flex-1 flex flex-col overflow-hidden">
         {loadingDraft ? (
           <div className="flex-1 flex items-center justify-center">
-            <svg className="w-10 h-10 animate-spin text-[#3B694C]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <svg className="w-10 h-10 animate-spin text-brand-fg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M21 12a9 9 0 1 1-6.219-8.56" />
             </svg>
           </div>
@@ -1765,7 +1765,7 @@ function NewCampaignContent() {
           <button
             onClick={() => setStep(step + 1)}
             disabled={(step === 1 && !canProceed1) || (step === 2 && !canProceed2)}
-            className="text-[13px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5540] disabled:opacity-40 disabled:cursor-not-allowed px-6 py-2.5 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
+            className="text-[13px] font-semibold text-white bg-brand hover:bg-[#2f5540] disabled:opacity-40 disabled:cursor-not-allowed px-6 py-2.5 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
           >
             {step === 1 ? "Continue → Recipients" : "Review →"}
             <ChevronRight className="w-4 h-4" />

@@ -2,13 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { CalendarCheck2, CalendarClock, CalendarPlus, Check, ChevronDown, CircleSlash, Eraser, Flag, Loader2, PhoneMissed } from "lucide-react";
+import { CalendarCheck2, CalendarClock, CalendarPlus, Check, ChevronDown, CircleSlash, Eraser, Flag, Loader2, PhoneMissed, ShieldCheck, ShieldOff } from "lucide-react";
 import { apiCreateBookingRequest, apiGetConversationProfile, apiSetConversationOutcome } from "@/lib/api";
 import { getSocket } from "@/lib/socket";
 import { useCurrentUser } from "@/components/CurrentUserProvider";
 import { useToast } from "@/components/ui/toast";
 import { Spinner } from "@/components/ui/spinner";
-import type { Booking, ConversationOutcome, ConversationOutcomeState } from "@/types";
+import type { Booking, BookingRequest, ConversationOutcome, ConversationOutcomeState } from "@/types";
 import {
   OUTCOME_CHIP, OUTCOME_LABEL, OVERDUE_CHIP, type ProfileWithOutcome,
   chipBooking, fmtWhen, isOverdue, toDateTimeInput,
@@ -16,10 +16,12 @@ import {
 import { isOpenRequest, notifyRequestChanged } from "@/lib/bookingRequests";
 import { BookDialog } from "@/components/bookings/BookDialog";
 import { NewRequestDialog } from "@/components/bookings/NewRequestDialog";
+import { type SaveError, toSaveError } from "@/components/bookings/LeadSourcePicker";
+import { LiftOptOutDialog, RecordOptOutDialog, isOptedOut, type OptOutState } from "@/components/OptOut";
 
 type OutcomeBody = Parameters<typeof apiSetConversationOutcome>[1];
 
-const inputCls = "w-full border border-gray-200 rounded-lg px-2.5 py-2 text-[13px] outline-none focus:border-[#3B694C]";
+const inputCls = "w-full border border-gray-200 rounded-lg px-2.5 py-2 text-[13px] outline-none focus:border-brand";
 const labelCls = "block text-[12px] font-semibold text-gray-500 mb-1";
 
 /**
@@ -36,19 +38,28 @@ export function ConversationOutcomeControl({
   conversationId,
   outcome,
   followUpAt,
+  optOut = null,
 }: {
   conversationId: string;
   outcome: ConversationOutcome | null;
   followUpAt: string | null;
+  /** The patient's marketing opt-out (see components/OptOut), for the Marketing items. */
+  optOut?: OptOutState | null;
 }) {
   const { can } = useCurrentUser();
+  const canLift = can("optout:lift");
   const toast = useToast();
   const editable = can("conversation:write");
   const numericId = Number(conversationId);
   const [open, setOpen] = useState(false);
-  const [dialog, setDialog] = useState<"booked" | "follow_up" | "new_request" | null>(null);
-  // What the chat's open booking request asked for, to prefill "Booked…".
-  const [bookPrefill, setBookPrefill] = useState<{ requested: Record<string, unknown> | null; patient: string | null } | null>(null);
+  const [dialog, setDialog] = useState<"booked" | "follow_up" | "new_request" | "opt_out" | "lift_opt_out" | null>(null);
+  // The chat's open booking request (what it asked for, where the patient came
+  // from), to prefill "Booked…". request null = none yet: the server opens one.
+  const [bookPrefill, setBookPrefill] = useState<{
+    requested: Record<string, unknown> | null;
+    patient: string | null;
+    request: BookingRequest | null;
+  } | null>(null);
   const [preparing, setPreparing] = useState(false);
   const [saving, setSaving] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -106,6 +117,12 @@ export function ConversationOutcomeControl({
 
   /** Saves; returns the server's refusal (shown by the caller) or null. */
   async function save(body: OutcomeBody, okMessage: string): Promise<string | null> {
+    const err = await saveDetailed(body, okMessage);
+    return err ? err.message : null;
+  }
+
+  /** Same, keeping which field the refusal is about (the Book dialog's source block). */
+  async function saveDetailed(body: OutcomeBody, okMessage: string): Promise<SaveError | null> {
     setOpen(false);
     setSaving(true);
     try {
@@ -117,7 +134,7 @@ export function ConversationOutcomeControl({
       notifyRequestChanged(numericId);
       return null;
     } catch (err) {
-      return err instanceof Error ? err.message : "Couldn't save the outcome";
+      return toSaveError(err, "Couldn't save the outcome");
     } finally {
       setSaving(false);
     }
@@ -134,9 +151,9 @@ export function ConversationOutcomeControl({
         const req = (p.bookingRequests ?? [])
           .filter(isOpenRequest)
           .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())[0];
-        setBookPrefill({ requested: req?.requested ?? null, patient: p.customer.name || null });
+        setBookPrefill({ requested: req?.requested ?? null, patient: p.customer.name || null, request: req ?? null });
       })
-      .catch(() => setBookPrefill({ requested: null, patient: null }))
+      .catch(() => setBookPrefill({ requested: null, patient: null, request: null }))
       .finally(() => { setPreparing(false); setDialog("booked"); });
   }
 
@@ -216,28 +233,44 @@ export function ConversationOutcomeControl({
           <div className="fixed inset-0 z-[60]" onClick={() => setOpen(false)} />
           <div role="menu" aria-label="Chat outcome" className="absolute right-0 top-10 z-[61] w-[220px] bg-white border border-gray-100 rounded-xl shadow-lg py-1.5">
             <p className="px-3 pt-1 pb-1 text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Outcome</p>
-            <button type="button" role="menuitem" onClick={openBooked} className={`${item} text-[#3B694C] font-semibold hover:bg-[#EEF6F1]`}>
+            <button type="button" role="menuitem" onClick={openBooked} className={`${item} text-brand-fg font-semibold hover:bg-brand-100`}>
               <CalendarCheck2 className="w-4 h-4" /> <span className="flex-1">Booked…</span>
-              {shownOutcome === "BOOKED" && <Check className="w-4 h-4 text-[#3B694C]" />}
+              {shownOutcome === "BOOKED" && <Check className="w-4 h-4 text-brand-fg" />}
             </button>
             <button type="button" role="menuitem" onClick={() => { setOpen(false); setDialog("follow_up"); }} className={`${item} text-gray-700 hover:bg-gray-50`}>
               <CalendarClock className="w-4 h-4 text-amber-600" /> <span className="flex-1">Follow up…</span>
-              {shownOutcome === "FOLLOW_UP" && <Check className="w-4 h-4 text-[#3B694C]" />}
+              {shownOutcome === "FOLLOW_UP" && <Check className="w-4 h-4 text-brand-fg" />}
             </button>
             <button type="button" role="menuitem" onClick={() => quick({ outcome: "NOT_INTERESTED" }, "Marked as not interested")} className={`${item} text-gray-700 hover:bg-gray-50`}>
               <CircleSlash className="w-4 h-4 text-gray-400" /> <span className="flex-1">Not interested</span>
-              {shownOutcome === "NOT_INTERESTED" && <Check className="w-4 h-4 text-[#3B694C]" />}
+              {shownOutcome === "NOT_INTERESTED" && <Check className="w-4 h-4 text-brand-fg" />}
             </button>
             <button type="button" role="menuitem" onClick={() => quick({ outcome: "NO_ANSWER" }, "Marked as no answer")} className={`${item} text-gray-700 hover:bg-gray-50`}>
               <PhoneMissed className="w-4 h-4 text-gray-400" /> <span className="flex-1">No answer</span>
-              {shownOutcome === "NO_ANSWER" && <Check className="w-4 h-4 text-[#3B694C]" />}
+              {shownOutcome === "NO_ANSWER" && <Check className="w-4 h-4 text-brand-fg" />}
             </button>
             <div className="border-t border-gray-100 mt-1.5 pt-1.5">
               <p className="px-3 pt-1 pb-1 text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Booking</p>
               <button type="button" role="menuitem" onClick={() => { setOpen(false); setDialog("new_request"); }} className={`${item} text-gray-700 hover:bg-gray-50`}>
-                <CalendarPlus className="w-4 h-4 text-[#3B694C]" /> <span className="flex-1">New booking request…</span>
+                <CalendarPlus className="w-4 h-4 text-brand-fg" /> <span className="flex-1">New booking request…</span>
               </button>
             </div>
+            {/* Consent. Recording is for anyone working the chat; lifting is admins only. */}
+            {(!optOut?.all || (canLift && isOptedOut(optOut))) && (
+              <div className="border-t border-gray-100 mt-1.5 pt-1.5">
+                <p className="px-3 pt-1 pb-1 text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Marketing</p>
+                {!optOut?.all && (
+                  <button type="button" role="menuitem" onClick={() => { setOpen(false); setDialog("opt_out"); }} className={`${item} text-gray-700 hover:bg-gray-50`}>
+                    <ShieldOff className="w-4 h-4 text-red-500" /> <span className="flex-1">Opt out of marketing…</span>
+                  </button>
+                )}
+                {canLift && optOut && isOptedOut(optOut) && (
+                  <button type="button" role="menuitem" onClick={() => { setOpen(false); setDialog("lift_opt_out"); }} className={`${item} text-gray-700 hover:bg-gray-50`}>
+                    <ShieldCheck className="w-4 h-4 text-gray-400" /> <span className="flex-1">Lift opt-out…</span>
+                  </button>
+                )}
+              </div>
+            )}
             {shownOutcome && (
               <div className="border-t border-gray-100 mt-1.5 pt-1.5">
                 <button type="button" role="menuitem" onClick={() => quick({ outcome: null }, "Outcome cleared")} className={`${item} text-gray-500 hover:bg-gray-50`}>
@@ -253,14 +286,21 @@ export function ConversationOutcomeControl({
         <BookDialog
           requested={bookPrefill?.requested}
           patient={bookPrefill?.patient}
+          sourceRequest={bookPrefill?.request ?? null}
           onCancel={() => setDialog(null)}
-          onSave={(appointments) =>
-            save(
-              { outcome: "BOOKED", appointments },
+          onSave={(appointments, source) =>
+            saveDetailed(
+              { outcome: "BOOKED", appointments, ...(source ? { source } : {}) },
               appointments.length > 1 ? `${appointments.length} appointments booked` : `Booked for ${fmtWhen(appointments[0].appointmentAt)}`,
             )
           }
         />
+      )}
+      {dialog === "opt_out" && (
+        <RecordOptOutDialog conversationId={conversationId} state={optOut} onClose={() => setDialog(null)} />
+      )}
+      {dialog === "lift_opt_out" && optOut && isOptedOut(optOut) && (
+        <LiftOptOutDialog conversationId={conversationId} state={optOut} onClose={() => setDialog(null)} />
       )}
       {dialog === "new_request" && (
         <NewRequestDialog onCancel={() => setDialog(null)} onSave={createRequest} />
@@ -306,7 +346,7 @@ function DialogButtons({ saving, onCancel, label }: { saving: boolean; onCancel:
       <button type="button" onClick={onCancel} disabled={saving} className="px-4 py-2 rounded-xl text-[13px] font-medium text-gray-600 hover:bg-gray-50 transition-colors cursor-pointer disabled:opacity-50">
         Cancel
       </button>
-      <button type="submit" disabled={saving} className="px-4 py-2 rounded-xl text-[13px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5840] transition-colors cursor-pointer disabled:opacity-60 flex items-center gap-1.5">
+      <button type="submit" disabled={saving} className="px-4 py-2 rounded-xl text-[13px] font-semibold text-white bg-brand hover:bg-[#2f5840] transition-colors cursor-pointer disabled:opacity-60 flex items-center gap-1.5">
         {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
         {label}
       </button>
@@ -366,7 +406,7 @@ function FollowUpDialog({ saving, current, onCancel, onSave }: {
                 key={p.label}
                 type="button"
                 onClick={() => { setValue(v); setError(null); }}
-                className={`text-[12px] px-2.5 py-1 rounded-full border transition-colors cursor-pointer ${value === v ? "bg-[#DCF2E3] border-[#3B694C] text-[#3B694C] font-semibold" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}
+                className={`text-[12px] px-2.5 py-1 rounded-full border transition-colors cursor-pointer ${value === v ? "bg-brand-200 border-brand text-brand-fg font-semibold" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}
               >
                 {p.label}
               </button>

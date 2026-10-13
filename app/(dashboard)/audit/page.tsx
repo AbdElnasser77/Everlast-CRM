@@ -166,7 +166,7 @@ export default function AuditLogPage() {
   // While user is not yet read from localStorage, render nothing to avoid flicker
   if (!ready) {
     return (
-      <div className="flex flex-col h-full bg-[#f5f4f0]">
+      <div className="flex flex-col h-full bg-canvas-warm">
         <div className="bg-white border-b border-gray-100 px-6 py-4">
           <div className="h-6 w-32 rounded bg-gray-200 animate-pulse" />
         </div>
@@ -182,7 +182,7 @@ export default function AuditLogPage() {
   if (!ready) return <PageSpinner />;
   if (!allowed) {
     return (
-      <div className="flex flex-col h-full bg-[#f5f4f0]">
+      <div className="flex flex-col h-full bg-canvas-warm">
         <div className="bg-white border-b border-gray-100 px-6 py-4 shrink-0">
           <h1 className="text-[18px] font-bold text-gray-900">Audit Log</h1>
         </div>
@@ -192,7 +192,7 @@ export default function AuditLogPage() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-[#f5f4f0]">
+    <div className="flex flex-col h-full bg-canvas-warm">
       {/* Page header */}
       <div className="bg-white border-b border-gray-100 px-6 py-4 shrink-0">
         <h1 className="text-[18px] font-bold text-gray-900">Audit Log</h1>

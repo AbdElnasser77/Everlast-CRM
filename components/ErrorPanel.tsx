@@ -34,7 +34,7 @@ export function ErrorPanel({
   ].filter((l, i) => l || i === 4).join("\n");
 
   return (
-    <div className={`flex flex-1 items-center justify-center bg-[#f9f9f8] px-6 ${compact ? "py-10" : "min-h-full py-16"}`}>
+    <div className={`flex flex-1 items-center justify-center bg-canvas px-6 ${compact ? "py-10" : "min-h-full py-16"}`}>
       <div className="w-full max-w-lg bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
         <div className="flex items-start gap-3">
           <span className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
@@ -55,7 +55,7 @@ export function ErrorPanel({
           <button
             type="button"
             onClick={reset}
-            className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5840] rounded-xl px-4 py-2"
+            className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-white bg-brand hover:bg-[#2f5840] rounded-xl px-4 py-2"
           >
             <RotateCcw className="w-3.5 h-3.5" /> Try again
           </button>
@@ -83,7 +83,7 @@ export function ErrorPanel({
             <button
               type="button"
               onClick={() => navigator.clipboard.writeText(details).then(() => setCopied(true)).catch(() => {})}
-              className="mt-2 inline-flex items-center gap-1 text-[12px] text-[#3B694C] hover:underline"
+              className="mt-2 inline-flex items-center gap-1 text-[12px] text-brand-fg hover:underline"
             >
               <Copy className="w-3.5 h-3.5" /> {copied ? "Copied" : "Copy details"}
             </button>

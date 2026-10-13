@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { CalendarDays, ChevronRight, RefreshCw } from "lucide-react";
 import { apiGetSupervisionBookings } from "@/lib/api";
 import type { Booking } from "@/types";
+import { leadSourceName } from "@/lib/bookingRequests";
 import { clockTime, dayLabel, formatPhone, localDay, patientName, personInitials, personName, timeAgo } from "./format";
 
 type SupervisedBooking = Booking & {
@@ -13,10 +14,11 @@ type SupervisedBooking = Booking & {
   campaign?: { id: number; name: string } | null;
 };
 
-/** "Campaign: Summer whitening", or "from a campaign" when only the id is known. */
+/** "Campaign: Summer whitening", "from a campaign" when only the id is known, or the lead source ("Instagram"). */
 function campaignLabel(b: SupervisedBooking): string | null {
   if (b.campaign?.name) return `Campaign: ${b.campaign.name}`;
   if (b.campaignId) return "from a campaign";
+  if (b.leadSource && b.leadSource !== "CAMPAIGN") return leadSourceName(b.leadSource);
   return null;
 }
 
@@ -214,7 +216,7 @@ export function BookingsPanel({
                 onClick={() => onRange({ preset: p.preset })}
                 aria-pressed={range.preset === p.preset}
                 className={`text-[12px] font-semibold rounded-md px-3 py-1 transition-colors cursor-pointer ${
-                  range.preset === p.preset ? "bg-[#3B694C] text-white" : "text-gray-500 hover:text-gray-800"
+                  range.preset === p.preset ? "bg-brand text-white" : "text-gray-500 hover:text-gray-800"
                 }`}
               >
                 {p.label}
@@ -226,7 +228,7 @@ export function BookingsPanel({
               aria-pressed={range.preset === "custom"}
               title="Pick any dates with From / To"
               className={`text-[12px] font-semibold rounded-md px-3 py-1 transition-colors cursor-pointer ${
-                range.preset === "custom" ? "bg-[#3B694C] text-white" : "text-gray-500 hover:text-gray-800"
+                range.preset === "custom" ? "bg-brand text-white" : "text-gray-500 hover:text-gray-800"
               }`}
             >
               Custom
@@ -234,7 +236,7 @@ export function BookingsPanel({
           </div>
           <div
             className={`flex items-center gap-1.5 text-[12px] rounded-lg border px-2 py-1 ${
-              range.preset === "custom" ? "border-[#3B694C]/40 bg-[#F5FAF7]" : "border-gray-100 bg-white"
+              range.preset === "custom" ? "border-brand/40 bg-brand-50" : "border-gray-100 bg-white"
             }`}
           >
             <label className="flex items-center gap-1 text-gray-400">
@@ -265,7 +267,7 @@ export function BookingsPanel({
               type="checkbox"
               checked={showCancelled}
               onChange={(e) => setShowCancelled(e.target.checked)}
-              className="accent-[#3B694C]"
+              className="accent-brand"
             />
             Show cancelled
           </label>
@@ -290,7 +292,7 @@ export function BookingsPanel({
           <button
             type="button"
             onClick={() => setRetry((n) => n + 1)}
-            className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5840] rounded-xl px-4 py-2 cursor-pointer"
+            className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-white bg-brand hover:bg-[#2f5840] rounded-xl px-4 py-2 cursor-pointer"
           >
             <RefreshCw className="w-3.5 h-3.5" /> Try again
           </button>
@@ -322,10 +324,10 @@ export function BookingsPanel({
                       <button
                         type="button"
                         onClick={() => onOpenChat(b.conversation.id)}
-                        className="group w-full text-left flex items-center gap-3 px-4 py-2.5 hover:bg-[#F5FAF7] transition-colors cursor-pointer"
+                        className="group w-full text-left flex items-center gap-3 px-4 py-2.5 hover:bg-brand-50 transition-colors cursor-pointer"
                       >
                         <span
-                          className={`w-14 shrink-0 text-[13px] font-bold tabular-nums ${cancelled ? "text-gray-300 line-through" : past ? "text-gray-400" : "text-[#3B694C]"}`}
+                          className={`w-14 shrink-0 text-[13px] font-bold tabular-nums ${cancelled ? "text-gray-300 line-through" : past ? "text-gray-400" : "text-brand-fg"}`}
                         >
                           {clockTime(b.appointmentAt)}
                         </span>
@@ -364,7 +366,7 @@ export function BookingsPanel({
                           </span>
                           <span className="truncate">{b.createdBy ? personName(b.createdBy) : "—"}</span>
                         </span>
-                        <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-[#3B694C] shrink-0" />
+                        <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-brand-fg shrink-0" />
                       </button>
                     </li>
                   );

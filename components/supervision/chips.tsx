@@ -45,7 +45,7 @@ export function OutcomeChip({
     return (
       <span
         title={booking ? `Appointment ${dateTime(booking.appointmentAt)}${cancelled ? " (cancelled)" : ""}` : "Booked"}
-        className={`${CHIP} ${cancelled ? "bg-gray-50 text-gray-400 border-gray-200 line-through" : "bg-[#DCF2E3] text-[#2f5840] border-[#3B694C]/30"}`}
+        className={`${CHIP} ${cancelled ? "bg-gray-50 text-gray-400 border-gray-200 line-through" : "bg-brand-200 text-brand-strong border-brand/30"}`}
       >
         <CalendarCheck className="w-3 h-3" />
         Booked ✓{booking ? ` · ${shortDate(booking.appointmentAt)}` : ""}
@@ -102,7 +102,7 @@ export function FlowChip({ flow, booked }: { flow: SupervisionFlowState | null; 
   }
   if (flow.status === "ACTIVE") {
     return (
-      <span title={`In “${name}” right now`} className={`${CHIP} bg-[#EEF6F1] text-[#3B694C] border-[#3B694C]/20 max-w-[180px]`}>
+      <span title={`In “${name}” right now`} className={`${CHIP} bg-brand-100 text-brand-fg border-brand/20 max-w-[180px]`}>
         <Workflow className="w-3 h-3 shrink-0" />
         <span className="truncate">In flow</span>
       </span>
@@ -148,7 +148,7 @@ export function RequestChip({
   if (request.status === "BOOKED") {
     const n = request.bookings?.length ?? 0;
     return (
-      <span className={`${CHIP} bg-[#DCF2E3] text-[#2f5840] border-[#3B694C]/30`}>
+      <span className={`${CHIP} bg-brand-200 text-brand-strong border-brand/30`}>
         <CalendarCheck className="w-3 h-3" /> Booked{n > 1 ? ` · ${n} appointments` : ""}
       </span>
     );
@@ -172,7 +172,7 @@ export function NumberChip({ label }: { label: string }) {
 }
 
 const STATUS_STYLE: Record<string, string> = {
-  OPEN: "bg-[#EEF6F1] text-[#3B694C]",
+  OPEN: "bg-brand-100 text-brand-fg",
   PENDING: "bg-amber-50 text-amber-600",
   RESOLVED: "bg-gray-100 text-gray-500",
 };

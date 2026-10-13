@@ -45,7 +45,7 @@ export const OUTCOME_LABEL: Record<ConversationOutcome, string> = {
 
 // Chip colours. Follow-up turns red once its time has passed (see isOverdue).
 export const OUTCOME_CHIP: Record<ConversationOutcome, string> = {
-  BOOKED: "bg-[#EEF6F1] text-[#3B694C] border-[#3B694C]/30",
+  BOOKED: "bg-brand-100 text-brand-fg border-brand/30",
   FOLLOW_UP: "bg-amber-50 text-amber-700 border-amber-200",
   NOT_INTERESTED: "bg-gray-100 text-gray-600 border-gray-200",
   NO_ANSWER: "bg-slate-50 text-slate-500 border-slate-200",

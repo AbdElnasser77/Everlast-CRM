@@ -28,6 +28,7 @@ import { apiLogout, apiGetStatsOverview, apiGetPendingApprovals, apiGetBookingRe
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { WhatsAppNumberProvider, useActiveNumber } from "@/components/WhatsAppNumberProvider";
 import { NumberSwitcher } from "@/components/NumberSwitcher";
+import { ThemeSwitcher, ThemeToggleButton } from "@/components/ThemeToggle";
 import { CurrentUserProvider, useCurrentUser } from "@/components/CurrentUserProvider";
 import { ToastProvider } from "@/components/ui/toast";
 import DevCostTracker from "@/components/DevCostTracker";
@@ -267,7 +268,7 @@ function DashboardShell({ children }: { children: ReactNode }) {
       return (
         <div title={!expanded ? label : undefined}
           className={`${base} ${expanded ? "gap-3 px-3" : "justify-center"} text-gray-300 cursor-default`}>
-          {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-[#3B694C] rounded-r-full" />}
+          {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-brand rounded-r-full" />}
           {iconEl}
           {labelEl}
           {badgeEl}
@@ -280,11 +281,11 @@ function DashboardShell({ children }: { children: ReactNode }) {
         title={!expanded ? label : undefined}
         className={`${base} ${expanded ? "gap-3 px-3" : "justify-center"} ${
           active
-            ? "bg-[#EEF6F1] text-[#3B694C]"
+            ? "bg-brand-100 text-brand-fg"
             : "text-gray-400 hover:bg-gray-50 hover:text-gray-600"
         }`}
       >
-        {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-[#3B694C] rounded-r-full" />}
+        {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-brand rounded-r-full" />}
         {iconEl}
         {labelEl}
         {badgeEl}
@@ -311,10 +312,10 @@ function DashboardShell({ children }: { children: ReactNode }) {
         href={href}
         onClick={() => setMobileOpen(false)}
         className={`relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13.5px] transition-colors ${
-          active ? "bg-[#EEF6F1] text-[#3B694C] font-medium" : "text-gray-600 hover:bg-gray-50"
+          active ? "bg-brand-100 text-brand-fg font-medium" : "text-gray-600 hover:bg-gray-50"
         }`}
       >
-        {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-[#3B694C] rounded-r-full" />}
+        {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-brand rounded-r-full" />}
         <Icon className="w-[17px] h-[17px] shrink-0" />
         <span className="flex-1">{label}</span>
         {badgeLabel && (
@@ -341,9 +342,9 @@ function DashboardShell({ children }: { children: ReactNode }) {
         title={!expanded ? "Contacts" : undefined}
         className={`relative flex items-center h-10 w-full rounded-xl transition-colors overflow-hidden ${
           expanded ? "gap-3 px-3" : "justify-center"
-        } ${contactsActive ? "bg-[#EEF6F1] text-[#3B694C]" : "text-gray-400 hover:bg-gray-50 hover:text-gray-600"}`}
+        } ${contactsActive ? "bg-brand-100 text-brand-fg" : "text-gray-400 hover:bg-gray-50 hover:text-gray-600"}`}
       >
-        {contactsActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-[#3B694C] rounded-r-full" />}
+        {contactsActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-brand rounded-r-full" />}
         <span className="relative shrink-0 flex items-center justify-center">
           <Contact className="w-[18px] h-[18px]" />
         </span>
@@ -369,7 +370,7 @@ function DashboardShell({ children }: { children: ReactNode }) {
             <Link
               href="/customers"
               className={`relative flex items-center h-8 px-2.5 rounded-lg text-[13px] transition-colors ${
-                contactsChildActive ? "bg-[#EEF6F1] text-[#3B694C] font-medium" : "text-gray-400 hover:bg-gray-50 hover:text-gray-600"
+                contactsChildActive ? "bg-brand-100 text-brand-fg font-medium" : "text-gray-400 hover:bg-gray-50 hover:text-gray-600"
               }`}
             >
               Contacts
@@ -377,7 +378,7 @@ function DashboardShell({ children }: { children: ReactNode }) {
             <Link
               href="/customers/lists"
               className={`relative flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-[13px] transition-colors ${
-                listsActive ? "bg-[#EEF6F1] text-[#3B694C] font-medium" : "text-gray-400 hover:bg-gray-50 hover:text-gray-600"
+                listsActive ? "bg-brand-100 text-brand-fg font-medium" : "text-gray-400 hover:bg-gray-50 hover:text-gray-600"
               }`}
             >
               Lists
@@ -385,7 +386,7 @@ function DashboardShell({ children }: { children: ReactNode }) {
             <Link
               href="/customers/segments"
               className={`relative flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-[13px] transition-colors ${
-                segmentsActive ? "bg-[#EEF6F1] text-[#3B694C] font-medium" : "text-gray-400 hover:bg-gray-50 hover:text-gray-600"
+                segmentsActive ? "bg-brand-100 text-brand-fg font-medium" : "text-gray-400 hover:bg-gray-50 hover:text-gray-600"
               }`}
             >
               Segments
@@ -403,10 +404,10 @@ function DashboardShell({ children }: { children: ReactNode }) {
         type="button"
         onClick={() => setContactsOpen((v) => !v)}
         className={`relative flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-[13.5px] transition-colors ${
-          contactsActive ? "bg-[#EEF6F1] text-[#3B694C] font-medium" : "text-gray-600 hover:bg-gray-50"
+          contactsActive ? "bg-brand-100 text-brand-fg font-medium" : "text-gray-600 hover:bg-gray-50"
         }`}
       >
-        {contactsActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-[#3B694C] rounded-r-full" />}
+        {contactsActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-brand rounded-r-full" />}
         <Contact className="w-[17px] h-[17px] shrink-0" />
         <span className="flex-1 text-left">Contacts</span>
         <ChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform duration-200 ${contactsOpen ? "rotate-180" : ""}`} />
@@ -422,7 +423,7 @@ function DashboardShell({ children }: { children: ReactNode }) {
             href="/customers"
             onClick={() => setMobileOpen(false)}
             className={`relative flex items-center px-3 py-2 rounded-lg text-[13px] transition-colors ${
-              contactsChildActive ? "bg-[#EEF6F1] text-[#3B694C] font-medium" : "text-gray-500 hover:bg-gray-50"
+              contactsChildActive ? "bg-brand-100 text-brand-fg font-medium" : "text-gray-500 hover:bg-gray-50"
             }`}
           >
             Contacts
@@ -431,7 +432,7 @@ function DashboardShell({ children }: { children: ReactNode }) {
             href="/customers/lists"
             onClick={() => setMobileOpen(false)}
             className={`relative flex items-center gap-1.5 px-3 py-2 rounded-lg text-[13px] transition-colors ${
-              listsActive ? "bg-[#EEF6F1] text-[#3B694C] font-medium" : "text-gray-500 hover:bg-gray-50"
+              listsActive ? "bg-brand-100 text-brand-fg font-medium" : "text-gray-500 hover:bg-gray-50"
             }`}
           >
             Lists
@@ -440,7 +441,7 @@ function DashboardShell({ children }: { children: ReactNode }) {
             href="/customers/segments"
             onClick={() => setMobileOpen(false)}
             className={`relative flex items-center gap-1.5 px-3 py-2 rounded-lg text-[13px] transition-colors ${
-              segmentsActive ? "bg-[#EEF6F1] text-[#3B694C] font-medium" : "text-gray-500 hover:bg-gray-50"
+              segmentsActive ? "bg-brand-100 text-brand-fg font-medium" : "text-gray-500 hover:bg-gray-50"
             }`}
           >
             Segments
@@ -463,11 +464,12 @@ function DashboardShell({ children }: { children: ReactNode }) {
         <button onClick={() => setMobileOpen(true)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors" aria-label="Open menu">
           <Menu className="w-5 h-5" />
         </button>
-        <div className="w-6 h-6 rounded-full bg-[#3B694C] flex items-center justify-center shrink-0">
+        <div className="w-6 h-6 rounded-full bg-brand flex items-center justify-center shrink-0">
           <span className="text-white font-bold text-xs leading-none">E</span>
         </div>
         <span className="font-bold text-[14px] text-gray-800">Everlast CRM</span>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-1">
+          <ThemeToggleButton />
           <NumberSwitcher />
         </div>
       </div>
@@ -482,7 +484,7 @@ function DashboardShell({ children }: { children: ReactNode }) {
       <div className={`lg:hidden fixed top-0 left-0 h-full w-[260px] z-[51] bg-white shadow-2xl flex flex-col transition-transform duration-300 ease-out ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`}>
         <div className="flex items-center justify-between px-4 py-4 border-b border-gray-100 shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-full bg-[#3B694C] flex items-center justify-center shrink-0">
+            <div className="w-7 h-7 rounded-full bg-brand flex items-center justify-center shrink-0">
               <span className="text-white font-bold text-sm leading-none">E</span>
             </div>
             <span className="font-bold text-[15px] text-gray-800">Everlast CRM</span>
@@ -502,7 +504,8 @@ function DashboardShell({ children }: { children: ReactNode }) {
             </>
           )}
         </nav>
-        <div className="shrink-0 border-t border-gray-100 p-2">
+        <div className="shrink-0 border-t border-gray-100 p-2 space-y-1">
+          <ThemeSwitcher withLabels />
           <button
             onClick={() => { setMobileOpen(false); handleLogout(); }}
             className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-[13.5px] text-gray-600 hover:bg-red-50 hover:text-red-500 transition-colors cursor-pointer"
@@ -531,7 +534,7 @@ function DashboardShell({ children }: { children: ReactNode }) {
       >
         {/* Logo row */}
         <div className={`shrink-0 flex items-center border-b border-gray-100 h-[57px] overflow-hidden transition-[padding] duration-300 ${expanded ? "px-4 gap-2.5" : "justify-center"}`}>
-          <div className="w-7 h-7 rounded-full bg-[#3B694C] flex items-center justify-center shrink-0">
+          <div className="w-7 h-7 rounded-full bg-brand flex items-center justify-center shrink-0">
             <span className="text-white font-bold text-sm leading-none">E</span>
           </div>
           <span className={`font-bold text-[15px] text-gray-800 whitespace-nowrap transition-[opacity,max-width] duration-200 delay-75 ${expanded ? "opacity-100 max-w-[180px]" : "opacity-0 max-w-0"}`}>
@@ -608,6 +611,7 @@ function DashboardShell({ children }: { children: ReactNode }) {
             below, never with min-h-screen, or their bottom edge would be pushed
             under the fold. */}
         <header className="hidden lg:flex h-12 shrink-0 items-center justify-end gap-3 px-4 border-b border-gray-100 bg-white">
+          <ThemeSwitcher />
           <NumberSwitcher />
         </header>
 

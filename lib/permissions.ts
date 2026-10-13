@@ -30,6 +30,7 @@ export type Permission =
   | "number:read" | "number:use_any" | "number:write"
   | "settings:write"
   | "team:supervise"
+  | "optout:lift"
   | "dev:tools";
 
 /** Whatever shape the caller has on hand — /users/me, or a cached login user. */

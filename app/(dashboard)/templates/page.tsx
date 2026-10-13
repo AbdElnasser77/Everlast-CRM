@@ -68,7 +68,7 @@ const CATEGORY_CONFIG: Record<
   TemplateCategory,
   { label: string; bg: string; text: string }
 > = {
-  GENERAL: { label: "General", bg: "bg-[#EEF6F1]", text: "text-[#3B694C]" },
+  GENERAL: { label: "General", bg: "bg-brand-100", text: "text-brand-fg" },
   RE_ENGAGEMENT: {
     label: "Re-engagement",
     bg: "bg-orange-50",
@@ -325,7 +325,7 @@ function TemplateCard({
       {/* Scrollable bubble area */}
       <div className="mx-3 mb-3 flex-1 overflow-y-auto max-h-80 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-[#2f5840]/30 [&::-webkit-scrollbar-thumb]:rounded-full">
         {/* Dark green WhatsApp bubble */}
-        <div className="bg-[#3B694C] rounded-2xl rounded-br-sm px-3.5 py-3 shadow-sm">
+        <div className="bg-brand rounded-2xl rounded-br-sm px-3.5 py-3 shadow-sm">
           <HeaderPreview headerType={template.headerType} header={template.header} headerMediaUrl={template.headerMediaUrl} />
           <p className="text-[13px] text-white leading-relaxed whitespace-pre-wrap">
             <WaText text={template.body} />
@@ -514,9 +514,9 @@ export default function TemplatesPage() {
       )}
 
       {news.length > 0 && !hideNews && (
-        <div className="flex items-start justify-between gap-3 bg-[#EEF6F1] border border-[#3B694C]/20 rounded-xl px-4 py-3 mb-5">
+        <div className="flex items-start justify-between gap-3 bg-brand-100 border border-brand/20 rounded-xl px-4 py-3 mb-5">
           <div className="text-[13px] text-gray-700 space-y-0.5">
-            <p className="font-semibold text-[#3B694C]">Since your last visit</p>
+            <p className="font-semibold text-brand-fg">Since your last visit</p>
             {news.map((t) => (
               <p key={t.id}>
                 {t.approvalStatus === "APPROVED" ? "✅" : "❌"} <span className="font-medium">{t.name}</span>{" "}
@@ -558,7 +558,7 @@ export default function TemplatesPage() {
           <button
             type="button"
             onClick={() => router.push("/templates/new")}
-            className="flex items-center gap-2 bg-[#3B694C] hover:bg-[#2f5840] text-white rounded-xl px-4 py-2 text-[13px] font-semibold cursor-pointer transition-colors"
+            className="flex items-center gap-2 bg-brand hover:bg-[#2f5840] text-white rounded-xl px-4 py-2 text-[13px] font-semibold cursor-pointer transition-colors"
           >
             <Plus className="w-3.5 h-3.5" /> New Template
           </button>
@@ -574,7 +574,7 @@ export default function TemplatesPage() {
             onClick={() => setStatusFilter(f)}
             className={`px-3.5 py-1.5 rounded-full text-[13px] border transition-colors cursor-pointer font-medium ${
               statusFilter === f
-                ? "bg-[#DCF2E3] border-[#3B694C] text-[#3B694C]"
+                ? "bg-brand-200 border-brand text-brand-fg"
                 : "border-gray-200 text-gray-500 hover:bg-gray-50 bg-white"
             }`}
           >
@@ -617,7 +617,7 @@ export default function TemplatesPage() {
             <button
               type="button"
               onClick={() => router.push("/templates/new")}
-              className="flex items-center gap-2 bg-[#3B694C] hover:bg-[#2f5840] text-white rounded-xl px-5 py-2.5 text-[13px] font-semibold cursor-pointer transition-colors"
+              className="flex items-center gap-2 bg-brand hover:bg-[#2f5840] text-white rounded-xl px-5 py-2.5 text-[13px] font-semibold cursor-pointer transition-colors"
             >
               <Plus className="w-4 h-4" /> New Template
             </button>

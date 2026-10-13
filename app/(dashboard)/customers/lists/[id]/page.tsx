@@ -192,7 +192,7 @@ export default function ListDetailPage() {
           <button
             type="button"
             onClick={() => setShowPicker(true)}
-            className="flex items-center gap-2 bg-[#3B694C] hover:bg-[#2f5840] active:bg-[#264a33] text-white text-[13px] font-semibold px-4 py-2 rounded-xl transition-colors cursor-pointer"
+            className="flex items-center gap-2 bg-brand hover:bg-[#2f5840] active:bg-[#264a33] text-white text-[13px] font-semibold px-4 py-2 rounded-xl transition-colors cursor-pointer"
           >
             <UserPlus className="w-3.5 h-3.5" />
             Add contacts
@@ -213,7 +213,7 @@ export default function ListDetailPage() {
 
       {/* Search */}
       <div className="shrink-0 px-6 py-4">
-        <div className="flex items-center gap-2.5 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 max-w-sm focus-within:ring-2 focus-within:ring-[#3B694C]/20 focus-within:border-[#3B694C] transition-colors">
+        <div className="flex items-center gap-2.5 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 max-w-sm focus-within:ring-2 focus-within:ring-brand/20 focus-within:border-brand transition-colors">
           <svg className="w-4 h-4 text-gray-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
           </svg>
@@ -233,7 +233,7 @@ export default function ListDetailPage() {
       <div className="flex-1 min-h-0 overflow-auto px-6 pb-6 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb]:rounded-full">
         {loading ? (
           <div className="flex justify-center py-16">
-            <svg className="w-6 h-6 animate-spin text-[#3B694C]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
+            <svg className="w-6 h-6 animate-spin text-brand-fg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
           </div>
         ) : members.length === 0 ? (
           <div className="text-center py-16">
@@ -258,7 +258,7 @@ export default function ListDetailPage() {
                 return (
                   <tr key={memberKey(m)} className="border-b border-gray-50 hover:bg-gray-50/60">
                     <td className="px-3 py-2.5">
-                      <button type="button" onClick={() => router.push(`/customers/${m._id ?? m.id}`)} className="text-[13px] font-medium text-gray-800 hover:text-[#3B694C] cursor-pointer">
+                      <button type="button" onClick={() => router.push(`/customers/${m._id ?? m.id}`)} className="text-[13px] font-medium text-gray-800 hover:text-brand-fg cursor-pointer">
                         {m.name || "—"}
                       </button>
                     </td>
@@ -291,7 +291,7 @@ export default function ListDetailPage() {
               type="button"
               onClick={() => load(page + 1, search, true)}
               disabled={loadingMore}
-              className="text-[12px] font-semibold text-[#3B694C] hover:underline disabled:opacity-50 cursor-pointer"
+              className="text-[12px] font-semibold text-brand-fg hover:underline disabled:opacity-50 cursor-pointer"
             >
               {loadingMore ? "Loading…" : `Load more (${total - members.length} remaining)`}
             </button>
@@ -319,7 +319,7 @@ export default function ListDetailPage() {
                 <input
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
-                  className="w-full text-[13px] rounded-xl border border-gray-200 px-3 py-2.5 outline-none focus:ring-2 focus:ring-[#3B694C]/20 focus:border-[#3B694C] transition-colors"
+                  className="w-full text-[13px] rounded-xl border border-gray-200 px-3 py-2.5 outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand transition-colors"
                 />
               </div>
               <div>
@@ -328,7 +328,7 @@ export default function ListDetailPage() {
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
                   rows={3}
-                  className="w-full text-[13px] rounded-xl border border-gray-200 px-3 py-2.5 outline-none focus:ring-2 focus:ring-[#3B694C]/20 focus:border-[#3B694C] transition-colors resize-none"
+                  className="w-full text-[13px] rounded-xl border border-gray-200 px-3 py-2.5 outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand transition-colors resize-none"
                 />
               </div>
             </div>
@@ -337,7 +337,7 @@ export default function ListDetailPage() {
               <button type="button" onClick={() => setShowEdit(false)} disabled={saving} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-[13px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-60 transition-colors cursor-pointer">
                 Cancel
               </button>
-              <button type="button" onClick={saveEdit} disabled={saving || !editName.trim()} className="flex-1 py-2.5 rounded-xl bg-[#3B694C] hover:bg-[#2f5840] disabled:opacity-50 text-[13px] font-semibold text-white transition-colors cursor-pointer">
+              <button type="button" onClick={saveEdit} disabled={saving || !editName.trim()} className="flex-1 py-2.5 rounded-xl bg-brand hover:bg-[#2f5840] disabled:opacity-50 text-[13px] font-semibold text-white transition-colors cursor-pointer">
                 {saving ? "Saving…" : "Save"}
               </button>
             </div>

@@ -11,14 +11,14 @@ export type AgentFilter = number | "unassigned" | null;
 const PRESENCE_ORDER = { ONLINE: 0, ON_BREAK: 1, OFFLINE: 2 } as const;
 
 const SCROLLER =
-  "flex gap-3 overflow-x-auto pb-1.5 -mb-1.5 [scrollbar-width:thin] [scrollbar-color:rgba(59,105,76,0.25)_transparent] [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-[#3B694C]/25 [&::-webkit-scrollbar-thumb]:rounded-full";
+  "flex gap-3 overflow-x-auto pb-1.5 -mb-1.5 [scrollbar-width:thin] [scrollbar-color:rgba(59,105,76,0.25)_transparent] [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-brand/25 [&::-webkit-scrollbar-thumb]:rounded-full";
 
 function Stat({ label, value, tone }: { label: string; value: string | number; tone?: "red" | "green" | "muted" }) {
   return (
     <div className="min-w-0">
       <p
         className={`text-[15px] font-bold leading-tight tabular-nums ${
-          tone === "red" ? "text-red-600" : tone === "green" ? "text-[#3B694C]" : tone === "muted" ? "text-gray-300" : "text-gray-800"
+          tone === "red" ? "text-red-600" : tone === "green" ? "text-brand-fg" : tone === "muted" ? "text-gray-300" : "text-gray-800"
         }`}
       >
         {value}
@@ -31,7 +31,7 @@ function Stat({ label, value, tone }: { label: string; value: string | number; t
 function cardClass(active: boolean, alert: boolean) {
   return `shrink-0 w-[248px] text-left bg-white rounded-xl border p-3.5 transition-colors cursor-pointer ${
     active
-      ? "border-[#3B694C] bg-[#F5FAF7] ring-1 ring-[#3B694C]/15"
+      ? "border-brand bg-brand-50 ring-1 ring-brand/15"
       : alert
         ? "border-red-200 hover:border-red-300"
         : "border-gray-100 hover:border-gray-200"
@@ -47,7 +47,7 @@ function AgentCard({ agent, active, now, onClick }: { agent: SupervisionAgent; a
         <span className="relative shrink-0">
           <span
             className={`w-9 h-9 rounded-full flex items-center justify-center text-[11px] font-bold ${
-              agent.status === "OFFLINE" ? "bg-gray-100 text-gray-500" : "bg-[#EEF6F1] text-[#3B694C]"
+              agent.status === "OFFLINE" ? "bg-gray-100 text-gray-500" : "bg-brand-100 text-brand-fg"
             }`}
           >
             {personInitials(agent)}

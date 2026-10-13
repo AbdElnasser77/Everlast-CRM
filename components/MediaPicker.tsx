@@ -90,7 +90,7 @@ export default function MediaPicker({
             type="button"
             onClick={() => fileRef.current?.click()}
             disabled={uploading}
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed border-gray-200 hover:border-[#3B694C] hover:bg-[#EEF6F1] disabled:opacity-60 disabled:cursor-wait transition-colors cursor-pointer text-[13px] font-semibold text-gray-600 hover:text-[#3B694C]"
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed border-gray-200 hover:border-brand hover:bg-brand-100 disabled:opacity-60 disabled:cursor-wait transition-colors cursor-pointer text-[13px] font-semibold text-gray-600 hover:text-brand-fg"
           >
             {uploading ? (
               <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
@@ -105,7 +105,7 @@ export default function MediaPicker({
         <div className="flex-1 min-h-0 overflow-y-auto p-5 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb]:rounded-full">
           {loading ? (
             <div className="flex justify-center py-10">
-              <svg className="w-5 h-5 animate-spin text-[#3B694C]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
+              <svg className="w-5 h-5 animate-spin text-brand-fg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
             </div>
           ) : assets.length === 0 ? (
             <p className="text-[13px] text-gray-400 text-center py-10">
@@ -118,7 +118,7 @@ export default function MediaPicker({
                   key={a.id}
                   type="button"
                   onClick={() => onSelect(a)}
-                  className="text-left border border-gray-200 rounded-xl overflow-hidden hover:border-[#3B694C] transition-colors cursor-pointer"
+                  className="text-left border border-gray-200 rounded-xl overflow-hidden hover:border-brand transition-colors cursor-pointer"
                 >
                   <div className="aspect-square bg-gray-50">
                     <AssetThumb asset={a} />

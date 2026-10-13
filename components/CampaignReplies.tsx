@@ -123,7 +123,7 @@ export function CampaignReplies({ campaignId }: { campaignId: number }) {
                   {canOpenChat && r.conversation && (
                     <Link
                       href={`/chats/${r.conversation.id}`}
-                      className="shrink-0 text-[12px] font-medium text-[#3B694C] hover:underline"
+                      className="shrink-0 text-[12px] font-medium text-brand-fg hover:underline"
                     >
                       Open chat
                     </Link>

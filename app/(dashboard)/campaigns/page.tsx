@@ -181,7 +181,7 @@ function RunningCard({
 
       <div className="relative h-2 bg-gray-100 rounded-full overflow-hidden mb-2">
         <div
-          className="absolute left-0 top-0 h-full bg-[#3B694C] rounded-full transition-[width] duration-500"
+          className="absolute left-0 top-0 h-full bg-brand rounded-full transition-[width] duration-500"
           style={{ width: `${pct}%` }}
         />
       </div>
@@ -204,7 +204,7 @@ function RunningCard({
             className="flex flex-col"
             title={label === "Booked" ? `${value} booked of ${campaign.repliedCount ?? 0} replied` : undefined}
           >
-            <span className={`text-[22px] font-bold leading-none ${label === "Booked" && value > 0 ? "text-[#3B694C]" : "text-gray-800"}`}>{value}</span>
+            <span className={`text-[22px] font-bold leading-none ${label === "Booked" && value > 0 ? "text-brand-fg" : "text-gray-800"}`}>{value}</span>
             <span className="text-[11px] text-gray-400 mt-0.5">{label}</span>
           </div>
         ))}
@@ -248,7 +248,7 @@ function PausedCard({
             <button
               onClick={() => onResume(campaign.id)}
               disabled={resuming}
-              className="flex items-center gap-1 text-[12px] font-semibold text-[#3B694C] hover:text-[#2f5540] border border-[#3B694C]/30 hover:border-[#3B694C]/50 px-3 py-1 rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-1 text-[12px] font-semibold text-brand-fg hover:text-[#2f5540] border border-brand/30 hover:border-brand/50 px-3 py-1 rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {resuming ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
               Resume
@@ -360,7 +360,7 @@ function PendingApprovalCard({
           <button
             onClick={onApprove}
             disabled={busy}
-            className="flex items-center gap-1 text-[12px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5540] px-3 py-1.5 rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-1 text-[12px] font-semibold text-white bg-brand hover:bg-[#2f5540] px-3 py-1.5 rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <CheckCircle2 className="w-3.5 h-3.5" />
             Approve
@@ -660,7 +660,7 @@ export default function CampaignsPage() {
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <svg className="w-10 h-10 animate-spin text-[#3B694C]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+        <svg className="w-10 h-10 animate-spin text-brand-fg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
           <path d="M21 12a9 9 0 1 1-6.219-8.56" />
         </svg>
       </div>
@@ -668,7 +668,7 @@ export default function CampaignsPage() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto bg-[#f9f9f8]">
+    <div className="flex-1 overflow-y-auto bg-canvas">
       <div className="max-w-5xl mx-auto px-6 py-8 space-y-8">
 
         {/* Header */}
@@ -701,7 +701,7 @@ export default function CampaignsPage() {
             {canWrite && (
               <button
                 onClick={() => router.push("/campaigns/new")}
-                className="flex items-center gap-1.5 text-[13px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5540] px-4 py-2 rounded-xl transition-colors cursor-pointer"
+                className="flex items-center gap-1.5 text-[13px] font-semibold text-white bg-brand hover:bg-[#2f5540] px-4 py-2 rounded-xl transition-colors cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 New campaign
@@ -721,7 +721,7 @@ export default function CampaignsPage() {
                   onClick={() => setCategoryFilter(cat.value)}
                   className={`px-3 py-1 rounded-full text-[12px] font-medium border transition-colors cursor-pointer ${
                     active
-                      ? "bg-[#3B694C] text-white border-[#3B694C]"
+                      ? "bg-brand text-white border-brand"
                       : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
                   }`}
                 >
@@ -790,7 +790,7 @@ export default function CampaignsPage() {
                   type="checkbox"
                   checked={allDraftsSelected}
                   onChange={(e) => toggleSelectMany(draftIds, e.target.checked)}
-                  className="rounded border-gray-300 accent-[#3B694C] cursor-pointer"
+                  className="rounded border-gray-300 accent-brand cursor-pointer"
                   title="Select all drafts"
                 />
               )}
@@ -807,7 +807,7 @@ export default function CampaignsPage() {
                   key={c.id}
                   className={`bg-white border rounded-2xl transition-colors ${
                     isSel
-                      ? "border-[#3B694C] ring-1 ring-[#3B694C] bg-[#F5FAF7]"
+                      ? "border-brand ring-1 ring-brand bg-brand-50"
                       : rejected
                       ? "border-red-200"
                       : "border-dashed border-gray-200"
@@ -819,7 +819,7 @@ export default function CampaignsPage() {
                       type="checkbox"
                       checked={isSel}
                       onChange={() => toggleSelect(c.id)}
-                      className="rounded border-gray-300 accent-[#3B694C] cursor-pointer shrink-0"
+                      className="rounded border-gray-300 accent-brand cursor-pointer shrink-0"
                     />
                   )}
                   <div className="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center shrink-0">
@@ -841,7 +841,7 @@ export default function CampaignsPage() {
                     <div className="flex items-center gap-2 shrink-0">
                       <button
                         onClick={() => router.push(`/campaigns/new?draft=${c.id}`)}
-                        className="text-[12px] font-medium text-[#3B694C] hover:text-[#2f5540] border border-[#3B694C]/20 hover:border-[#3B694C]/40 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                        className="text-[12px] font-medium text-brand-fg hover:text-[#2f5540] border border-brand/20 hover:border-brand/40 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
                       >
                         {rejected && !canSend ? "Edit & resubmit" : "Continue editing"}
                       </button>
@@ -852,7 +852,7 @@ export default function CampaignsPage() {
                           onClick={() => handleSubmitForApproval(c.id)}
                           disabled={submittingIds.has(c.id) || c.totalRecipients === 0}
                           title={c.totalRecipients === 0 ? "Add recipients before submitting" : undefined}
-                          className="flex items-center gap-1 text-[12px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5540] px-3 py-1.5 rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="flex items-center gap-1 text-[12px] font-semibold text-white bg-brand hover:bg-[#2f5540] px-3 py-1.5 rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {submittingIds.has(c.id) ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
                           {rejected ? "Resubmit" : "Submit"}
@@ -897,7 +897,7 @@ export default function CampaignsPage() {
             {canWrite && (
               <button
                 onClick={() => router.push("/campaigns/new")}
-                className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-white bg-[#3B694C] hover:bg-[#2f5540] px-4 py-2.5 rounded-xl transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-white bg-brand hover:bg-[#2f5540] px-4 py-2.5 rounded-xl transition-colors cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 New campaign
@@ -920,7 +920,7 @@ export default function CampaignsPage() {
                           type="checkbox"
                           checked={allSentSelected}
                           onChange={(e) => toggleSelectMany(sentIds, e.target.checked)}
-                          className="rounded border-gray-300 accent-[#3B694C] cursor-pointer align-middle"
+                          className="rounded border-gray-300 accent-brand cursor-pointer align-middle"
                           title="Select all"
                         />
                       </th>
@@ -942,14 +942,14 @@ export default function CampaignsPage() {
                     const lowEngagement = c.status === "COMPLETED" && replyRate < 0.1 && c.sentCount > 5;
                     const isSel = selectedIds.has(c.id);
                     return (
-                      <tr key={c.id} className={`transition-colors cursor-pointer ${isSel ? "bg-[#F5FAF7]" : "hover:bg-gray-50"}`} onClick={() => router.push(`/campaigns/${c.id}`)}>
+                      <tr key={c.id} className={`transition-colors cursor-pointer ${isSel ? "bg-brand-50" : "hover:bg-gray-50"}`} onClick={() => router.push(`/campaigns/${c.id}`)}>
                         {canControl && (
                           <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
                             <input
                               type="checkbox"
                               checked={isSel}
                               onChange={() => toggleSelect(c.id)}
-                              className="rounded border-gray-300 accent-[#3B694C] cursor-pointer align-middle"
+                              className="rounded border-gray-300 accent-brand cursor-pointer align-middle"
                             />
                           </td>
                         )}
@@ -994,7 +994,7 @@ export default function CampaignsPage() {
                           className="px-4 py-3.5 text-right whitespace-nowrap"
                           title={`${c.bookedCount ?? 0} booked of ${c.repliedCount ?? 0} replied`}
                         >
-                          <span className={(c.bookedCount ?? 0) > 0 ? "text-[#3B694C] font-semibold" : "text-gray-700"}>{c.bookedCount ?? 0}</span>
+                          <span className={(c.bookedCount ?? 0) > 0 ? "text-brand-fg font-semibold" : "text-gray-700"}>{c.bookedCount ?? 0}</span>
                           {(c.repliedCount ?? 0) > 0 && (
                             <span className="text-gray-400 text-[11px] ml-1">
                               of {c.repliedCount} replied
@@ -1039,13 +1039,13 @@ export default function CampaignsPage() {
 
       {/* Floating bulk-action bar */}
       {selectedCount > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 bg-gray-900 text-white rounded-2xl shadow-xl pl-5 pr-3 py-2.5">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 bg-gray-900 text-white dark:text-gray-50 rounded-2xl shadow-xl pl-5 pr-3 py-2.5">
           <span className="text-[13px] font-medium">
             {selectedCount} selected
           </span>
           <button
             onClick={clearSelection}
-            className="text-[12px] font-medium text-gray-300 hover:text-white px-2 py-1 rounded-lg transition-colors cursor-pointer"
+            className="text-[12px] font-medium text-gray-300 hover:text-white dark:hover:text-gray-50 px-2 py-1 rounded-lg transition-colors cursor-pointer"
           >
             Clear
           </button>

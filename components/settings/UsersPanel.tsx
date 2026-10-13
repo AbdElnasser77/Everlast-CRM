@@ -293,7 +293,7 @@ function CreateUserDrawer({ open, onClose, onCreated }: CreateDrawerProps) {
           <button type="button" onClick={onClose} className="flex-1 py-3 rounded-xl border border-gray-200 text-[13px] font-semibold text-gray-600 hover:bg-gray-50 transition-colors cursor-pointer">
             Cancel
           </button>
-          <button type="submit" disabled={submitting} className="flex-1 py-3 rounded-xl bg-[#3B694C] hover:bg-[#2f5840] disabled:opacity-60 disabled:cursor-not-allowed text-[13px] font-semibold text-white transition-colors cursor-pointer">
+          <button type="submit" disabled={submitting} className="flex-1 py-3 rounded-xl bg-brand hover:bg-[#2f5840] disabled:opacity-60 disabled:cursor-not-allowed text-[13px] font-semibold text-white transition-colors cursor-pointer">
             {submitting ? "Creating…" : "Create user"}
           </button>
         </div>
@@ -379,7 +379,7 @@ function EditUserDrawer({ open, user, onClose, onSaved }: EditDrawerProps) {
           <button type="button" onClick={onClose} className="flex-1 py-3 rounded-xl border border-gray-200 text-[13px] font-semibold text-gray-600 hover:bg-gray-50 transition-colors cursor-pointer">
             Cancel
           </button>
-          <button type="submit" disabled={submitting} className="flex-1 py-3 rounded-xl bg-[#3B694C] hover:bg-[#2f5840] disabled:opacity-60 disabled:cursor-not-allowed text-[13px] font-semibold text-white transition-colors cursor-pointer">
+          <button type="submit" disabled={submitting} className="flex-1 py-3 rounded-xl bg-brand hover:bg-[#2f5840] disabled:opacity-60 disabled:cursor-not-allowed text-[13px] font-semibold text-white transition-colors cursor-pointer">
             {submitting ? "Saving…" : "Save changes"}
           </button>
         </div>
@@ -452,7 +452,7 @@ function ResetPasswordDrawer({ open, user, onClose, onReset }: ResetPasswordDraw
           <button type="button" onClick={onClose} className="flex-1 py-3 rounded-xl border border-gray-200 text-[13px] font-semibold text-gray-600 hover:bg-gray-50 transition-colors cursor-pointer">
             Cancel
           </button>
-          <button type="submit" disabled={submitting} className="flex-1 py-3 rounded-xl bg-[#3B694C] hover:bg-[#2f5840] disabled:opacity-60 disabled:cursor-not-allowed text-[13px] font-semibold text-white transition-colors cursor-pointer">
+          <button type="submit" disabled={submitting} className="flex-1 py-3 rounded-xl bg-brand hover:bg-[#2f5840] disabled:opacity-60 disabled:cursor-not-allowed text-[13px] font-semibold text-white transition-colors cursor-pointer">
             {submitting ? "Resetting…" : "Reset password"}
           </button>
         </div>
@@ -553,19 +553,19 @@ function RoleCard({ role, selected, onSelect }: RoleCardProps) {
       onClick={onSelect}
       className={`border rounded-lg p-3 flex items-center gap-2 transition-all cursor-pointer text-left w-full ${
         selected
-          ? "border-[#3B694C] bg-[#EEF6F1]"
+          ? "border-brand bg-brand-100"
           : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50"
       }`}
     >
       <div
         className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
-          selected ? "border-[#3B694C]" : "border-gray-300"
+          selected ? "border-brand" : "border-gray-300"
         }`}
       >
-        {selected && <div className="w-2 h-2 rounded-full bg-[#3B694C]" />}
+        {selected && <div className="w-2 h-2 rounded-full bg-brand" />}
       </div>
       <div>
-        <p className={`text-[13px] font-semibold ${selected ? "text-[#3B694C]" : "text-gray-700"}`}>
+        <p className={`text-[13px] font-semibold ${selected ? "text-brand-fg" : "text-gray-700"}`}>
           {copy.label}
         </p>
         <p className="text-[11px] text-gray-400 leading-tight mt-0.5">
@@ -593,7 +593,7 @@ function FilterPill({ label, active, onClick }: FilterPillProps) {
       onClick={onClick}
       className={`px-3.5 py-1.5 rounded-full text-[12px] font-semibold transition-colors cursor-pointer border ${
         active
-          ? "bg-[#3B694C] text-white border-[#3B694C]"
+          ? "bg-brand text-white border-brand"
           : "bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:bg-gray-50"
       }`}
     >
@@ -742,7 +742,7 @@ export function UsersPanel() {
         <button
           type="button"
           onClick={() => setShowCreateDrawer(true)}
-          className="flex items-center gap-2 bg-[#3B694C] hover:bg-[#2f5840] active:bg-[#264a33] text-white text-[13px] font-semibold px-4 py-2.5 rounded-xl transition-colors cursor-pointer shrink-0"
+          className="flex items-center gap-2 bg-brand hover:bg-[#2f5840] active:bg-[#264a33] text-white text-[13px] font-semibold px-4 py-2.5 rounded-xl transition-colors cursor-pointer shrink-0"
         >
           <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <path d="M12 5v14M5 12h14" />
@@ -755,7 +755,7 @@ export function UsersPanel() {
       {/* Filters row */}
       <div className="flex items-center justify-between gap-4 px-6 py-3.5 shrink-0 border-b border-gray-100">
         {/* Search */}
-        <div className="flex items-center gap-2.5 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 w-[300px] focus-within:ring-2 focus-within:ring-[#3B694C]/20 focus-within:border-[#3B694C] transition-colors">
+        <div className="flex items-center gap-2.5 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 w-[300px] focus-within:ring-2 focus-within:ring-brand/20 focus-within:border-brand transition-colors">
           <svg className="w-3.5 h-3.5 text-gray-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="11" cy="11" r="8" />
             <path d="m21 21-4.35-4.35" />
@@ -828,7 +828,7 @@ export function UsersPanel() {
                       <button
                         type="button"
                         onClick={() => setShowCreateDrawer(true)}
-                        className="mt-1 flex items-center gap-1.5 bg-[#3B694C] hover:bg-[#2f5840] text-white text-[13px] font-semibold px-4 py-2 rounded-xl transition-colors cursor-pointer"
+                        className="mt-1 flex items-center gap-1.5 bg-brand hover:bg-[#2f5840] text-white text-[13px] font-semibold px-4 py-2 rounded-xl transition-colors cursor-pointer"
                       >
                         <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                           <path d="M12 5v14M5 12h14" />
@@ -845,8 +845,8 @@ export function UsersPanel() {
                 const displayName = user.name || user.username;
                 // The privileged roles carry the brand tint; agents stay neutral.
                 const elevated = user.role === "ADMIN" || user.role === "MARKETING" || user.role === "SUPERVISOR";
-                const avatarBg = elevated ? "bg-[#DCF2E3]" : "bg-gray-100";
-                const avatarText = elevated ? "text-[#3B694C]" : "text-gray-500";
+                const avatarBg = elevated ? "bg-brand-200" : "bg-gray-100";
+                const avatarText = elevated ? "text-brand-fg" : "text-gray-500";
 
                 return (
                   <tr

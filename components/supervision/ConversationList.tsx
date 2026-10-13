@@ -29,7 +29,7 @@ const EMPTY: Record<SupervisionFilter, { title: string; sub: string }> = {
 const SENDER_PREFIX: Record<string, string> = { CUSTOMER: "Patient: ", AGENT: "Agent: ", BOT: "Bot: " };
 
 const SCROLL =
-  "[&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-[#3B694C]/25 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[#3B694C]/50";
+  "[&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-brand/25 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-brand/50";
 
 function Row({
   c,
@@ -62,20 +62,20 @@ function Row({
       onClick={onSelect}
       aria-current={selected ? "true" : undefined}
       className={`group relative w-full text-left flex gap-3 px-4 py-3 border-b border-gray-100 transition-colors cursor-pointer ${
-        selected ? "bg-[#EEF6F1]" : late ? "bg-red-50 hover:bg-red-100/70" : "bg-white hover:bg-gray-50"
+        selected ? "bg-brand-100" : late ? "bg-red-50 hover:bg-red-100/70" : "bg-white hover:bg-gray-50"
       }`}
     >
       <span
         aria-hidden
         className={`absolute left-0 top-2 bottom-2 w-[3px] rounded-r-full ${
-          selected ? "bg-[#3B694C]" : late ? "bg-red-500" : warn ? "bg-amber-400" : "bg-transparent"
+          selected ? "bg-brand" : late ? "bg-red-500" : warn ? "bg-amber-400" : "bg-transparent"
         }`}
       />
 
       <div className="shrink-0 mt-0.5">
         <div
           className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-[12px] ${
-            selected || waiting !== null ? "bg-[#DCF2E3] text-[#2f5840]" : "bg-[#EEF1EF] text-gray-500"
+            selected || waiting !== null ? "bg-brand-200 text-brand-strong" : "bg-[#EEF1EF] text-gray-500"
           }`}
         >
           {initials(c.customer.name || c.customer.phone)}
@@ -193,7 +193,7 @@ export function ConversationList({
     <div className="flex flex-col min-h-0 h-full">
       {/* Search */}
       <div className="px-4 pt-4 pb-3">
-        <div className="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5 focus-within:border-[#3B694C]/40">
+        <div className="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5 focus-within:border-brand/40">
           <Search className="w-3.5 h-3.5 text-gray-400 shrink-0" />
           <input
             type="search"
@@ -215,7 +215,7 @@ export function ConversationList({
       <div
         role="tablist"
         aria-label="Chat filter"
-        className="flex gap-4 px-4 border-b border-gray-100 overflow-x-auto shrink-0 [scrollbar-width:thin] [scrollbar-color:rgba(59,105,76,0.25)_transparent] [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-[#3B694C]/25 [&::-webkit-scrollbar-thumb]:rounded-full"
+        className="flex gap-4 px-4 border-b border-gray-100 overflow-x-auto shrink-0 [scrollbar-width:thin] [scrollbar-color:rgba(59,105,76,0.25)_transparent] [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-brand/25 [&::-webkit-scrollbar-thumb]:rounded-full"
       >
         {FILTER_TABS.map((t) => {
           const active = filter === t.value;
@@ -228,14 +228,14 @@ export function ConversationList({
               aria-selected={active}
               onClick={() => onFilter(t.value)}
               className={`shrink-0 flex items-center gap-1.5 pb-2 -mb-px border-b-2 text-[13px] transition-colors cursor-pointer ${
-                active ? "border-[#3B694C] text-[#3B694C] font-semibold" : "border-transparent text-gray-500 hover:text-gray-700"
+                active ? "border-brand text-brand-fg font-semibold" : "border-transparent text-gray-500 hover:text-gray-700"
               }`}
             >
               {t.label}
               {n !== undefined && n > 0 && (
                 <span
                   className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10.5px] font-semibold flex items-center justify-center tabular-nums ${
-                    t.value === "waiting" ? "bg-red-100 text-red-700" : active ? "bg-[#DCF2E3] text-[#3B694C]" : "bg-gray-100 text-gray-500"
+                    t.value === "waiting" ? "bg-red-100 text-red-700" : active ? "bg-brand-200 text-brand-fg" : "bg-gray-100 text-gray-500"
                   }`}
                 >
                   {n > 999 ? "999+" : n}
@@ -292,7 +292,7 @@ export function ConversationList({
             {loadingMore ? (
               <Spinner size="sm" label="Loading more" />
             ) : hasMore ? (
-              <button type="button" onClick={onLoadMore} className="text-[12px] font-semibold text-[#3B694C] hover:underline cursor-pointer">
+              <button type="button" onClick={onLoadMore} className="text-[12px] font-semibold text-brand-fg hover:underline cursor-pointer">
                 Load more
               </button>
             ) : (

@@ -128,7 +128,7 @@ export function ButtonRow({ btn }: { btn: TemplateButton }) {
   const meta = BUTTON_TYPE_META[btn.type] ?? BUTTON_TYPE_META.QUICK_REPLY;
   const Icon = meta.icon;
   return (
-    <div className="flex items-center justify-center gap-1.5 py-2 rounded-xl border border-gray-200 bg-white text-[12px] font-medium text-[#3B694C]">
+    <div className="flex items-center justify-center gap-1.5 py-2 rounded-xl border border-gray-200 bg-white text-[12px] font-medium text-brand-fg">
       {Icon && <Icon className="w-3.5 h-3.5" />}
       {btn.title}
     </div>
