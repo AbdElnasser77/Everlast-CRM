@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Lock } from "lucide-react";
 import {
+  ApiError,
   apiGetUsers,
   apiCreateUser,
   apiUpdateUser,
@@ -12,6 +13,8 @@ import {
 import type { UserRole, AgentUser } from "@/types";
 import { useCurrentUser } from "@/components/CurrentUserProvider";
 import { DrawerShell, inputCls, labelCls } from "@/components/settings/shared";
+import { useToast } from "@/components/ui/toast";
+import { HandOverDialog, handOverSummary } from "@/components/HandOverDialog";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -29,6 +32,10 @@ function formatRelativeTime(iso: string | null): string {
   if (days === 1) return "Yesterday";
   return `${days} days ago`;
 }
+
+// Roles with an inbox (conversation:write on the server, config/permissions.js).
+// Moving someone OFF these releases their open chats and booking requests.
+const INBOX_ROLES: UserRole[] = ["ADMIN", "SUPERVISOR", "AGENT"];
 
 function getInitials(user: AgentUser): string {
   const src = user.name || user.username;
@@ -142,12 +149,15 @@ function RoleBadge({ role }: { role: AgentUser["role"] }) {
 interface ActionsDropdownProps {
   user: AgentUser;
   selfId: number | null;
+  active: boolean;
   onEdit: () => void;
   onResetPassword: () => void;
+  onDeactivate: () => void;
+  onReactivate: () => void;
   onDelete: () => void;
 }
 
-function ActionsDropdown({ user, selfId, onEdit, onResetPassword, onDelete }: ActionsDropdownProps) {
+function ActionsDropdown({ user, selfId, active, onEdit, onResetPassword, onDeactivate, onReactivate, onDelete }: ActionsDropdownProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -192,6 +202,23 @@ function ActionsDropdown({ user, selfId, onEdit, onResetPassword, onDelete }: Ac
           >
             Reset password
           </button>
+          {user.id !== selfId && (active ? (
+            <button
+              type="button"
+              onClick={() => { setOpen(false); onDeactivate(); }}
+              className="w-full text-left px-4 py-2.5 text-[13px] text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer"
+            >
+              Deactivate…
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => { setOpen(false); onReactivate(); }}
+              className="w-full text-left px-4 py-2.5 text-[13px] text-brand-fg font-medium hover:bg-brand-50 transition-colors cursor-pointer"
+            >
+              Reactivate
+            </button>
+          ))}
           {user.id !== selfId && (
             <button
               type="button"
@@ -314,6 +341,7 @@ interface EditDrawerProps {
 }
 
 function EditUserDrawer({ open, user, onClose, onSaved }: EditDrawerProps) {
+  const toast = useToast();
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
   const [role, setRole] = useState<UserRole>("AGENT");
@@ -336,11 +364,13 @@ function EditUserDrawer({ open, user, onClose, onSaved }: EditDrawerProps) {
     setSubmitting(true);
     setError(null);
     try {
-      await apiUpdateUser(user.id, {
+      const res = await apiUpdateUser(user.id, {
         name: name.trim() || null,
         username: username.trim(),
         role,
       });
+      // A role without an inbox released their chats and requests to the queue.
+      if (res.handedOver) toast.success(`Saved · ${handOverSummary(res.handedOver)}`);
       onSaved();
       onClose();
     } catch (err) {
@@ -371,6 +401,12 @@ function EditUserDrawer({ open, user, onClose, onSaved }: EditDrawerProps) {
             <RoleCard role="SUPERVISOR" selected={role === "SUPERVISOR"} onSelect={() => setRole("SUPERVISOR")} />
             <RoleCard role="AGENT" selected={role === "AGENT"} onSelect={() => setRole("AGENT")} />
           </div>
+          {user && INBOX_ROLES.includes(user.role) && !INBOX_ROLES.includes(role) && (
+            <p className="mt-3 text-[12px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              {ROLE_COPY[role].label} has no inbox: {user.name || user.username}&apos;s open chats and the booking requests they&apos;ve
+              taken will be released back to the queue, and they&apos;ll be signed out.
+            </p>
+          )}
         </div>
 
         {error && <p className="text-[13px] text-red-500 font-medium">{error}</p>}
@@ -468,16 +504,22 @@ function ResetPasswordDrawer({ open, user, onClose, onReset }: ResetPasswordDraw
 interface DeleteConfirmDrawerProps {
   open: boolean;
   user: AgentUser | null;
+  /** Already deactivated: "Deactivate instead" isn't offered again. */
+  active: boolean;
   onClose: () => void;
   onDeleted: () => void;
+  onDeactivateInstead: () => void;
 }
 
-function DeleteConfirmDrawer({ open, user, onClose, onDeleted }: DeleteConfirmDrawerProps) {
+function DeleteConfirmDrawer({ open, user, active, onClose, onDeleted, onDeactivateInstead }: DeleteConfirmDrawerProps) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The server refuses to delete anyone with chats, replies or bookings in
+  // the history (USER_HAS_HISTORY): deactivating is the way out.
+  const [history, setHistory] = useState<string | null>(null);
 
   useEffect(() => {
-    if (open) setError(null);
+    if (open) { setError(null); setHistory(null); }
   }, [open]);
 
   async function handleDelete() {
@@ -489,6 +531,10 @@ function DeleteConfirmDrawer({ open, user, onClose, onDeleted }: DeleteConfirmDr
       onDeleted();
       onClose();
     } catch (err) {
+      if (err instanceof ApiError && err.code === "USER_HAS_HISTORY") {
+        setHistory(err.message || "This person has chats, replies or bookings in the history. Deactivate them instead.");
+        return;
+      }
       setError(err instanceof Error ? err.message : "Failed to delete user");
     } finally {
       setSubmitting(false);
@@ -497,6 +543,30 @@ function DeleteConfirmDrawer({ open, user, onClose, onDeleted }: DeleteConfirmDr
 
   return (
     <DrawerShell open={open} onClose={onClose} title="Delete user">
+      {history ? (
+        <div className="space-y-5">
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-4">
+            <p className="text-[14px] text-amber-800 font-medium">
+              {user?.name || user?.username} can&apos;t be deleted
+            </p>
+            <p className="text-[13px] text-amber-700 mt-1">{history}</p>
+          </div>
+          <div className="flex gap-3">
+            <button type="button" onClick={onClose} className="flex-1 py-3 rounded-xl border border-gray-200 text-[13px] font-semibold text-gray-600 hover:bg-gray-50 transition-colors cursor-pointer">
+              {active ? "Cancel" : "Close"}
+            </button>
+            {active && (
+              <button
+                type="button"
+                onClick={() => { onClose(); onDeactivateInstead(); }}
+                className="flex-1 py-3 rounded-xl bg-brand hover:bg-[#2f5840] text-[13px] font-semibold text-white transition-colors cursor-pointer"
+              >
+                Deactivate instead
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
       <div className="space-y-5">
         <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-4">
           <p className="text-[14px] text-red-700 font-medium">
@@ -518,6 +588,7 @@ function DeleteConfirmDrawer({ open, user, onClose, onDeleted }: DeleteConfirmDr
           </button>
         </div>
       </div>
+      )}
     </DrawerShell>
   );
 }
@@ -628,6 +699,13 @@ export function UsersPanel() {
   const [showResetDrawer, setShowResetDrawer] = useState(false);
   const [showDeleteDrawer, setShowDeleteDrawer] = useState(false);
   const [selectedUser, setSelectedUser] = useState<AgentUser | null>(null);
+  const [deactivating, setDeactivating] = useState<AgentUser | null>(null);
+  const [showDeactivated, setShowDeactivated] = useState(false);
+  // Active / deactivated as changed here, for when the list doesn't carry
+  // isActive. What the server says wins whenever it does.
+  const [localActive, setLocalActive] = useState<Record<number, boolean>>({});
+  const toast = useToast();
+  const isActive = (u: AgentUser) => u.isActive ?? localActive[u.id] ?? true;
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -677,6 +755,33 @@ export function UsersPanel() {
     setSelectedUser(user);
     setShowDeleteDrawer(true);
   }
+
+  async function deactivate(user: AgentUser, handOverTo: number | null): Promise<string | null> {
+    try {
+      const res = await apiUpdateUser(user.id, { isActive: false, handOverTo });
+      setLocalActive((m) => ({ ...m, [user.id]: false }));
+      setDeactivating(null);
+      toast.success(`${user.name || user.username} deactivated · ${handOverSummary(res.handedOver)}`);
+      fetchUsers(search, roleFilter);
+      return null;
+    } catch (err) {
+      return err instanceof Error ? err.message : "Couldn't deactivate";
+    }
+  }
+
+  async function reactivate(user: AgentUser) {
+    try {
+      await apiUpdateUser(user.id, { isActive: true });
+      setLocalActive((m) => ({ ...m, [user.id]: true }));
+      toast.success(`${user.name || user.username} can sign in again`);
+      fetchUsers(search, roleFilter);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't reactivate");
+    }
+  }
+
+  const deactivatedCount = users.filter((u) => !isActive(u)).length;
+  const shown = showDeactivated ? users : users.filter(isActive);
 
   const selfId = me?.id ?? null;
 
@@ -729,14 +834,35 @@ export function UsersPanel() {
       <DeleteConfirmDrawer
         open={showDeleteDrawer}
         user={selectedUser}
+        active={selectedUser ? isActive(selectedUser) : true}
         onClose={() => setShowDeleteDrawer(false)}
         onDeleted={() => fetchUsers(search, roleFilter)}
+        onDeactivateInstead={() => setDeactivating(selectedUser)}
       />
+      {deactivating && (
+        <HandOverDialog
+          title={`Deactivate ${deactivating.name || deactivating.username}?`}
+          intro={
+            INBOX_ROLES.includes(deactivating.role)
+              ? "They're signed out at once and can't sign in again until reactivated. Everything they did stays in the history under their name."
+              : "They're signed out at once and can't sign in again until reactivated. Everything they did stays in the history under their name. Their role has no inbox, so there's usually nothing to hand over."
+          }
+          excludeUserId={deactivating.id}
+          confirmLabel="Deactivate"
+          danger
+          onCancel={() => setDeactivating(null)}
+          onConfirm={(to) => deactivate(deactivating, to)}
+        />
+      )}
 
       {/* Toolbar — count + create (the page header is Settings') */}
       <div className="flex items-center justify-between px-6 pt-4 pb-3 shrink-0">
         <p className="text-[13px] text-gray-400">
-          {loading ? "Loading…" : `${total} team member${total !== 1 ? "s" : ""}`}
+          {loading
+            ? "Loading…"
+            : `${total} team member${total !== 1 ? "s" : ""}${
+                deactivatedCount > 0 && !showDeactivated ? ` · ${deactivatedCount} deactivated hidden` : ""
+              }`}
         </p>
         {canManage && (
         <button
@@ -787,6 +913,12 @@ export function UsersPanel() {
           <FilterPill label="Marketing" active={roleFilter === "MARKETING"} onClick={() => setRoleFilter("MARKETING")} />
           <FilterPill label="Supervisor" active={roleFilter === "SUPERVISOR"} onClick={() => setRoleFilter("SUPERVISOR")} />
           <FilterPill label="Agent" active={roleFilter === "AGENT"} onClick={() => setRoleFilter("AGENT")} />
+          <span className="w-px h-5 bg-gray-200 mx-1" aria-hidden />
+          <FilterPill
+            label={deactivatedCount > 0 ? `Show deactivated (${deactivatedCount})` : "Show deactivated"}
+            active={showDeactivated}
+            onClick={() => setShowDeactivated((v) => !v)}
+          />
         </div>
       </div>
 
@@ -806,7 +938,7 @@ export function UsersPanel() {
           <tbody>
             {loading ? (
               Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} />)
-            ) : users.length === 0 ? (
+            ) : shown.length === 0 ? (
               <tr>
                 <td colSpan={6} className="px-4 py-16 text-center">
                   <div className="flex flex-col items-center gap-3">
@@ -840,7 +972,8 @@ export function UsersPanel() {
                 </td>
               </tr>
             ) : (
-              users.map((user) => {
+              shown.map((user) => {
+                const active = isActive(user);
                 const initials = getInitials(user);
                 const displayName = user.name || user.username;
                 // The privileged roles carry the brand tint; agents stay neutral.
@@ -851,17 +984,22 @@ export function UsersPanel() {
                 return (
                   <tr
                     key={user.id}
-                    className="border-b border-gray-100 hover:bg-gray-50 transition-colors group"
+                    className={`border-b border-gray-100 hover:bg-gray-50 transition-colors group ${active ? "" : "bg-gray-50/60"}`}
                   >
                     {/* Name + avatar */}
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-full ${avatarBg} flex items-center justify-center ${avatarText} font-semibold text-[11px] shrink-0`}>
+                        <div className={`w-8 h-8 rounded-full ${active ? avatarBg : "bg-gray-100"} flex items-center justify-center ${active ? avatarText : "text-gray-400"} font-semibold text-[11px] shrink-0`}>
                           {initials}
                         </div>
-                        <span className="text-[14px] font-semibold text-gray-900 truncate">
+                        <span className={`text-[14px] font-semibold truncate ${active ? "text-gray-900" : "text-gray-400"}`}>
                           {displayName}
                         </span>
+                        {!active && (
+                          <span className="shrink-0 text-[10.5px] font-semibold px-1.5 py-px rounded border bg-gray-100 text-gray-500 border-gray-200">
+                            Deactivated
+                          </span>
+                        )}
                       </div>
                     </td>
 
@@ -877,7 +1015,11 @@ export function UsersPanel() {
 
                     {/* Status */}
                     <td className="px-4 py-3">
-                      <StatusBadge status={user.status} />
+                      {active ? (
+                        <StatusBadge status={user.status} />
+                      ) : (
+                        <span className="text-[13px] text-gray-400">Can&apos;t sign in</span>
+                      )}
                     </td>
 
                     {/* Last active */}
@@ -893,8 +1035,11 @@ export function UsersPanel() {
                       <ActionsDropdown
                         user={user}
                         selfId={typeof selfId === "number" ? selfId : null}
+                        active={active}
                         onEdit={() => openEdit(user)}
                         onResetPassword={() => openReset(user)}
+                        onDeactivate={() => setDeactivating(user)}
+                        onReactivate={() => reactivate(user)}
                         onDelete={() => openDelete(user)}
                       />
                       )}

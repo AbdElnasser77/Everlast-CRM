@@ -14,7 +14,17 @@ const PAGE_SIZE = 50;
 // you opened it (opening marks it read). Read state never moves a row now —
 // only a new message does. Matches the server's lastMessageAt ordering, so
 // pages merge without reshuffling.
-function sortConversations(list: Conversation[]): Conversation[] {
+//
+// The Follow-ups view is the exception: it's a to-do list, soonest follow-up
+// first (no date last) — the server's order for that view.
+function sortConversations(list: Conversation[], view: ConversationView = "all"): Conversation[] {
+  if (view === "follow_ups") {
+    const due = (c: Conversation) => {
+      const at = (c as Conversation & { followUpAt?: string | null }).followUpAt;
+      return at ? new Date(at).getTime() : Number.POSITIVE_INFINITY;
+    };
+    return [...list].sort((a, b) => due(a) - due(b));
+  }
   return [...list].sort(
     (a, b) => new Date(b.lastMessageAt ?? 0).getTime() - new Date(a.lastMessageAt ?? 0).getTime(),
   );
@@ -36,7 +46,7 @@ interface UseConversationsReturn {
 const idOf = (c: Conversation) => String(c.id ?? c._id);
 
 /**
- * @param view      the inbox view — all / mine / unassigned / campaign_replies —
+ * @param view      the inbox view — all / mine / unassigned / campaign_replies / follow_ups —
  *                  filtered on the SERVER, so a match on page 3 still appears.
  * @param pinnedId  the conversation currently open. It is kept in the list even
  *                  when a refresh says it no longer belongs to the view (e.g. you
@@ -79,7 +89,7 @@ export function useConversations(
     setError(null);
     try {
       const res = await apiGetConversations(1, PAGE_SIZE, undefined, searchRef.current || undefined, viewRef.current);
-      setConversations((prev) => sortConversations(withPinned(res.data, prev)));
+      setConversations((prev) => sortConversations(withPinned(res.data, prev), viewRef.current));
       pageRef.current = 1;
       const more = res.data.length >= PAGE_SIZE;
       setHasMore(more);
@@ -115,7 +125,7 @@ export function useConversations(
     try {
       const res = await apiGetConversations(1, PAGE_SIZE, undefined, searchRef.current || undefined, viewRef.current);
       if (viewRef.current !== "all") {
-        setConversations((prev) => sortConversations(withPinned(res.data, prev)));
+        setConversations((prev) => sortConversations(withPinned(res.data, prev), viewRef.current));
         return;
       }
       setConversations((prev) => {
@@ -123,7 +133,7 @@ export function useConversations(
         const knownIds = new Set(prev.map((c) => String(c.id ?? c._id)));
         const merged = prev.map((c) => freshMap.get(String(c.id ?? c._id)) ?? c);
         const brandNew = res.data.filter((c) => !knownIds.has(String(c.id ?? c._id)));
-        return sortConversations([...brandNew, ...merged]);
+        return sortConversations([...brandNew, ...merged], viewRef.current);
       });
     } catch {
       // keep whatever's currently shown
@@ -140,7 +150,7 @@ export function useConversations(
       setConversations((prev) => {
         const existingIds = new Set(prev.map((c) => String(c.id ?? c._id)));
         const fresh = res.data.filter((c) => !existingIds.has(String(c.id ?? c._id)));
-        return sortConversations([...prev, ...fresh]);
+        return sortConversations([...prev, ...fresh], viewRef.current);
       });
       const more = res.data.length >= PAGE_SIZE;
       setHasMore(more);

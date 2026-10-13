@@ -1,8 +1,11 @@
 "use client";
 
-import { useMemo } from "react";
-import { UserRound, Users } from "lucide-react";
+import { useMemo, useState } from "react";
+import { ArrowRightLeft, UserRound, Users } from "lucide-react";
 import type { SupervisionAgent, SupervisionOverview } from "@/types";
+import { apiSupervisionHandOver } from "@/lib/api";
+import { useToast } from "@/components/ui/toast";
+import { HandOverDialog, handOverSummary } from "@/components/HandOverDialog";
 import { PRESENCE } from "./chips";
 import { formatMinutes, personInitials, personName, timeAgo } from "./format";
 
@@ -38,12 +41,15 @@ function cardClass(active: boolean, alert: boolean) {
   }`;
 }
 
-function AgentCard({ agent, active, now, onClick }: { agent: SupervisionAgent; active: boolean; now: number; onClick: () => void }) {
+function AgentCard({ agent, active, now, onClick, onHandOver }: {
+  agent: SupervisionAgent; active: boolean; now: number; onClick: () => void; onHandOver?: () => void;
+}) {
   const presence = PRESENCE[agent.status] ?? PRESENCE.OFFLINE;
   const late = agent.waitingOverSla > 0;
   return (
+    <div className="relative shrink-0 group">
     <button type="button" onClick={onClick} aria-pressed={active} className={cardClass(active, late)}>
-      <div className="flex items-center gap-2.5">
+      <div className={`flex items-center gap-2.5 ${onHandOver ? "pr-7" : ""}`}>
         <span className="relative shrink-0">
           <span
             className={`w-9 h-9 rounded-full flex items-center justify-center text-[11px] font-bold ${
@@ -74,6 +80,19 @@ function AgentCard({ agent, active, now, onClick }: { agent: SupervisionAgent; a
         <Stat label="Booked" value={agent.bookedToday} tone={agent.bookedToday > 0 ? "green" : "muted"} />
       </div>
     </button>
+    {/* A sibling, not inside the card: a button can't hold a button. */}
+    {onHandOver && (
+      <button
+        type="button"
+        onClick={onHandOver}
+        title={`Hand over ${personName(agent)}'s chats and booking requests…`}
+        aria-label={`Hand over ${personName(agent)}'s chats and booking requests`}
+        className="absolute top-3 right-3 w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-brand-fg transition-colors cursor-pointer"
+      >
+        <ArrowRightLeft className="w-3.5 h-3.5" />
+      </button>
+    )}
+    </div>
   );
 }
 
@@ -88,13 +107,18 @@ export function AgentBoard({
   agentFilter,
   onAgentFilter,
   now,
+  onHandedOver,
 }: {
   overview: SupervisionOverview | null;
   loading: boolean;
   agentFilter: AgentFilter;
   onAgentFilter: (a: AgentFilter) => void;
   now: number;
+  /** Shows a "Hand over…" action per agent (someone off or absent); called after one, to refresh. */
+  onHandedOver?: () => void;
 }) {
+  const toast = useToast();
+  const [handingOver, setHandingOver] = useState<SupervisionAgent | null>(null);
   const agents = useMemo(
     () =>
       [...(overview?.agents ?? [])].sort(
@@ -177,6 +201,7 @@ export function AgentBoard({
             now={now}
             active={agentFilter === a.id}
             onClick={() => onAgentFilter(agentFilter === a.id ? null : a.id)}
+            onHandOver={onHandedOver ? () => setHandingOver(a) : undefined}
           />
         ))}
 
@@ -184,6 +209,32 @@ export function AgentBoard({
           <div className="shrink-0 flex items-center px-4 text-[13px] text-gray-400">No agents on the team yet.</div>
         )}
       </div>
+
+      {handingOver && (
+        <HandOverDialog
+          title={`Hand over ${personName(handingOver)}'s work`}
+          intro={
+            <>
+              {personName(handingOver)} has {handingOver.openChats} open chat{handingOver.openChats === 1 ? "" : "s"}. Their open chats and the
+              booking requests they&apos;ve taken go to a colleague, or back to the queue — useful when they&apos;re off or away.
+            </>
+          }
+          excludeUserId={handingOver.id}
+          confirmLabel="Hand over"
+          onCancel={() => setHandingOver(null)}
+          onConfirm={async (toUserId) => {
+            try {
+              const res = await apiSupervisionHandOver(handingOver.id, toUserId);
+              setHandingOver(null);
+              toast.success(handOverSummary(res.data));
+              onHandedOver?.();
+              return null;
+            } catch (err) {
+              return err instanceof Error ? err.message : "Couldn't hand over";
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

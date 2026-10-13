@@ -3,9 +3,11 @@
 // Alerts the team, whichever line they're viewing, when:
 //   - a flow hands a customer to a person ("Connect me" / an Assign step) —
 //     "flow.handoff";
-//   - a new booking request comes in — "booking_request.alert".
-// The server sends both to every connected user who can reply on that number,
-// on EVERY line they may use — nothing here filters by the active line. Shown as:
+//   - a new booking request comes in — "booking_request.alert";
+//   - a follow-up a chat was set to has fallen due — "follow_up.due", sent only
+//     to the agent responsible for it (every tab, any line).
+// The first two go to every connected user who can reply on that number, on
+// EVERY line they may use — nothing here filters by the active line. Shown as:
 //   - an alert card that stays until dismissed (a waiting customer shouldn't
 //     vanish after five seconds like a toast),
 //   - a short chime,
@@ -14,12 +16,14 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { BellRing, CalendarPlus, X } from "lucide-react";
+import { BellRing, CalendarClock, CalendarPlus, X } from "lucide-react";
 import { getActiveNumber } from "@/lib/api";
 import { getSocket } from "@/lib/socket";
 import { requestPreferred, requestService } from "@/lib/bookingRequests";
 import { useCurrentUser } from "@/components/CurrentUserProvider";
 import { useActiveNumber } from "@/components/WhatsAppNumberProvider";
+import { fmtWhen } from "@/lib/chatOutcome";
+import type { FollowUpDueEvent } from "@/types";
 
 interface Handoff {
   conversationId: number;
@@ -43,7 +47,8 @@ interface BookingAlert {
 
 type Alert =
   | { kind: "handoff"; key: string; at: string; h: Handoff }
-  | { kind: "booking"; key: string; at: string; b: BookingAlert };
+  | { kind: "booking"; key: string; at: string; b: BookingAlert }
+  | { kind: "follow_up"; key: string; at: string; f: FollowUpDueEvent };
 
 function chime() {
   try {
@@ -68,7 +73,7 @@ function chime() {
   }
 }
 
-const who = (h: Handoff) => h.customerName || `+${h.customerPhone}`;
+const who = (h: { customerName: string | null; customerPhone: string }) => h.customerName || `+${h.customerPhone}`;
 const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
 /** "Botox · Fri 17 Oct 2026 · evening", or null when the flow collected nothing yet. */
@@ -124,6 +129,11 @@ export default function HandoffNotifier() {
     goTo(b.whatsappNumberId, where === "chat" ? `/chats/${b.conversationId}` : "/bookings");
   }, [dismiss, goTo]);
 
+  const openFollowUp = useCallback((f: FollowUpDueEvent) => {
+    dismiss(`follow-up-${f.conversationId}`);
+    goTo(f.whatsappNumberId, `/chats/${f.conversationId}`);
+  }, [dismiss, goTo]);
+
   useEffect(() => {
     const socket = getSocket();
     const canNotify = () => typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted";
@@ -158,13 +168,28 @@ export default function HandoffNotifier() {
       }
     };
 
+    // Already addressed to the right person by the server — no filtering here.
+    const onFollowUp = (f: FollowUpDueEvent) => {
+      push({ kind: "follow_up", key: `follow-up-${f.conversationId}`, at: new Date().toISOString(), f });
+      chime();
+      if (canNotify()) {
+        const n = new Notification(`Follow up now · ${who(f)}`, {
+          body: [`Was due ${fmtWhen(f.followUpAt)}`, multiLine ? lineLabel(f.whatsappNumberId) : null].filter(Boolean).join(" · "),
+          tag: `follow-up-${f.conversationId}`,
+        });
+        n.onclick = () => { window.focus(); openFollowUp(f); n.close(); };
+      }
+    };
+
     socket.on("flow.handoff", onHandoff);
     socket.on("booking_request.alert", onBooking);
+    socket.on("follow_up.due", onFollowUp);
     return () => {
       socket.off("flow.handoff", onHandoff);
       socket.off("booking_request.alert", onBooking);
+      socket.off("follow_up.due", onFollowUp);
     };
-  }, [me, push, openHandoff, openBooking, lineLabel, multiLine]);
+  }, [me, push, openHandoff, openBooking, openFollowUp, lineLabel, multiLine]);
 
   if (alerts.length === 0) return null;
 
@@ -207,6 +232,40 @@ export default function HandoffNotifier() {
               </div>
               <div className="flex items-center gap-2 px-4 pb-3">
                 <button type="button" onClick={() => openHandoff(h)} className="flex-1 text-[13px] font-semibold text-white bg-brand hover:opacity-90 rounded-xl py-2">
+                  {otherLine ? "Switch line & open chat" : "Open chat"}
+                </button>
+                {enableDesktop}
+              </div>
+            </div>
+          );
+        }
+
+        if (a.kind === "follow_up") {
+          const f = a.f;
+          const otherLine = multiLine && String(f.whatsappNumberId) !== activeNumberId;
+          return (
+            <div key={a.key} className="bg-white rounded-2xl shadow-xl border border-red-200 overflow-hidden animate-in slide-in-from-bottom-2">
+              <div className="flex items-start gap-3 p-4">
+                <span className="w-9 h-9 rounded-full bg-red-50 text-red-600 flex items-center justify-center shrink-0">
+                  <CalendarClock className="w-4.5 h-4.5" />
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-bold text-gray-900 leading-snug">
+                    Follow up now · <span className="break-words">{who(f)}</span>
+                  </p>
+                  <p className="text-[12px] text-red-600 font-medium mt-0.5">Was due {fmtWhen(f.followUpAt)}</p>
+                  {multiLine && (
+                    <p className="text-[11px] text-gray-400 mt-0.5">
+                      <span className={otherLine ? "font-semibold text-amber-700" : undefined}>{lineLabel(f.whatsappNumberId)}</span>
+                    </p>
+                  )}
+                </div>
+                <button type="button" onClick={() => dismiss(a.key)} title="Dismiss" className="w-7 h-7 rounded-full flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-600 shrink-0">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="flex items-center gap-2 px-4 pb-3">
+                <button type="button" onClick={() => openFollowUp(f)} className="flex-1 text-[13px] font-semibold text-white bg-brand hover:opacity-90 rounded-xl py-2">
                   {otherLine ? "Switch line & open chat" : "Open chat"}
                 </button>
                 {enableDesktop}

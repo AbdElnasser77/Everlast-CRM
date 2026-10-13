@@ -13,7 +13,6 @@ import {
   OPENED_VIA_LABEL,
   SOURCE_STATUS_LABEL,
   isoLocal,
-  leadSourceReportLabel,
   periodLabel,
   reportFileName,
   requestStatusLabel,
@@ -69,36 +68,6 @@ function requestsCsv(report: BookingsReport, from: string, to: string) {
   downloadCsv(reportFileName(REPORT, from, to), header, rows);
 }
 
-/** One row per appointment. */
-function appointmentsCsv(report: BookingsReport, from: string, to: string) {
-  const tz = report.period.timezone || CLINIC_TZ;
-  const header = [
-    "Request ID", "Patient", "Phone", "Line", "Service", "Appointment", "Doctor", "Dok32 ref", "Status", "Booked by", "Booked at", "Appointment note",
-    "Lead source", "Campaign", "Request opened", "Request handled by",
-  ];
-  const rows = report.requests.flatMap((r) =>
-    r.appointments.map((a) => [
-      r.id,
-      r.customer.name ?? "",
-      formatPhone(r.customer.phone),
-      r.line ?? "",
-      a.service ?? "",
-      isoLocal(a.appointmentAt, tz),
-      a.doctor ?? "",
-      a.dok32Ref ?? "",
-      a.status === "CANCELLED" ? "Cancelled" : "Booked",
-      a.bookedBy ?? "",
-      isoLocal(a.bookedAt, tz),
-      a.note ?? "",
-      r.leadSource ? leadSourceReportLabel(r.leadSource) : requestSourceText(r).main,
-      r.campaign ?? "",
-      isoLocal(r.createdAt, tz),
-      r.handledBy ?? "",
-    ]),
-  );
-  downloadCsv(reportFileName(`${REPORT} appointments`, from, to), header, rows);
-}
-
 function BookingsScreen() {
   const period = useReportPeriod();
   const { data, error, retry } = useReportData(period, apiGetBookingsReport);
@@ -106,7 +75,6 @@ function BookingsScreen() {
   const generatedBy = useGeneratedBy();
   const { from, to } = period;
   const label = data ? periodLabel(data.period.fromDay, data.period.toDay) : period.label;
-  const appointments = data ? data.requests.reduce((a, r) => a + r.appointments.length, 0) : 0;
 
   return (
     <ReportShell
@@ -122,18 +90,11 @@ function BookingsScreen() {
       landscape
       downloads={[
         {
-          label: "Requests CSV",
+          label: "Download CSV",
           icon: FileSpreadsheet,
-          title: "One row per request, appointments joined — opens in Excel",
+          title: "One row per booking request, with its appointments — opens in Excel",
           onClick: () => (data ? requestsCsv(data, from, to) : undefined),
           disabled: !data || data.requests.length === 0,
-        },
-        {
-          label: "Appointments CSV",
-          icon: FileSpreadsheet,
-          title: "One row per appointment — opens in Excel",
-          onClick: () => (data ? appointmentsCsv(data, from, to) : undefined),
-          disabled: appointments === 0,
         },
       ]}
     >

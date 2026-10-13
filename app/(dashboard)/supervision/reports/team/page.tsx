@@ -1,10 +1,11 @@
 "use client";
 
-import { Users } from "lucide-react";
+import { FileSpreadsheet, Users } from "lucide-react";
 import { apiGetTeamReport } from "@/lib/api";
 import { TeamDocument } from "@/components/supervision/report/TeamDocument";
 import { ReportGate, ReportShell, useGeneratedBy, useLineLabel, useReportData, useReportPeriod } from "@/components/supervision/report/ReportShell";
 import { periodLabel, reportFileName } from "@/components/supervision/report/reportFormat";
+import { teamCsv } from "@/components/supervision/report/reportCsv";
 
 function TeamScreen() {
   const period = useReportPeriod();
@@ -24,6 +25,15 @@ function TeamScreen() {
       onRetry={retry}
       pdfName={reportFileName("Team performance", period.from, period.to)}
       footer={`Everlast Wellness — Team performance · ${label}`}
+      downloads={[
+        {
+          label: "Download CSV",
+          icon: FileSpreadsheet,
+          title: "One row per person — opens in Excel",
+          onClick: () => (data ? teamCsv(data, reportFileName("Team performance", period.from, period.to)) : undefined),
+          disabled: !data || data.agents.length === 0,
+        },
+      ]}
     >
       {data && <TeamDocument report={data} lineLabel={lineLabel} generatedBy={generatedBy} />}
     </ReportShell>

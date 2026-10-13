@@ -330,6 +330,11 @@ export interface AgentUser {
    */
   permissions?: import("@/lib/permissions").Permission[];
   status: UserStatus;
+  /**
+   * False once deactivated (can't sign in; history stays credited to them).
+   * Optional: only shown when the server includes it in the user list.
+   */
+  isActive?: boolean;
   lastActiveAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -616,12 +621,35 @@ export interface ConfiguredNumbersResponse {
 // ── Inbox workflow ────────────────────────────────────────────────────────────
 
 /** The inbox's server-side work queues. See getAllConversations on the API. */
-export type ConversationView = "all" | "mine" | "unassigned" | "campaign_replies";
+export type ConversationView = "all" | "mine" | "unassigned" | "campaign_replies" | "follow_ups";
 
 export interface ConversationCounts {
   mine: number;
   unassigned: number;
   campaign_replies: number;
+  /** My follow-ups: chats I own, or unassigned ones I set to Follow up. */
+  follow_ups: number;
+  /** Of those, the ones due now or overdue. */
+  follow_ups_due: number;
+}
+
+/** Socket "follow_up.due": sent to the agent responsible, on every line. */
+export interface FollowUpDueEvent {
+  conversationId: number;
+  whatsappNumberId: number;
+  followUpAt: string;
+  customerName: string | null;
+  customerPhone: string;
+}
+
+/**
+ * What a hand-over moved (end of shift, a supervisor covering an absence, or
+ * an account deactivated / losing inbox access). `to` null = back to the queue.
+ */
+export interface HandOverResult {
+  chats: number;
+  bookingRequests: number;
+  to: { id: number; name: string | null; username: string } | null;
 }
 
 /** Someone a conversation can be given to: active, and a role that can reply. */

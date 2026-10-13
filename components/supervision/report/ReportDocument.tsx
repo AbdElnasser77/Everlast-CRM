@@ -67,8 +67,8 @@ function Summary({ report }: { report: SupervisionReport }) {
           value={percent(s.withinSlaPercent)}
           tone={s.withinSlaPercent !== null && s.withinSlaPercent < 80 ? "bad" : s.withinSlaPercent !== null ? "good" : undefined}
         />
-        <Kpi label="Late responses" value={n(s.lateResponses)} sub={`over ${report.slaMinutes} min`} tone={s.lateResponses > 0 ? "bad" : undefined} />
-        <Kpi label="Unanswered chats" value={n(s.unanswered)} tone={s.unanswered > 0 ? "bad" : undefined} />
+        <Kpi label="Late responses" value={n(s.lateResponses)} sub={`${report.slaMinutes} min or more`} tone={s.lateResponses > 0 ? "bad" : undefined} />
+        <Kpi label="Unanswered" value={n(s.unanswered)} sub="patient still waiting" tone={s.unanswered > 0 ? "bad" : undefined} />
         <Kpi label="Booking requests" value={n(s.bookingRequests)} sub={`Flow ${n(flow)} · Agent ${n(agent)}`} />
         <Kpi label="Requests booked" value={n(s.requestsBooked)} tone={s.requestsBooked > 0 ? "good" : undefined} />
         <Kpi label="Couldn’t book" value={n(s.requestsNotBooked)} />
@@ -229,7 +229,7 @@ function Team({ report }: { report: SupervisionReport }) {
             </tbody>
           </table>
           <p className="sr-note">
-            Late = a reply that took longer than {report.slaMinutes} minutes of working time. A chat handled by two people counts for each, so the
+            Late = a first response that took {report.slaMinutes} minutes or more of working time. A chat handled by two people counts for each, so the
             chats total can exceed the number of chats.
           </p>
         </>

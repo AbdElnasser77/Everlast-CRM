@@ -36,14 +36,14 @@ const REPORTS: { slug: string; title: string; description: string; icon: LucideI
     title: "Team performance",
     description: "Speed and results per person: response-time bands, slowest replies, outcomes, bookings, day-by-day trend, busiest hours.",
     icon: Users,
-    formats: ["PDF"],
+    formats: ["PDF", "CSV"],
   },
   {
     slug: "campaigns",
     title: "Campaigns",
     description: "Each campaign from sent to booked: delivery, reads, replies, booking requests, patients booked, couldn’t-book reasons, opt-outs.",
     icon: Megaphone,
-    formats: ["PDF"],
+    formats: ["PDF", "CSV"],
   },
   {
     slug: "chats",

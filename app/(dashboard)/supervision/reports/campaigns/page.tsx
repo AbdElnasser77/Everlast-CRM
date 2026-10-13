@@ -1,10 +1,11 @@
 "use client";
 
-import { Megaphone } from "lucide-react";
+import { FileSpreadsheet, Megaphone } from "lucide-react";
 import { apiGetCampaignsReport } from "@/lib/api";
 import { CampaignsDocument } from "@/components/supervision/report/CampaignsDocument";
 import { ReportGate, ReportShell, useGeneratedBy, useLineLabel, useReportData, useReportPeriod } from "@/components/supervision/report/ReportShell";
 import { periodLabel, reportFileName } from "@/components/supervision/report/reportFormat";
+import { campaignsCsv } from "@/components/supervision/report/reportCsv";
 
 function CampaignsScreen() {
   const period = useReportPeriod();
@@ -24,6 +25,15 @@ function CampaignsScreen() {
       onRetry={retry}
       pdfName={reportFileName("Campaigns", period.from, period.to)}
       footer={`Everlast Wellness — Campaigns · ${label}`}
+      downloads={[
+        {
+          label: "Download CSV",
+          icon: FileSpreadsheet,
+          title: "One row per campaign — opens in Excel",
+          onClick: () => (data ? campaignsCsv(data, reportFileName("Campaigns", period.from, period.to)) : undefined),
+          disabled: !data || data.campaigns.length === 0,
+        },
+      ]}
     >
       {data && <CampaignsDocument report={data} lineLabel={lineLabel} generatedBy={generatedBy} />}
     </ReportShell>

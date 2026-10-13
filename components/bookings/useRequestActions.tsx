@@ -7,7 +7,7 @@ import {
 } from "@/lib/api";
 import type { BookingRequest, PersonRef } from "@/types";
 import { useToast } from "@/components/ui/toast";
-import { personName } from "@/lib/chatOutcome";
+import { fmtWhen, personName } from "@/lib/chatOutcome";
 import { notBookedLabel, notifyRequestChanged, requestSource } from "@/lib/bookingRequests";
 import { BookDialog } from "@/components/bookings/BookDialog";
 import { NotBookedDialog } from "@/components/bookings/NotBookedDialog";
@@ -127,14 +127,21 @@ export function useRequestActions(
         key={`nb-${dialog.req.id}`}
         patient={patientOf(dialog.req)}
         onCancel={close}
-        onSave={async (reason, note) => {
+        onSave={async (reason, note, followUpAt) => {
           try {
-            const res = await apiNotBookedRequest(dialog.req.id, reason, note);
+            const res = await apiNotBookedRequest(dialog.req.id, reason, note, followUpAt);
             setDialog(null);
-            toast.success(`Closed as not booked · ${notBookedLabel(reason)}`);
+            toast.success(
+              reason === "CALL_BACK_LATER" && followUpAt
+                ? `Closed as not booked · follow up ${fmtWhen(followUpAt)}`
+                : `Closed as not booked · ${notBookedLabel(reason)}`,
+            );
             changed(res.data);
             return null;
           } catch (err) {
+            if (err instanceof ApiError && err.code === "FOLLOW_UP_REQUIRED") {
+              return err.message || "Choose when to call them back.";
+            }
             if (err instanceof ApiError && err.code === "REQUEST_HAS_BOOKINGS") {
               return err.message || "This request has appointments — cancel them first (contact panel → Bookings).";
             }

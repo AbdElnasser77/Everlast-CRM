@@ -117,6 +117,24 @@ export const toDateInput = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() +
 export const toTimeInput = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 export const toDateTimeInput = (d: Date) => `${toDateInput(d)}T${toTimeInput(d)}`;
 
+/** Quick picks for when to get back to a patient: in 1 hour, tomorrow 10:00, in 3 days (10:00). */
+export function followUpPicks(): { label: string; at: Date }[] {
+  const now = new Date();
+  const inHour = new Date(now.getTime() + 60 * 60_000);
+  inHour.setSeconds(0, 0);
+  const at10 = (days: number) => {
+    const d = new Date(now);
+    d.setDate(d.getDate() + days);
+    d.setHours(10, 0, 0, 0);
+    return d;
+  };
+  return [
+    { label: "In 1 hour", at: inHour },
+    { label: "Tomorrow 10:00", at: at10(1) },
+    { label: "In 3 days", at: at10(3) },
+  ];
+}
+
 /** The next :00 or :30 after now. */
 export function nextHalfHour(from = new Date()): Date {
   const d = new Date(from);

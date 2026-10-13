@@ -4,10 +4,23 @@ import { useState } from "react";
 import type { NotBookedReason } from "@/types";
 import { NOT_BOOKED_REASONS } from "@/lib/bookingRequests";
 import { DialogButtons, DialogShell, inputCls, inputErrCls, labelCls } from "@/components/bookings/DialogShell";
+import { fmtWhen, followUpPicks, toDateTimeInput } from "@/lib/chatOutcome";
+
+// What the server does to the chat's outcome for each reason (see
+// closeNotBooked on the API) — said up front so it's no surprise.
+const CHAT_HINT: Record<NotBookedReason, string> = {
+  NOT_INTERESTED: "The chat will be marked Not interested.",
+  PRICE: "The chat will be marked Not interested.",
+  BOOKED_ELSEWHERE: "The chat will be marked Not interested.",
+  NO_ANSWER: "The chat will be marked No answer.",
+  CALL_BACK_LATER: "The chat becomes Follow up at this time — you'll get a reminder when it's due.",
+  OTHER: "The chat's outcome stays as it is.",
+};
 
 /**
  * Close a booking request without an appointment: why, and a note (required
- * for "Other"). onSave returns the server's refusal (e.g. it still has live
+ * for "Other"). "Will call back later" also needs when — the chat becomes
+ * Follow up then. onSave returns the server's refusal (e.g. it still has live
  * appointments) or null when saved.
  */
 export function NotBookedDialog({
@@ -17,10 +30,13 @@ export function NotBookedDialog({
 }: {
   patient?: string | null;
   onCancel: () => void;
-  onSave: (reason: NotBookedReason, note?: string) => Promise<string | null>;
+  onSave: (reason: NotBookedReason, note?: string, followUpAt?: string) => Promise<string | null>;
 }) {
   const [reason, setReason] = useState<NotBookedReason | null>(null);
   const [note, setNote] = useState("");
+  const [picks] = useState(followUpPicks);
+  const [callBack, setCallBack] = useState(() => toDateTimeInput(picks[1].at));
+  const [callBackError, setCallBackError] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [noteError, setNoteError] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -32,10 +48,23 @@ export function NotBookedDialog({
       setNoteError(true);
       return setError("Add a note saying what happened.");
     }
+    let followUpAt: string | undefined;
+    if (reason === "CALL_BACK_LATER") {
+      const d = new Date(callBack);
+      if (!callBack || Number.isNaN(d.getTime())) {
+        setCallBackError(true);
+        return setError("Choose when to call them back.");
+      }
+      if (d.getTime() < Date.now()) {
+        setCallBackError(true);
+        return setError("That time has already passed — pick a time in the future.");
+      }
+      followUpAt = d.toISOString();
+    }
     setError(null);
     setSaving(true);
     try {
-      const err = await onSave(reason, note.trim() || undefined);
+      const err = await onSave(reason, note.trim() || undefined, followUpAt);
       if (err) setError(err);
     } finally {
       setSaving(false);
@@ -65,7 +94,7 @@ export function NotBookedDialog({
                   name="not-booked-reason"
                   value={r.value}
                   checked={active}
-                  onChange={() => { setReason(r.value); setError(null); setNoteError(false); }}
+                  onChange={() => { setReason(r.value); setError(null); setNoteError(false); setCallBackError(false); }}
                   className="accent-brand"
                 />
                 {r.label}
@@ -73,6 +102,40 @@ export function NotBookedDialog({
             );
           })}
         </div>
+        {reason === "CALL_BACK_LATER" && (
+          <div className="space-y-1.5">
+            <span className={labelCls}>Call them back on <span className="font-normal text-red-500">(required)</span></span>
+            <div className="flex flex-wrap gap-1.5">
+              {picks.map((p) => {
+                const v = toDateTimeInput(p.at);
+                return (
+                  <button
+                    key={p.label}
+                    type="button"
+                    onClick={() => { setCallBack(v); setCallBackError(false); setError(null); }}
+                    className={`text-[12px] px-2.5 py-1 rounded-full border transition-colors cursor-pointer ${callBack === v ? "bg-brand-200 border-brand text-brand-fg font-semibold" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}
+                  >
+                    {p.label}
+                  </button>
+                );
+              })}
+            </div>
+            <input
+              type="datetime-local"
+              aria-label="Call them back on"
+              value={callBack}
+              onChange={(e) => { setCallBack(e.target.value); setCallBackError(false); }}
+              aria-invalid={callBackError}
+              className={callBackError ? inputErrCls : inputCls}
+            />
+            {callBack && !Number.isNaN(new Date(callBack).getTime()) && (
+              <p className="text-[12px] text-gray-400">{fmtWhen(new Date(callBack).toISOString())}</p>
+            )}
+          </div>
+        )}
+        {reason && (
+          <p className="text-[12px] text-gray-500 bg-gray-50 border border-gray-100 rounded-lg px-2.5 py-1.5">{CHAT_HINT[reason]}</p>
+        )}
         <label className="block">
           <span className={labelCls}>
             Note {reason === "OTHER" ? <span className="font-normal text-red-500">(required)</span> : <span className="font-normal text-gray-400">(optional)</span>}

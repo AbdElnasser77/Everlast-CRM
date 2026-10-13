@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from "react";
 import type { ReactNode } from "react";
-import { LogOut, Clock, Hourglass } from "lucide-react";
+import { LogOut, Clock, Hourglass, CalendarClock } from "lucide-react";
 import { useConversations } from "@/hooks/useConversations";
 import { disconnectSocket, getSocket } from "@/lib/socket";
 import { apiGetConversationCounts, apiLogout } from "@/lib/api";
@@ -13,6 +13,7 @@ import { useCurrentUser } from "@/components/CurrentUserProvider";
 import { PageSpinner } from "@/components/ui/spinner";
 import { homePathFor } from "@/lib/permissions";
 import { ConversationsContext } from "@/components/ConversationsContext";
+import { MyStatusMenu } from "@/components/MyStatusMenu";
 import type { ConversationCounts, ConversationView, User } from "@/types";
 import { isWindowClosed } from "@/lib/messagingWindow";
 import { OUTCOME_CHIP, OUTCOME_LABEL, OVERDUE_CHIP, fmtElapsed, fmtWhen, isOverdue, waitTone, type InboxConversation } from "@/lib/chatOutcome";
@@ -109,11 +110,13 @@ const LIST_WIDTH_KEY = "inbox.listWidth";
 // Server-side views: who owns the chat, and whether it answers a campaign.
 // The pills below them (FILTERS) only narrow the page already loaded; these go
 // to the server, so an unassigned chat on page 3 still shows up.
+// Follow-ups' badge counts only the ones due now (red): the rest can wait.
 const VIEWS: { value: ConversationView; label: string; count?: keyof ConversationCounts }[] = [
   { value: "all", label: "All" },
   { value: "mine", label: "Mine", count: "mine" },
   { value: "unassigned", label: "Unassigned", count: "unassigned" },
   { value: "campaign_replies", label: "Campaign replies", count: "campaign_replies" },
+  { value: "follow_ups", label: "Follow-ups", count: "follow_ups_due" },
 ];
 
 const STATUS_CHIP: Record<string, string> = {
@@ -142,11 +145,19 @@ function useConversationCounts(): ConversationCounts | null {
     };
     load();
     const socket = getSocket();
-    const events = ["conversation.updated", "conversation.assigned", "conversation.status_changed", "campaign.replied", "connect"];
+    const events = [
+      "conversation.updated", "conversation.assigned", "conversation.status_changed", "conversation.outcome",
+      "campaign.replied", "follow_up.due", "connect",
+    ];
     events.forEach((e) => socket.on(e, schedule));
+    // A follow-up falls due with no event of its own on this line's list; the
+    // reminder (follow_up.due) only comes every few minutes. Keep the red
+    // badge honest with a slow poll.
+    const poll = setInterval(schedule, 120_000);
     return () => {
       cancelled = true;
       if (timer.current) clearTimeout(timer.current);
+      clearInterval(poll);
       events.forEach((e) => socket.off(e, schedule));
     };
   }, []);
@@ -380,9 +391,12 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
                 >
                   {v.label}
                   {n > 0 && (
-                    <span className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10.5px] font-semibold flex items-center justify-center ${
-                      v.value === "unassigned" ? "bg-amber-100 text-amber-700" : active ? "bg-brand-200 text-brand-fg" : "bg-gray-100 text-gray-500"
-                    }`}>
+                    <span
+                      title={v.value === "follow_ups" ? `${n} follow-up${n === 1 ? "" : "s"} due now` : undefined}
+                      className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10.5px] font-semibold flex items-center justify-center ${
+                        v.value === "follow_ups" ? "bg-red-500 text-white" : v.value === "unassigned" ? "bg-amber-100 text-amber-700" : active ? "bg-brand-200 text-brand-fg" : "bg-gray-100 text-gray-500"
+                      }`}
+                    >
                       {n > 99 ? "99+" : n}
                     </span>
                   )}
@@ -435,7 +449,7 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
               ))
             ) : searched.length === 0 ? (
               <div className="flex items-center justify-center h-32 text-[13px] text-gray-400">
-                {view === "mine" ? "Nothing assigned to you" : view === "unassigned" ? "Every open chat has an owner" : view === "campaign_replies" ? "No open campaign replies" : "No conversations found"}
+                {view === "mine" ? "Nothing assigned to you" : view === "unassigned" ? "Every open chat has an owner" : view === "campaign_replies" ? "No open campaign replies" : view === "follow_ups" ? "No follow-ups — set one from a chat's outcome menu" : "No conversations found"}
               </div>
             ) : (
               searched.map((c, i) => {
@@ -455,6 +469,8 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
                   : null;
                 const outcome = row.outcome ?? null;
                 const followUpOverdue = outcome === "FOLLOW_UP" && isOverdue(row.followUpAt, now);
+                // In Follow-ups the date is the point of the row.
+                const showFollowUp = view === "follow_ups" && outcome === "FOLLOW_UP" && !!row.followUpAt;
                 return (
                   <Link
                     key={cid || i}
@@ -492,6 +508,20 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
                         </span>
                       </div>
 
+                      {showFollowUp && (
+                        <div
+                          className={`mt-1 inline-flex max-w-full items-center gap-1.5 rounded-md border px-1.5 py-0.5 text-[12px] font-semibold tabular-nums ${
+                            followUpOverdue ? OVERDUE_CHIP : OUTCOME_CHIP.FOLLOW_UP
+                          }`}
+                        >
+                          <CalendarClock className="w-3.5 h-3.5 shrink-0" />
+                          <span className="truncate">
+                            {followUpOverdue ? "Overdue · was due " : "Follow up "}
+                            {fmtWhen(row.followUpAt!)}
+                          </span>
+                        </div>
+                      )}
+
                       {/* Preview + unread count */}
                       <div className="flex justify-between items-center gap-2 mt-0.5">
                         <span className={`text-[13px] truncate ${unread > 0 ? "text-gray-700" : "text-gray-500"}`}>
@@ -520,7 +550,7 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
                             {c.status === "PENDING" ? "Pending" : "Resolved"}
                           </span>
                         )}
-                        {outcome && (
+                        {outcome && !showFollowUp && (
                           <span
                             title={
                               outcome === "FOLLOW_UP" && row.followUpAt
@@ -579,9 +609,8 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
               <p className="text-[13px] font-semibold text-gray-900 leading-snug">
                 {user?.username ?? "—"}
               </p>
-              <p className="text-[12px] text-gray-400 leading-snug">
-                {user?.role ?? "Agent"} · Online
-              </p>
+              {/* Own presence (Online / On break) and the end-of-shift hand-over. */}
+              <MyStatusMenu roleLabel={user?.role ?? "Agent"} />
             </div>
           </div>
         </aside>

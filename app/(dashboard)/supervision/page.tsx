@@ -399,7 +399,7 @@ function SupervisionScreen() {
 
         <KpiStrip overview={overview} loading={!overview} filter={view === "chats" ? filter : null} onFilter={pickFilter} />
 
-        <AgentBoard overview={overview} loading={!overview} agentFilter={agentFilter} onAgentFilter={pickAgent} now={now} />
+        <AgentBoard overview={overview} loading={!overview} agentFilter={agentFilter} onAgentFilter={pickAgent} now={now} onHandedOver={refreshNow} />
 
         {view === "bookings" ? (
           <BookingsPanel

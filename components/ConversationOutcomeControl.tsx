@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { CalendarCheck2, CalendarClock, CalendarPlus, Check, ChevronDown, CircleSlash, Eraser, Flag, Loader2, PhoneMissed, ShieldCheck, ShieldOff } from "lucide-react";
-import { apiCreateBookingRequest, apiGetConversationProfile, apiSetConversationOutcome } from "@/lib/api";
+import { ApiError, apiCreateBookingRequest, apiGetConversationProfile, apiSetConversationOutcome } from "@/lib/api";
 import { getSocket } from "@/lib/socket";
 import { useCurrentUser } from "@/components/CurrentUserProvider";
 import { useToast } from "@/components/ui/toast";
@@ -11,7 +11,7 @@ import { Spinner } from "@/components/ui/spinner";
 import type { Booking, BookingRequest, ConversationOutcome, ConversationOutcomeState } from "@/types";
 import {
   OUTCOME_CHIP, OUTCOME_LABEL, OVERDUE_CHIP, type ProfileWithOutcome,
-  chipBooking, fmtWhen, isOverdue, toDateTimeInput,
+  chipBooking, fmtWhen, followUpPicks, isOverdue, toDateTimeInput,
 } from "@/lib/chatOutcome";
 import { isOpenRequest, notifyRequestChanged } from "@/lib/bookingRequests";
 import { BookDialog } from "@/components/bookings/BookDialog";
@@ -52,7 +52,12 @@ export function ConversationOutcomeControl({
   const editable = can("conversation:write");
   const numericId = Number(conversationId);
   const [open, setOpen] = useState(false);
-  const [dialog, setDialog] = useState<"booked" | "follow_up" | "new_request" | "opt_out" | "lift_opt_out" | null>(null);
+  const [dialog, setDialog] = useState<"booked" | "follow_up" | "new_request" | "opt_out" | "lift_opt_out" | "confirm_close" | null>(null);
+  // "Not interested" / "No answer" also close the chat's open booking request
+  // (server side), so when there is one the menu says so and asks first.
+  const [openRequest, setOpenRequest] = useState<{ id: string; has: boolean } | null>(null);
+  const hasOpenRequest = openRequest?.id === conversationId ? openRequest.has : false;
+  const [confirmOutcome, setConfirmOutcome] = useState<"NOT_INTERESTED" | "NO_ANSWER" | null>(null);
   // The chat's open booking request (what it asked for, where the patient came
   // from), to prefill "Booked…". request null = none yet: the server opens one.
   const [bookPrefill, setBookPrefill] = useState<{
@@ -106,6 +111,21 @@ export function ConversationOutcomeControl({
     return () => clearInterval(t);
   }, []);
 
+  // Whether the chat has an open booking request — checked each time the menu
+  // opens (requests are opened and closed from elsewhere, too).
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    apiGetConversationProfile(conversationId)
+      .then((res) => {
+        if (cancelled) return;
+        const p = res.data as unknown as ProfileWithOutcome;
+        setOpenRequest({ id: conversationId, has: (p.bookingRequests ?? []).some(isOpenRequest) });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [open, conversationId]);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -134,6 +154,11 @@ export function ConversationOutcomeControl({
       notifyRequestChanged(numericId);
       return null;
     } catch (err) {
+      // Not interested / No answer / Clear on a chat with booked appointments:
+      // the server's message says to cancel them first — shown as is.
+      if (err instanceof ApiError && err.code === "HAS_APPOINTMENTS") {
+        return { message: err.message || "This chat has booked appointments — cancel them first (contact panel → Bookings)." };
+      }
       return toSaveError(err, "Couldn't save the outcome");
     } finally {
       setSaving(false);
@@ -172,6 +197,20 @@ export function ConversationOutcomeControl({
   async function quick(body: OutcomeBody, okMessage: string) {
     const err = await save(body, okMessage);
     if (err) toast.error(err);
+  }
+
+  const CLOSING_LABEL = { NOT_INTERESTED: "Marked as not interested", NO_ANSWER: "Marked as no answer" } as const;
+
+  // Not interested / No answer: straight away, unless it would also close an
+  // open booking request — then confirm first.
+  function closingOutcome(outcome: "NOT_INTERESTED" | "NO_ANSWER") {
+    if (hasOpenRequest) {
+      setOpen(false);
+      setConfirmOutcome(outcome);
+      setDialog("confirm_close");
+      return;
+    }
+    quick({ outcome }, CLOSING_LABEL[outcome]);
   }
 
   const overdue = shownOutcome === "FOLLOW_UP" && isOverdue(shownFollowUp, now);
@@ -241,14 +280,19 @@ export function ConversationOutcomeControl({
               <CalendarClock className="w-4 h-4 text-amber-600" /> <span className="flex-1">Follow up…</span>
               {shownOutcome === "FOLLOW_UP" && <Check className="w-4 h-4 text-brand-fg" />}
             </button>
-            <button type="button" role="menuitem" onClick={() => quick({ outcome: "NOT_INTERESTED" }, "Marked as not interested")} className={`${item} text-gray-700 hover:bg-gray-50`}>
-              <CircleSlash className="w-4 h-4 text-gray-400" /> <span className="flex-1">Not interested</span>
+            <button type="button" role="menuitem" onClick={() => closingOutcome("NOT_INTERESTED")} className={`${item} text-gray-700 hover:bg-gray-50`}>
+              <CircleSlash className="w-4 h-4 text-gray-400" /> <span className="flex-1">{hasOpenRequest ? "Not interested…" : "Not interested"}</span>
               {shownOutcome === "NOT_INTERESTED" && <Check className="w-4 h-4 text-brand-fg" />}
             </button>
-            <button type="button" role="menuitem" onClick={() => quick({ outcome: "NO_ANSWER" }, "Marked as no answer")} className={`${item} text-gray-700 hover:bg-gray-50`}>
-              <PhoneMissed className="w-4 h-4 text-gray-400" /> <span className="flex-1">No answer</span>
+            <button type="button" role="menuitem" onClick={() => closingOutcome("NO_ANSWER")} className={`${item} text-gray-700 hover:bg-gray-50`}>
+              <PhoneMissed className="w-4 h-4 text-gray-400" /> <span className="flex-1">{hasOpenRequest ? "No answer…" : "No answer"}</span>
               {shownOutcome === "NO_ANSWER" && <Check className="w-4 h-4 text-brand-fg" />}
             </button>
+            {hasOpenRequest && (
+              <p className="px-3 pt-0.5 pb-1 text-[11px] leading-snug text-amber-700">
+                These also close the chat&apos;s open booking request.
+              </p>
+            )}
             <div className="border-t border-gray-100 mt-1.5 pt-1.5">
               <p className="px-3 pt-1 pb-1 text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Booking</p>
               <button type="button" role="menuitem" onClick={() => { setOpen(false); setDialog("new_request"); }} className={`${item} text-gray-700 hover:bg-gray-50`}>
@@ -305,6 +349,14 @@ export function ConversationOutcomeControl({
       {dialog === "new_request" && (
         <NewRequestDialog onCancel={() => setDialog(null)} onSave={createRequest} />
       )}
+      {dialog === "confirm_close" && confirmOutcome && (
+        <ConfirmCloseDialog
+          outcome={confirmOutcome}
+          saving={saving}
+          onCancel={() => { setDialog(null); setConfirmOutcome(null); }}
+          onConfirm={() => save({ outcome: confirmOutcome }, `${CLOSING_LABEL[confirmOutcome]} · booking request closed`)}
+        />
+      )}
       {dialog === "follow_up" && (
         <FollowUpDialog
           saving={saving}
@@ -354,22 +406,36 @@ function DialogButtons({ saving, onCancel, label }: { saving: boolean; onCancel:
   );
 }
 
-// Quick picks for when to get back to the patient.
-function followUpPicks(): { label: string; at: Date }[] {
-  const now = new Date();
-  const inHour = new Date(now.getTime() + 60 * 60_000);
-  inHour.setSeconds(0, 0);
-  const at10 = (days: number) => {
-    const d = new Date(now);
-    d.setDate(d.getDate() + days);
-    d.setHours(10, 0, 0, 0);
-    return d;
-  };
-  return [
-    { label: "In 1 hour", at: inHour },
-    { label: "Tomorrow 10:00", at: at10(1) },
-    { label: "In 3 days", at: at10(3) },
-  ];
+/** "Not interested" / "No answer" when the chat has an open booking request. */
+function ConfirmCloseDialog({ outcome, saving, onCancel, onConfirm }: {
+  outcome: "NOT_INTERESTED" | "NO_ANSWER";
+  saving: boolean;
+  onCancel: () => void;
+  onConfirm: () => Promise<string | null>;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const label = OUTCOME_LABEL[outcome];
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const err = await onConfirm();
+    if (err) setError(err);
+  }
+
+  return (
+    <Dialog
+      title={`Mark as ${label.toLowerCase()}?`}
+      intro={`This will also close the open booking request, with the reason “${label}”. You can reopen it from Bookings later.`}
+      onCancel={onCancel}
+      saving={saving}
+    >
+      <form onSubmit={submit} className="space-y-3">
+        {error && <p role="alert" className="text-[13px] text-red-500 font-medium">{error}</p>}
+        <DialogButtons saving={saving} onCancel={onCancel} label={`Mark ${label.toLowerCase()} & close request`} />
+      </form>
+    </Dialog>
+  );
 }
 
 /** When someone should get back to this patient. */

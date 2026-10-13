@@ -214,7 +214,7 @@ export function apiGetConversations(
   return apiFetch<ConversationListResponse>(`/api/conversations?${params}`);
 }
 
-/** The numbers on the inbox's view tabs (Mine / Unassigned / Campaign replies). */
+/** The numbers on the inbox's view tabs (Mine / Unassigned / Campaign replies / Follow-ups). */
 export function apiGetConversationCounts() {
   return apiFetch<{ success: boolean; data: import("@/types").ConversationCounts }>("/api/conversations/counts");
 }
@@ -480,8 +480,27 @@ export function apiCreateUser(data: { name?: string; username: string; password:
   return apiFetch<import("@/types").UserResponse>("/api/users", { method: "POST", body: JSON.stringify(data) });
 }
 
-export function apiUpdateUser(id: number | string, data: Partial<{ name: string | null; username: string; role: import("@/types").UserRole; status: import("@/types").UserStatus }>) {
-  return apiFetch<import("@/types").UserResponse>(`/api/users/${id}`, { method: "PUT", body: JSON.stringify(data) });
+/**
+ * `isActive: false` deactivates (they're signed out and can't sign in). When
+ * that — or a role change — takes away their inbox, their open chats and taken
+ * booking requests go to `handOverTo` (a user id), or back to the queue when
+ * it's null/omitted; `handedOver` says what moved.
+ */
+export function apiUpdateUser(
+  id: number | string,
+  data: Partial<{
+    name: string | null;
+    username: string;
+    role: import("@/types").UserRole;
+    status: import("@/types").UserStatus;
+    isActive: boolean;
+    handOverTo: number | null;
+  }>,
+) {
+  return apiFetch<import("@/types").UserResponse & { handedOver: import("@/types").HandOverResult | null }>(
+    `/api/users/${id}`,
+    { method: "PUT", body: JSON.stringify(data) },
+  );
 }
 
 export function apiDeleteUser(id: number | string) {
@@ -494,6 +513,22 @@ export function apiResetUserPassword(id: number | string, password: string) {
 
 export function apiUpdateMyStatus(status: import("@/types").UserStatus) {
   return apiFetch<import("@/types").UserResponse>("/api/users/me/status", { method: "PUT", body: JSON.stringify({ status }) });
+}
+
+/** End of shift: my open chats and taken booking requests to a colleague, or back to the queue (no id). */
+export function apiHandOverMine(toUserId: number | null) {
+  return apiFetch<{ success: boolean; data: import("@/types").HandOverResult }>("/api/users/me/hand-over", {
+    method: "POST",
+    body: JSON.stringify(toUserId ? { toUserId } : {}),
+  }, { numberScoped: false });
+}
+
+/** Supervisor: move someone's open chats and taken booking requests (they're off, absent…). */
+export function apiSupervisionHandOver(fromUserId: number, toUserId: number | null) {
+  return apiFetch<{ success: boolean; data: import("@/types").HandOverResult }>("/api/supervision/hand-over", {
+    method: "POST",
+    body: JSON.stringify({ fromUserId, ...(toUserId ? { toUserId } : {}) }),
+  }, { numberScoped: false });
 }
 
 export function apiLogout() {
@@ -964,10 +999,15 @@ export function apiGetBookingSourceOptions() {
 }
 
 // Close without an appointment. reason OTHER needs a note.
-export function apiNotBookedRequest(id: number, reason: import("@/types").NotBookedReason, note?: string) {
+/**
+ * Couldn't book. The chat's outcome follows the reason on the server; "Will
+ * call back later" needs `followUpAt` (the chat becomes Follow up then) —
+ * without it the server answers 400 FOLLOW_UP_REQUIRED.
+ */
+export function apiNotBookedRequest(id: number, reason: import("@/types").NotBookedReason, note?: string, followUpAt?: string) {
   return apiFetch<{ success: boolean; data: import("@/types").BookingRequest }>(`/api/booking-requests/${id}/not-booked`, {
     method: "POST",
-    body: JSON.stringify({ reason, note }),
+    body: JSON.stringify({ reason, note, ...(followUpAt ? { followUpAt } : {}) }),
   });
 }
 
