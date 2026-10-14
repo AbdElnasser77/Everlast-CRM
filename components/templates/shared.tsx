@@ -42,6 +42,19 @@ export function headerCharError(text: string): string | null {
   return `Headers can't contain ${what} — Meta doesn't allow emojis or formatting characters (* _ ~ \`) in a header.`;
 }
 
+// WhatsApp folds a tall message behind "Read more" on the phone. Meta doesn't
+// publish the cut-off, so this is an estimate: lines as a phone wraps them
+// (about 38 characters a line), blank lines included. Tuned from real sends —
+// the Anniversary template (~18 lines) folded.
+const WA_CHARS_PER_LINE = 38;
+export const WA_FOLD_LINES = 10;
+export function estimateWaLines(text: string): number {
+  return renderPreview(text)
+    .replace(/[*_~`]/g, "")
+    .split("\n")
+    .reduce((n, line) => n + Math.max(1, Math.ceil([...line.trim()].length / WA_CHARS_PER_LINE)), 0);
+}
+
 export function renderPreview(text: string): string {
   let out = text;
   PERSONALIZE_VARS.forEach(({ key }) => {

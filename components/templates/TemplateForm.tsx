@@ -28,6 +28,8 @@ import {
   PLACEHOLDER_RE,
   headerCharError,
   renderPreview,
+  estimateWaLines,
+  WA_FOLD_LINES,
   WaText,
   CharCount,
   HeaderPreview,
@@ -847,6 +849,17 @@ export default function TemplateForm({
               )}
             </div>
           </div>
+
+          {/* "Read more" warning — an estimate, see estimateWaLines */}
+          {!isCarousel && body.trim() && estimateWaLines(body) > WA_FOLD_LINES && (
+            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-700 leading-snug">
+              <p className="font-semibold">Likely to show “Read more” on phones</p>
+              <p className="mt-0.5">
+                About {estimateWaLines(body)} lines on a phone — aim for {WA_FOLD_LINES} or fewer so the whole message shows. Remove blank
+                lines, cut repeated words, and keep one idea per sentence.
+              </p>
+            </div>
+          )}
 
           {/* Footer info */}
           <div className="flex justify-between items-center mt-3 px-0.5">
