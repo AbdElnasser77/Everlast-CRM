@@ -678,7 +678,7 @@ export interface CampaignReply {
 // ─── Flows (campaign automations) ────────────────────────────────────────────
 // Mirrors everlast-nodejs-crm-api/utils/flowGraph.js, which validates on save.
 
-export type FlowNodeType = "trigger" | "message" | "list" | "carousel" | "cards" | "question" | "tag" | "assign" | "end";
+export type FlowNodeType = "trigger" | "message" | "list" | "carousel" | "cards" | "question" | "slot_picker" | "tag" | "assign" | "end";
 export type FlowMediaType = "NONE" | "IMAGE" | "VIDEO" | "DOCUMENT";
 export type FlowInputType = "text" | "number" | "email" | "phone" | "date";
 
@@ -716,11 +716,30 @@ export interface FlowNodeData {
   // carousel: snapshot of the template's cards (label + quick replies).
   // cards: the product cards themselves (id, media, text, buttons).
   cards?: FlowCard[];
+  // slot_picker (Pick appointment): the patient-facing texts; empty = the
+  // server's default wording. Saves preferred_date / preferred_time.
+  dayText?: string;
+  timeText?: string;
+  noSlotsText?: string;
+  fallbackDayText?: string;
+  fallbackTimeText?: string;
   // tag
   tag?: string;
   // assign
   agentId?: number | null;
   [key: string]: unknown;
+}
+
+// ─── Clinic availability (Dok32, read-only: GET /api/availability/*) ─────────
+export type ClinicDayStatus = "OPEN" | "FULL" | "CLOSED" | "NOT_SCHEDULED" | "PAST" | "TOO_FAR";
+
+export interface ClinicDay {
+  date: string; // YYYY-MM-DD, clinic-local
+  status: ClinicDayStatus;
+  slots: string[]; // free start times, HH:MM — only when OPEN
+  label: string; // "Tue 21 Oct"
+  /** /day only: what the patient is told about a day that isn't open. */
+  message?: string | null;
 }
 
 export interface FlowNode { id: string; type: FlowNodeType; position: { x: number; y: number }; data: FlowNodeData }

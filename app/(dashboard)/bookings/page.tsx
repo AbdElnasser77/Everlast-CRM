@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowLeft, CalendarCheck2, CalendarDays, CalendarPlus, CircleSlash, ClipboardList, Hourglass, Loader2,
+  ArrowLeft, CalendarCheck2, CalendarClock, CalendarDays, CalendarPlus, CircleSlash, ClipboardList, Hourglass, Loader2,
   MessageCircle, Pencil, RefreshCw, RotateCcw, Search, UserRoundCheck, X,
 } from "lucide-react";
 import { apiGetBookingRequest, apiGetBookingRequestCounts, apiGetBookingRequests } from "@/lib/api";
@@ -17,7 +17,7 @@ import { AppointmentCard, LeadSourceChip, RequestStatusChip, RequestedDetails } 
 import { useRequestActions } from "@/components/bookings/useRequestActions";
 import { fmtWhen, personName, sortBookings } from "@/lib/chatOutcome";
 import {
-  isOpenRequest, notBookedLabel, onRequestChanged, requestAge, requestPreferred, requestService,
+  isOpenRequest, notBookedLabel, onRequestChanged, requestAge, requestPreferred, requestService, requestSlot,
 } from "@/lib/bookingRequests";
 
 // ── Bookings ──────────────────────────────────────────────────────────────────
@@ -358,6 +358,7 @@ function RequestRow({ req: r, active, meId, showStatus, onSelect }: {
   const name = r.customer?.name || (r.customer?.phone ? `+${r.customer.phone}` : "Unknown patient");
   const service = requestService(r);
   const preferred = requestPreferred(r);
+  const slotChecked = requestSlot(r.requested) != null;
   const age = requestAge(r);
   const open = isOpenRequest(r);
   const mine = meId != null && r.claimedById === meId;
@@ -402,8 +403,11 @@ function RequestRow({ req: r, active, meId, showStatus, onSelect }: {
             <span className="max-w-[60%] truncate text-[11px] font-semibold text-brand-fg bg-brand-100 border border-brand/20 rounded px-1.5 py-px">{service}</span>
           )}
           {preferred && (
-            <span className="max-w-[60%] truncate inline-flex items-center gap-1 text-[11px] font-medium text-gray-600 bg-gray-50 border border-gray-200 rounded px-1.5 py-px">
-              <CalendarDays className="w-3 h-3 text-gray-400 shrink-0" /> {preferred}
+            <span
+              title={slotChecked ? "Picked in the booking flow — free in the clinic system when requested" : undefined}
+              className="max-w-[60%] truncate inline-flex items-center gap-1 text-[11px] font-medium text-gray-600 bg-gray-50 border border-gray-200 rounded px-1.5 py-px"
+            >
+              {slotChecked ? <CalendarClock className="w-3 h-3 text-brand-fg shrink-0" /> : <CalendarDays className="w-3 h-3 text-gray-400 shrink-0" />} {preferred}
             </span>
           )}
           {!service && !preferred && <span className="text-[11px] text-gray-400 italic">No details collected</span>}
@@ -550,7 +554,7 @@ function RequestDetail({ initial, refreshKey, meId, canWork, actions, onClose }:
 
         {/* What they asked for */}
         <DetailSection title="What they asked for">
-          <RequestedDetails requested={r.requested} empty="Nothing collected — check the chat for what they'd like." />
+          <RequestedDetails requested={r.requested} liveCheck={open} empty="Nothing collected — check the chat for what they'd like." />
           {r.note && (
             <p className="mt-2 text-[12.5px] text-gray-700 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2 whitespace-pre-wrap break-words">{r.note}</p>
           )}

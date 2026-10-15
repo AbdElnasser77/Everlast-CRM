@@ -16,9 +16,9 @@ import {
   type IsValidConnection,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Plus, Save, MessageSquare, List, HelpCircle, Tag, UserRound, Flag, FlaskConical, GalleryHorizontal, Images } from "lucide-react";
+import { Plus, Save, MessageSquare, List, HelpCircle, Tag, UserRound, Flag, FlaskConical, GalleryHorizontal, Images, CalendarClock } from "lucide-react";
 import type { AssignableUser, FlowGraph, FlowNodeData, FlowNodeType, FlowValidationError, Template } from "@/types";
-import { ADDABLE_STEPS, STEP_META, defaultData, outputsOf, uid } from "@/lib/flows";
+import { ADDABLE_STEPS, SLOT_VARIABLES, STEP_META, defaultData, outputsOf, uid } from "@/lib/flows";
 import { StepNode, type StepFlowNode } from "./StepNode";
 import { StepEditor } from "./StepEditor";
 import { FlowSimulator } from "./FlowSimulator";
@@ -31,6 +31,7 @@ const nodeTypes = {
   carousel: StepNode,
   cards: StepNode,
   question: StepNode,
+  slot_picker: StepNode,
   tag: StepNode,
   assign: StepNode,
   end: StepNode,
@@ -42,6 +43,7 @@ const PALETTE_ICONS: Partial<Record<FlowNodeType, React.ComponentType<{ classNam
   carousel: GalleryHorizontal,
   cards: Images,
   question: HelpCircle,
+  slot_picker: CalendarClock,
   tag: Tag,
   assign: UserRound,
   end: Flag,
@@ -110,6 +112,8 @@ export function FlowBuilder({ initialGraph, templates, agents, readOnly, saving,
     for (const n of nodes) {
       const v = typeof n.data.variable === "string" ? n.data.variable : "";
       if (v && !out.includes(v)) out.push(v);
+      // A Pick appointment step always fills these.
+      if (n.type === "slot_picker") for (const s of SLOT_VARIABLES) if (!out.includes(s)) out.push(s);
     }
     return out;
   }, [nodes]);

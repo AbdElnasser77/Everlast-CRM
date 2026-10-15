@@ -1,11 +1,13 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Stethoscope, Hash, Megaphone, CircleCheck, CircleHelp, Compass } from "lucide-react";
+import { Stethoscope, Hash, Megaphone, CircleCheck, CircleHelp, Compass, CalendarClock, TriangleAlert } from "lucide-react";
 import type { Booking, BookingRequestStatus } from "@/types";
-import { fmtWhen, personName } from "@/lib/chatOutcome";
+import { apiCheckSlot } from "@/lib/api";
+import { fmtWhen, personName, toDateInput } from "@/lib/chatOutcome";
 import {
-  REQUEST_STATUS_CHIP, REQUEST_STATUS_LABEL, SOURCE_CHIP, type SourceFields, requestSourceInfo, requestedPairs,
+  REQUEST_STATUS_CHIP, REQUEST_STATUS_LABEL, SOURCE_CHIP, type SourceFields, requestSlot, requestSourceInfo, requestedPairs,
 } from "@/lib/bookingRequests";
 
 export function RequestStatusChip({ status, className = "" }: { status: BookingRequestStatus; className?: string }) {
@@ -53,19 +55,71 @@ export function LeadSourceChip({ req, campaignHref, className = "" }: {
   );
 }
 
-/** What the patient asked for, as label/value pairs. */
-export function RequestedDetails({ requested, empty = "No details collected." }: { requested: Record<string, unknown> | null | undefined; empty?: string }) {
-  const pairs = requestedPairs(requested);
-  if (pairs.length === 0) return <p className="text-[12px] text-gray-400">{empty}</p>;
+/**
+ * What the patient asked for, as label/value pairs. A slot they picked in the
+ * flow (checked free in the clinic system) comes first, on its own; with
+ * `liveCheck` it is checked again now ("Still free" / "No longer free").
+ */
+export function RequestedDetails({ requested, empty = "No details collected.", liveCheck = false }: {
+  requested: Record<string, unknown> | null | undefined;
+  empty?: string;
+  liveCheck?: boolean;
+}) {
+  const slot = requestSlot(requested);
+  const pairs = requestedPairs(requested, { omit: slot ? ["preferred_date", "preferred_time"] : [] });
+  if (!slot && pairs.length === 0) return <p className="text-[12px] text-gray-400">{empty}</p>;
   return (
-    <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[12px]">
-      {pairs.map((p) => (
-        <div key={p.key} className="contents">
-          <dt className="text-gray-400">{p.label}</dt>
-          <dd className="text-gray-800 font-medium break-words">{p.value}</dd>
-        </div>
-      ))}
-    </dl>
+    <>
+      {slot && <PickedSlot slot={slot} liveCheck={liveCheck} />}
+      {pairs.length > 0 && (
+        <dl className={`grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[12px] ${slot ? "mt-2" : ""}`}>
+          {pairs.map((p) => (
+            <div key={p.key} className="contents">
+              <dt className="text-gray-400">{p.label}</dt>
+              <dd className="text-gray-800 font-medium break-words">{p.value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </>
+  );
+}
+
+/** "Tue 21 Oct · 4:30 PM", free when requested — and, live, whether it still is. */
+function PickedSlot({ slot, liveCheck }: { slot: NonNullable<ReturnType<typeof requestSlot>>; liveCheck: boolean }) {
+  // Keyed by the slot, so an answer about another one never shows.
+  const key = `${slot.date} ${slot.time}`;
+  const [checked, setChecked] = useState<{ key: string; free: boolean } | null>(null);
+  // A past day has nothing left to check.
+  const check = liveCheck && slot.date >= toDateInput(new Date());
+
+  useEffect(() => {
+    if (!check) return;
+    let cancelled = false;
+    apiCheckSlot(slot.date, slot.time)
+      .then((res) => { if (!cancelled) setChecked({ key, free: res.data.free }); })
+      .catch(() => {}); // clinic system unreachable (503): say nothing
+    return () => { cancelled = true; };
+  }, [check, key, slot.date, slot.time]);
+
+  const live = check && checked?.key === key ? checked.free : null;
+  return (
+    <div className="rounded-lg border border-brand/20 bg-white px-3 py-2">
+      <p className="flex items-center gap-1.5 text-[14px] font-bold text-gray-900">
+        <CalendarClock className="w-4 h-4 text-brand-fg shrink-0" /> {slot.label}
+      </p>
+      <p className="mt-0.5 text-[11px] text-gray-500">✓ Was free in the clinic system when requested</p>
+      {live === true && (
+        <span className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold px-1.5 py-px rounded border bg-brand-100 text-brand-fg border-brand/30">
+          <CircleCheck className="w-3 h-3" /> Still free
+        </span>
+      )}
+      {live === false && (
+        <span className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold px-1.5 py-px rounded border bg-amber-50 text-amber-700 border-amber-200">
+          <TriangleAlert className="w-3 h-3" /> No longer free — offer another time
+        </span>
+      )}
+    </div>
   );
 }
 

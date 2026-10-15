@@ -1015,6 +1015,33 @@ export function apiReopenBookingRequest(id: number) {
   return apiFetch<{ success: boolean; data: import("@/types").BookingRequest }>(`/api/booking-requests/${id}/reopen`, { method: "POST" });
 }
 
+// ── Clinic availability (Dok32, read-only) ──
+// Every one answers 503 DOK32_UNAVAILABLE when the clinic system can't be reached.
+
+/** The nearest open days, soonest first (may be fewer than `count`, or none). */
+export function apiGetAvailableDays(count = 10) {
+  return apiFetch<{ success: boolean; data: import("@/types").ClinicDay[] }>(`/api/availability/days?count=${count}`);
+}
+
+/** One day, with `message` for a day that isn't open. */
+export function apiGetAvailabilityDay(date: string) {
+  return apiFetch<{ success: boolean; data: import("@/types").ClinicDay }>(`/api/availability/day?date=${encodeURIComponent(date)}`);
+}
+
+/** Whether one time is still free right now. */
+export function apiCheckSlot(date: string, time: string) {
+  return apiFetch<{ success: boolean; data: { date: string; time: string; free: boolean } }>(
+    `/api/availability/check?date=${encodeURIComponent(date)}&time=${encodeURIComponent(time)}`,
+  );
+}
+
+/** How a booking flow reads a typed answer ("tomorrow", "4:30 pm"). */
+export function apiParsePatientWhen(text: string) {
+  return apiFetch<{ success: boolean; data: { date: string | null; time: string | null } }>(
+    `/api/availability/parse?text=${encodeURIComponent(text)}`,
+  );
+}
+
 // The patient asked to book in chat: open a request (it starts IN_PROGRESS, yours).
 export function apiCreateBookingRequest(conversationId: number, body: { service?: string; preferredDate?: string; note?: string } = {}) {
   return apiFetch<{ success: boolean; data: import("@/types").BookingRequest }>(`/api/conversations/${conversationId}/booking-requests`, {

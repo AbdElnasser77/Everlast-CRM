@@ -519,7 +519,7 @@ export function ContactPanel({
           ) : (
             <div className="space-y-2">
               {bookings.map((r) => {
-                const keys = [...BOOKING_KEYS.filter((k) => r.answers[k]), ...Object.keys(r.answers).filter((k) => !BOOKING_KEYS.includes(k) && k !== "category")];
+                const keys = [...BOOKING_KEYS.filter((k) => r.answers[k]), ...Object.keys(r.answers).filter((k) => !BOOKING_KEYS.includes(k) && !["category", "slot_checked", "slot_label"].includes(k))];
                 return (
                   <div key={r.id} className="rounded-xl border border-brand/20 bg-brand-50 p-3">
                     <div className="flex items-start gap-2">
@@ -822,7 +822,7 @@ function ChatRequestCard({ req: r, now, meId, canWork, actions }: {
         <span>{fmtDateTime(r.createdAt)}</span>
       </div>
       <div className="mt-2">
-        <RequestedDetails requested={r.requested} empty="Nothing collected yet. Ask the patient what they'd like." />
+        <RequestedDetails requested={r.requested} liveCheck={open} empty="Nothing collected yet. Ask the patient what they'd like." />
       </div>
       {r.note && <p className="mt-1.5 text-[12px] text-gray-600 whitespace-pre-wrap break-words">{r.note}</p>}
 

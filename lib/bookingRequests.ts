@@ -64,14 +64,58 @@ export function fmtRequestedValue(v: unknown): string {
 
 // What a booking is made of, in reading order; anything else follows.
 const ORDER = ["service", "offer", "preferred_date", "preferred_time", "doctor", "contact_number", "name"];
-const HIDDEN = new Set(["category"]);
+// slot_checked / slot_label: the Pick appointment step's bookkeeping, shown as
+// the slot itself (requestSlot), not as rows.
+const HIDDEN = new Set(["category", "slot_checked", "slot_label"]);
 
-/** The raw answers as label/value pairs, empty ones dropped. */
-export function requestedPairs(requested: Record<string, unknown> | null | undefined): { key: string; label: string; value: string }[] {
+const HH_MM = /^\d{2}:\d{2}$/;
+
+/** "16:30" → "4:30 PM"; anything else as it is. */
+export function fmtSlotTime(v: string): string {
+  if (!HH_MM.test(v)) return v;
+  const [h, m] = v.split(":").map(Number);
+  return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
+}
+
+/** "2026-10-21" → "Tue 21 Oct" (the year only when it isn't this year); anything else as it is. */
+export function fmtSlotDate(v: string): string {
+  if (!ISO_DAY.test(v)) return v;
+  const d = new Date(`${v}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return v;
+  const thisYear = d.getUTCFullYear() === new Date().getFullYear();
+  return d
+    .toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", ...(thisYear ? {} : { year: "numeric" }), timeZone: "UTC" })
+    .replace(",", "");
+}
+
+/**
+ * The appointment slot a patient picked in a booking flow's Pick appointment
+ * step — only when it was checked free in the clinic system at the time.
+ */
+export function requestSlot(requested: Record<string, unknown> | null | undefined): { date: string; time: string; label: string } | null {
   const r = requested ?? {};
-  const keys = [...ORDER.filter((k) => k in r), ...Object.keys(r).filter((k) => !ORDER.includes(k) && !HIDDEN.has(k))];
+  const date = r.preferred_date;
+  const time = r.preferred_time;
+  if (r.slot_checked !== true || typeof date !== "string" || typeof time !== "string" || !ISO_DAY.test(date) || !HH_MM.test(time)) return null;
+  return { date, time, label: `${fmtSlotDate(date)} · ${fmtSlotTime(time)}` };
+}
+
+/** The raw answers as label/value pairs, empty ones dropped. `omit` skips keys shown elsewhere. */
+export function requestedPairs(
+  requested: Record<string, unknown> | null | undefined,
+  { omit = [] }: { omit?: string[] } = {},
+): { key: string; label: string; value: string }[] {
+  const r = requested ?? {};
+  const keys = [...ORDER.filter((k) => k in r), ...Object.keys(r).filter((k) => !ORDER.includes(k) && !HIDDEN.has(k))].filter((k) => !omit.includes(k));
   return keys
-    .map((key) => ({ key, label: prettyKey(key), value: fmtRequestedValue(r[key]) }))
+    .map((key) => {
+      if (key === "slot_status") {
+        return { key, label: "Free times", value: r[key] === "NONE_AVAILABLE" ? "None when they asked — arrange a time" : fmtRequestedValue(r[key]) };
+      }
+      const raw = r[key];
+      const value = key === "preferred_time" && typeof raw === "string" ? fmtSlotTime(raw.trim()) : fmtRequestedValue(raw);
+      return { key, label: prettyKey(key), value };
+    })
     .filter((p) => p.value);
 }
 
@@ -84,10 +128,11 @@ const str = (v: unknown) => {
 export const requestService = (req: Pick<BookingRequest, "requested">) =>
   str(req.requested?.service) ?? str(req.requested?.offer);
 
-/** When they'd like it: "Fri 17 Oct 2026 · evening". */
+/** When they'd like it: "Tue 21 Oct · 4:30 PM", "Fri 17 Oct · evening". */
 export function requestPreferred(req: Pick<BookingRequest, "requested">): string | null {
-  const date = str(req.requested?.preferred_date);
-  const time = str(req.requested?.preferred_time);
+  const when = (v: unknown, fmt: (s: string) => string) => (typeof v === "string" && v.trim() ? fmt(v.trim()) : str(v));
+  const date = when(req.requested?.preferred_date, fmtSlotDate);
+  const time = when(req.requested?.preferred_time, fmtSlotTime);
   if (date && time) return `${date} · ${time}`;
   return date ?? time;
 }
