@@ -117,7 +117,7 @@ function PasswordForm() {
       setCurrent("");
       setNext("");
       setConfirm("");
-      toast.success("Password changed");
+      toast.success("Password changed — you were signed out on your other devices");
     } catch (err) {
       setError(
         err instanceof ApiError && err.code === "WRONG_PASSWORD"

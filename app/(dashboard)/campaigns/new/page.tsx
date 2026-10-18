@@ -19,6 +19,7 @@ import {
   apiGetSegment,
   apiGetSegmentMemberIds,
   apiTestSendTemplate,
+  apiGetTestPhones,
   apiGetWhatsAppStatus,
   apiGetQuietHours,
 } from "@/lib/api";
@@ -391,6 +392,8 @@ function Step2({
   const [mode, setMode] = useState<"contacts" | "lists" | "segments">(
     segmentAudience ? "segments" : "contacts"
   );
+  // "Lapsed" is measured from their chats, which need inbox access.
+  const showLapsed = useCurrentUser().can("conversation:read");
   const [segments, setSegments] = useState<Segment[]>([]);
   const [loadingSegments, setLoadingSegments] = useState(true);
   const [pickingSegmentId, setPickingSegmentId] = useState<number | null>(null);
@@ -615,7 +618,7 @@ function Step2({
 
             {/* Tag filters */}
             <div className="flex flex-wrap gap-2 mb-4">
-              {["All", ...allTags, "Lapsed 60d+"].map((tag) => (
+              {["All", ...allTags, ...(showLapsed ? ["Lapsed 60d+"] : [])].map((tag) => (
                 <button
                   key={tag}
                   type="button"
@@ -793,9 +796,22 @@ function Step2({
 // A pre-flight check: fire this exact template at one number and look at it on
 // a real handset. Sends nothing to the campaign's recipients and records no
 // campaign data.
+// Only to the staff test numbers an admin set in Settings → Campaign safety.
 function TestSendBox({ template }: { template: Template }) {
+  const [phones, setPhones] = useState<string[] | null>(null);
   const [phone, setPhone] = useState("");
   const [sending, setSending] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    apiGetTestPhones()
+      .then((res) => {
+        if (cancelled) return;
+        setPhones(res.data);
+        setPhone((p) => p || res.data[0] || "");
+      })
+      .catch(() => { if (!cancelled) setPhones([]); });
+    return () => { cancelled = true; };
+  }, []);
   const [result, setResult] = useState<
     { ok: true; to: string; personalizedFor: string | null; asMetaTemplate: boolean } | { ok: false; message: string } | null
   >(null);
@@ -805,7 +821,8 @@ function TestSendBox({ template }: { template: Template }) {
     setSending(true);
     setResult(null);
     try {
-      const res = await apiTestSendTemplate(template.id, phone.trim());
+      // Stored as digits; the "+" makes the country code unambiguous.
+      const res = await apiTestSendTemplate(template.id, `+${phone.trim()}`);
       setResult({
         ok: true,
         to: res.data.to,
@@ -823,17 +840,27 @@ function TestSendBox({ template }: { template: Template }) {
     <div className="border-t border-gray-100 pt-4">
       <p className="text-[10px] font-bold tracking-widest text-gray-400 uppercase mb-2">Test first</p>
       <p className="text-[12px] text-gray-500 mb-2.5 leading-relaxed">
-        Send this template to one number and check it on a handset. Nothing is recorded against the campaign.
+        Send this template to a staff test number and check it on a handset. Nothing is recorded against the campaign.
       </p>
+      {phones !== null && phones.length === 0 ? (
+        <p className="text-[12px] text-gray-500 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5 leading-relaxed">
+          No test numbers yet. An admin can add test numbers in Settings → Campaign safety.
+        </p>
+      ) : (
       <div className="flex gap-1.5">
-        <input
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") handleTest(); }}
-          placeholder="+971 50 123 4567"
-          inputMode="tel"
-          className="flex-1 min-w-0 px-3 py-2 text-[13px] border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
-        />
+        <div className="relative flex-1 min-w-0">
+          <select
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            disabled={phones === null}
+            aria-label="Test number"
+            className="w-full px-3 py-2 pr-7 text-[13px] border border-gray-200 rounded-xl bg-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand disabled:opacity-60"
+          >
+            {phones === null && <option value="">Loading…</option>}
+            {(phones ?? []).map((p) => <option key={p} value={p}>+{p}</option>)}
+          </select>
+          <svg className="w-3.5 h-3.5 text-gray-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="m6 9 6 6 6-6"/></svg>
+        </div>
         <button
           type="button"
           onClick={handleTest}
@@ -844,6 +871,7 @@ function TestSendBox({ template }: { template: Template }) {
           Test
         </button>
       </div>
+      )}
 
       {result?.ok === true && (
         <div className="mt-2.5 bg-brand-100 border border-brand/20 rounded-xl p-2.5">
@@ -1376,6 +1404,7 @@ function NewCampaignContent() {
   const [loadingDraft, setLoadingDraft] = useState(!!draftIdParam);
   const { can } = useCurrentUser();
   const canSend = can("campaign:send");
+  const canReadChats = can("conversation:read");
   // From the loaded draft: its proposed time, and why it was sent back (if it was).
   const [draftScheduledAt, setDraftScheduledAt] = useState<string | null>(null);
   const [rejectionReason, setRejectionReason] = useState<string | null>(null);
@@ -1479,8 +1508,11 @@ function NewCampaignContent() {
           rest.forEach((r) => custItems.push(...r.data));
         }
 
-        // Conversations (also paged) power the last-activity column and Lapsed filter.
-        const firstConv = await apiGetConversations(1, PAGE);
+        // Conversations (also paged) power the last-activity column and Lapsed
+        // filter — only for people with inbox access (not MARKETING).
+        const firstConv = canReadChats
+          ? await apiGetConversations(1, PAGE)
+          : { data: [] as Conversation[], pagination: { totalPages: 0 } };
         const convItems = [...firstConv.data];
         const convPages = Math.min(firstConv.pagination.totalPages, MAX_PAGES);
         if (convPages > 1) {
@@ -1512,7 +1544,7 @@ function NewCampaignContent() {
     return () => {
       cancelled = true;
     };
-  }, [toast]);
+  }, [toast, canReadChats]);
 
   useEffect(() => {
     if (selectedTemplate && !campaignName) {

@@ -20,6 +20,8 @@ function formatWhen(iso: string): string {
 
 function replyPreview(r: CampaignReply): string {
   if (!r.reply) return "—";
+  // The server leaves out what a patient typed for people without inbox access.
+  if (r.reply.content == null) return "[message]";
   if (r.reply.messageType === "TEXT" || r.reply.messageType === "TEMPLATE") return r.reply.content || "—";
   return `[${r.reply.messageType.toLowerCase()}]`;
 }

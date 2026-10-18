@@ -35,13 +35,18 @@ function actionColorClass(action: string): string {
   // A real outbound blast is the highest-consequence entry in this log — give
   // it the strongest badge so it's findable at a glance.
   if (lower.includes("sent")) return "bg-purple-100 text-purple-700 border-purple-200";
+  // A wrong password (or a password-guessing run) should stand out.
+  if (lower.includes("login_failed")) return "bg-amber-100 text-amber-700 border-amber-200";
   if (lower.includes("deleted")) return "bg-red-100 text-red-700 border-red-200";
+  if (lower.includes("password")) return "bg-orange-100 text-orange-700 border-orange-200";
   if (lower.includes("cancelled") || lower.includes("paused")) {
     return "bg-orange-100 text-orange-700 border-orange-200";
   }
   if (lower.includes("assigned")) return "bg-blue-100 text-blue-700 border-blue-200";
   if (lower.includes("status_changed")) return "bg-yellow-100 text-yellow-700 border-yellow-200";
-  if (lower.includes("created")) return "bg-green-100 text-green-700 border-green-200";
+  if (lower.includes("created") || lower.includes("imported") || lower.includes("uploaded") || lower.includes("added")) {
+    return "bg-green-100 text-green-700 border-green-200";
+  }
   return "bg-gray-100 text-gray-600 border-gray-200";
 }
 

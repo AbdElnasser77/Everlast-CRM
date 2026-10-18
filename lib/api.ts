@@ -25,6 +25,11 @@ type CustomerPatientFields = {
 
 const BASE = process.env.NEXT_PUBLIC_API_URL;
 
+// Sent on EVERY request. The API refuses a state-changing call without it
+// (middleware/csrf.js): another site can't add a custom header without a CORS
+// preflight, which the API only grants to this app's origin.
+const CSRF_HEADER = { "X-Requested-With": "XMLHttpRequest" } as const;
+
 // Carries the HTTP status alongside the message so callers can distinguish
 // "forbidden" (403) from "upstream service failed" (502) from any other
 // error, instead of only having a message string to guess from.
@@ -120,6 +125,7 @@ async function apiFetch<T>(
   // and the same carve-out already exists for the 401 handling below.
   const isAuthCall = path.startsWith("/api/auth/");
   const headers: Record<string, string> = {
+    ...CSRF_HEADER,
     ...(isFormData ? {} : { "Content-Type": "application/json" }),
     // Outside the isFormData ternary so uploads carry it too, and BEFORE
     // options.headers so a caller can deliberately override it for the rare
@@ -172,10 +178,7 @@ async function apiFetch<T>(
       localStorage.removeItem("user");
       document.cookie = "logged_in=; path=/; max-age=0";
       // Deliberately no logout POST: the token the server would clear has
-      // already been rejected, and /api/auth/* is capped at 20 requests per
-      // 15 minutes per IP — spending that budget on a dead session is what
-      // turns "session expired" into "Too many requests" on the next real
-      // login attempt, for everyone sharing the office IP.
+      // already been rejected, so there is nothing for it to do.
       //
       // `expired` tells proxy.ts to leave us on the login page even if the
       // cookie clear above didn't stick, so this can't become a loop.
@@ -808,6 +811,11 @@ export function apiGetCampaignCapacity(id: number) {
 
 // Sends one template to one number for a pre-flight check. Creates no
 // campaign, no recipient rows and no stored message.
+/** Staff test numbers a test send may go to (Settings → Campaign safety). E.164 digits, no "+". */
+export function apiGetTestPhones() {
+  return apiFetch<{ success: boolean; data: string[] }>("/api/campaigns/test-phones");
+}
+
 export function apiTestSendTemplate(templateId: number, phone: string) {
   return apiFetch<{
     success: boolean;
@@ -852,6 +860,14 @@ export function apiSaveQuietHours(value: Omit<import("@/types").QuietHoursSettin
 export function apiSaveCampaignSafety(value: import("@/types").CampaignSafetySetting) {
   return apiFetch<{ success: boolean; data: import("@/types").CampaignSafetySetting }>(
     "/api/settings/campaignSafety",
+    { method: "PUT", body: JSON.stringify(value) },
+    { numberScoped: false },
+  );
+}
+
+export function apiSaveTestPhones(value: import("@/types").TestPhonesSetting) {
+  return apiFetch<{ success: boolean; data: import("@/types").TestPhonesSetting }>(
+    "/api/settings/testPhones",
     { method: "PUT", body: JSON.stringify(value) },
     { numberScoped: false },
   );
@@ -1196,9 +1212,10 @@ export function apiGetMyWhatsAppNumbers() {
 // readable with a token that can reach its own number. Built on the same
 // request setup so there is still exactly one place headers are assembled.
 export async function apiFetchMediaBlob(messageId: string | number): Promise<Blob> {
-  const headers: Record<string, string> = activeNumberId
-    ? { "X-WhatsApp-Number-Id": activeNumberId }
-    : {};
+  const headers: Record<string, string> = {
+    ...CSRF_HEADER,
+    ...(activeNumberId ? { "X-WhatsApp-Number-Id": activeNumberId } : {}),
+  };
   const epochAtStart = numberEpoch;
 
   const res = await fetch(`${BASE}/api/messages/${messageId}/media`, {

@@ -4,6 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiSearchMessages } from "@/lib/api";
 import type { Message } from "@/types";
+import { useCurrentUser } from "@/components/CurrentUserProvider";
+import { PageSpinner } from "@/components/ui/spinner";
+import { NoAccess } from "@/components/NoAccess";
 
 function formatTimestamp(iso: string): string {
   const d = new Date(iso);
@@ -50,7 +53,15 @@ function SkeletonRow() {
   );
 }
 
+// Searches patients' messages, so it needs inbox read access (MARKETING has none).
 export default function SearchPage() {
+  const { ready, can } = useCurrentUser();
+  if (!ready) return <PageSpinner />;
+  if (!can("conversation:read")) return <NoAccess what="Message search" />;
+  return <MessageSearch />;
+}
+
+function MessageSearch() {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Message[]>([]);

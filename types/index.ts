@@ -857,9 +857,15 @@ export interface CampaignSafetySetting {
   qualityPauseAt: "YELLOW" | "RED";
 }
 
+// Staff phones campaign test sends may go to. E.164 digits, no "+".
+export interface TestPhonesSetting {
+  phones: string[];
+}
+
 export interface WorkspaceSettings {
   quietHours: QuietHoursSetting;
   campaignSafety: CampaignSafetySetting;
+  testPhones: TestPhonesSetting;
 }
 
 export interface AdminWhatsAppNumber {

@@ -23,6 +23,15 @@ export function getSocket(): Socket {
       transports: ["websocket"],
       autoConnect: true,
     });
+    // The server drops a user's sockets when their session changes (password
+    // change, role change) — socket.io never reconnects on its own after a
+    // server-side disconnect. Reconnect once: the handshake re-checks the
+    // cookie, so a still-valid session (e.g. the tab that just changed its
+    // password and got a fresh cookie) comes back in the right rooms, and a
+    // dead one is simply refused.
+    socket.on("disconnect", (reason) => {
+      if (reason === "io server disconnect") setTimeout(() => socket?.connect(), 1000);
+    });
   }
   return socket;
 }

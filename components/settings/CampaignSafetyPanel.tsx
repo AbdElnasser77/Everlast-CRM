@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { apiGetSettings, apiSaveCampaignSafety } from "@/lib/api";
+import { apiGetSettings, apiSaveCampaignSafety, apiSaveTestPhones } from "@/lib/api";
 import type { CampaignSafetySetting } from "@/types";
 import { useToast } from "@/components/ui/toast";
 import { PageSpinner } from "@/components/ui/spinner";
@@ -12,6 +12,7 @@ import {
   errorMessage,
   inputCls,
   primaryBtnCls,
+  secondaryBtnCls,
 } from "@/components/settings/shared";
 
 const MAX_CAP_DAYS = 90;
@@ -54,6 +55,82 @@ function LevelCard({
   );
 }
 
+// The only numbers a campaign test send may go to — so "test" can't be used to
+// message a patient outside a reviewed campaign. Saved on its own.
+function TestPhonesCard({ initial }: { initial: string[] }) {
+  const toast = useToast();
+  const [phones, setPhones] = useState<string[]>(initial);
+  const [draft, setDraft] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function add() {
+    const v = draft.trim();
+    if (!v) return;
+    setPhones((list) => (list.includes(v) ? list : [...list, v]));
+    setDraft("");
+  }
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      // The server checks and normalises each number (digits with country code).
+      const res = await apiSaveTestPhones({ phones });
+      setPhones(res.data.phones);
+      toast.success("Test numbers saved");
+    } catch (err) {
+      setError(errorMessage(err, "Failed to save the test numbers"));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <SectionCard
+      title="Test numbers"
+      description="Campaign test sends can only go to these staff phones. Add your own number to test on your phone."
+    >
+      {phones.length === 0 ? (
+        <p className="text-[13px] text-gray-400 mb-3">No test numbers yet — nobody can send a test.</p>
+      ) : (
+        <ul className="flex flex-wrap gap-2 mb-3">
+          {phones.map((p) => (
+            <li key={p} className="inline-flex items-center gap-1.5 text-[13px] text-gray-700 bg-gray-50 border border-gray-200 rounded-lg pl-3 pr-1.5 py-1">
+              {/^\d+$/.test(p) ? `+${p}` : p}
+              <button
+                type="button"
+                onClick={() => setPhones((list) => list.filter((x) => x !== p))}
+                aria-label={`Remove ${p}`}
+                className="w-5 h-5 inline-flex items-center justify-center rounded text-gray-400 hover:text-red-500 hover:bg-red-50 cursor-pointer"
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex gap-2">
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }}
+          placeholder="+971 50 123 4567"
+          inputMode="tel"
+          className={`${inputCls} flex-1 min-w-0 px-3 py-2`}
+        />
+        <button type="button" onClick={add} disabled={!draft.trim()} className={secondaryBtnCls}>Add</button>
+      </div>
+      {error && <p className="text-[13px] text-red-500 font-medium mt-3">{error}</p>}
+      <div className="flex justify-end mt-4">
+        <button type="button" onClick={save} disabled={saving} className={primaryBtnCls}>
+          {saving ? "Saving…" : "Save test numbers"}
+        </button>
+      </div>
+    </SectionCard>
+  );
+}
+
 export function CampaignSafetyPanel() {
   const toast = useToast();
   const [loading, setLoading] = useState(true);
@@ -64,6 +141,7 @@ export function CampaignSafetyPanel() {
   const [pauseAt, setPauseAt] = useState<CampaignSafetySetting["qualityPauseAt"]>("YELLOW");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [testPhones, setTestPhones] = useState<string[]>([]);
 
   // Plain promise callbacks (not an async function called from the effect),
   // so no state is set synchronously inside the effect.
@@ -74,6 +152,7 @@ export function CampaignSafetyPanel() {
         setCapDays(String(cs.frequencyCapDays));
         setAutoPause(cs.qualityAutoPause);
         setPauseAt(cs.qualityPauseAt);
+        setTestPhones(res.data.testPhones?.phones ?? []);
         setLoadError(null);
       })
       .catch((err) => setLoadError(errorMessage(err, "Couldn't load campaign safety.")))
@@ -178,6 +257,10 @@ export function CampaignSafetyPanel() {
           </button>
         </div>
       </form>
+
+      <div className="mt-6">
+        <TestPhonesCard initial={testPhones} />
+      </div>
     </div>
   );
 }

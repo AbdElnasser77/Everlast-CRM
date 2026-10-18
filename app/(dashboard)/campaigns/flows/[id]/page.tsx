@@ -17,6 +17,14 @@ import { FlowResponses } from "@/components/flows/FlowResponses";
 
 type Tab = "builder" | "responses";
 
+// A flow attached to a campaign at one of these stages is part of what was
+// reviewed (or is already answering patients): the server refuses changes
+// from anyone but an admin (FLOW_IN_USE).
+const LOCKING_STATUSES = ["PENDING_APPROVAL", "SCHEDULED", "RUNNING", "PAUSED"];
+const STATUS_WORDS: Record<string, string> = {
+  PENDING_APPROVAL: "awaiting approval", SCHEDULED: "scheduled", RUNNING: "running", PAUSED: "paused",
+};
+
 export default function FlowEditorPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: rawId } = use(params);
   const isNew = rawId === "new";
@@ -25,7 +33,7 @@ export default function FlowEditorPage({ params }: { params: Promise<{ id: strin
   const router = useRouter();
   const { ready, can } = useCurrentUser();
   const canRead = can("campaign:read");
-  const canWrite = can("campaign:write");
+  const isAdmin = can("campaign:send");
   const { success, error } = useToast();
 
   const [flow, setFlow] = useState<Flow | null>(null);
@@ -39,6 +47,11 @@ export default function FlowEditorPage({ params }: { params: Promise<{ id: strin
   const [serverErrors, setServerErrors] = useState<FlowValidationError[]>([]);
   const [dirty, setDirty] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [duplicating, setDuplicating] = useState(false);
+
+  const lockedBy = flow?.campaigns?.find((c) => LOCKING_STATUSES.includes(c.status)) ?? null;
+  // Admins may still edit a locked flow (they approve anyway; it's audited).
+  const canWrite = can("campaign:write") && (!lockedBy || isAdmin);
 
   useEffect(() => {
     if (!ready || !canRead) return;
@@ -128,6 +141,21 @@ export default function FlowEditorPage({ params }: { params: Promise<{ id: strin
     }
   };
 
+  // "Duplicate it to make changes": a new flow with this one's steps.
+  const duplicate = async () => {
+    if (!graph) return;
+    setDuplicating(true);
+    try {
+      const res = await apiCreateFlow({ name: `${name || "Flow"} (copy)`.slice(0, 120), description, graph: flow?.graph ?? graph, isActive: true });
+      success("Copy created — you can edit it");
+      router.push(`/campaigns/flows/${res.data.id}`);
+    } catch (err) {
+      error(err instanceof Error ? err.message : "Couldn't duplicate the flow");
+    } finally {
+      setDuplicating(false);
+    }
+  };
+
   if (!ready) return <PageSpinner />;
   if (!canRead) return <NoAccess what="flows" />;
   if (loadError) {
@@ -196,6 +224,26 @@ export default function FlowEditorPage({ params }: { params: Promise<{ id: strin
           ))}
         </div>
       </header>
+
+      {lockedBy && (
+        <div className="flex flex-wrap items-center gap-3 px-5 py-2.5 border-b border-amber-200 bg-amber-50 text-[13px] text-amber-800">
+          <p className="flex-1 min-w-[240px]">
+            {isAdmin
+              ? <>Used by campaign <b>{lockedBy.name}</b> ({STATUS_WORDS[lockedBy.status]}). Changes apply to it straight away and are recorded in the audit log.</>
+              : <>Locked: used by campaign <b>{lockedBy.name}</b> ({STATUS_WORDS[lockedBy.status]}). Duplicate it to make changes.</>}
+          </p>
+          {can("campaign:write") && (
+            <button
+              type="button"
+              onClick={duplicate}
+              disabled={duplicating}
+              className="shrink-0 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-[12px] font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-60"
+            >
+              {duplicating ? "Duplicating…" : "Duplicate"}
+            </button>
+          )}
+        </div>
+      )}
 
       {/* The builder stays mounted while Responses is open, so switching tabs
           never throws away unsaved edits on the canvas. */}

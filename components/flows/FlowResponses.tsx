@@ -7,6 +7,7 @@ import { apiGetFlowRuns } from "@/lib/api";
 import { RUN_STATUS_META } from "@/lib/flows";
 import type { FlowRun, FlowRunStatus } from "@/types";
 import { useToast } from "@/components/ui/toast";
+import { useCurrentUser } from "@/components/CurrentUserProvider";
 
 const STATUSES = Object.keys(RUN_STATUS_META) as FlowRunStatus[];
 
@@ -27,6 +28,8 @@ function csvCell(v: unknown): string {
 
 export function FlowResponses({ flowId, flowName }: { flowId: number; flowName: string }) {
   const { error: toastError } = useToast();
+  // The chat link opens the inbox, which MARKETING doesn't have.
+  const canOpenChat = useCurrentUser().can("conversation:write");
   const [status, setStatus] = useState<FlowRunStatus | "">("");
   const [page, setPage] = useState(1);
   const [runs, setRuns] = useState<FlowRun[]>([]);
@@ -148,9 +151,11 @@ export function FlowResponses({ flowId, flowName }: { flowId: number; flowName: 
                 <td className="px-4 py-3 text-gray-500">{r.campaign?.name || "—"}</td>
                 <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{fmt(r.startedAt)}</td>
                 <td className="px-4 py-3">
-                  <Link href={`/chats/${r.conversationId}`} title="Open chat" className="inline-flex w-8 h-8 rounded-lg items-center justify-center text-gray-400 hover:text-brand-fg hover:bg-brand-100">
-                    <MessageCircle className="w-4 h-4" />
-                  </Link>
+                  {canOpenChat && (
+                    <Link href={`/chats/${r.conversationId}`} title="Open chat" className="inline-flex w-8 h-8 rounded-lg items-center justify-center text-gray-400 hover:text-brand-fg hover:bg-brand-100">
+                      <MessageCircle className="w-4 h-4" />
+                    </Link>
+                  )}
                 </td>
               </tr>
             ))}

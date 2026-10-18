@@ -83,8 +83,8 @@ function StatCard({ label, value, sub, color = "text-gray-800" }: { label: strin
 }
 
 // ── Automation ────────────────────────────────────────────────────────────────
-// The flow can be attached or swapped at any stage: it only acts on replies,
-// so changing it mid-send affects taps from then on.
+// The flow is part of what gets reviewed, so it can only be attached, swapped
+// or removed while the campaign is a DRAFT (the server refuses otherwise).
 function CampaignFlowCard({ campaign, onChanged }: { campaign: Campaign; onChanged: (c: Campaign) => void }) {
   const { can } = useCurrentUser();
   const { success, error } = useToast();
@@ -109,8 +109,11 @@ function CampaignFlowCard({ campaign, onChanged }: { campaign: Campaign; onChang
         template={campaign.template ?? null}
         flowId={campaign.flowId ?? null}
         onChange={change}
-        disabled={saving || !can("campaign:write")}
+        disabled={saving || !can("campaign:write") || campaign.status !== "DRAFT"}
       />
+      {campaign.status !== "DRAFT" && (
+        <p className="mt-2 text-[12px] text-gray-500">Flows can&apos;t be changed after a campaign is submitted.</p>
+      )}
       {campaign.flow && (
         <Link href={`/campaigns/flows/${campaign.flow.id}`} className="inline-block mt-3 text-[12px] font-semibold text-brand-fg hover:underline">
           Open “{campaign.flow.name}” and its responses →

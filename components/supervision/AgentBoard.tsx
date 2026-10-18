@@ -5,6 +5,7 @@ import { ArrowRightLeft, UserRound, Users } from "lucide-react";
 import type { SupervisionAgent, SupervisionOverview } from "@/types";
 import { apiSupervisionHandOver } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
+import { useCurrentUser } from "@/components/CurrentUserProvider";
 import { HandOverDialog, handOverSummary } from "@/components/HandOverDialog";
 import { PRESENCE } from "./chips";
 import { formatMinutes, personInitials, personName, timeAgo } from "./format";
@@ -118,7 +119,12 @@ export function AgentBoard({
   onHandedOver?: () => void;
 }) {
   const toast = useToast();
+  const { me } = useCurrentUser();
   const [handingOver, setHandingOver] = useState<SupervisionAgent | null>(null);
+  // Same rule as the server: not your own chats (that's End of shift), and a
+  // supervisor can't hand over an admin's.
+  const mayHandOver = (a: SupervisionAgent) =>
+    a.id !== me?.id && (a.role !== "ADMIN" || me?.role === "ADMIN");
   const agents = useMemo(
     () =>
       [...(overview?.agents ?? [])].sort(
@@ -201,7 +207,7 @@ export function AgentBoard({
             now={now}
             active={agentFilter === a.id}
             onClick={() => onAgentFilter(agentFilter === a.id ? null : a.id)}
-            onHandOver={onHandedOver ? () => setHandingOver(a) : undefined}
+            onHandOver={onHandedOver && mayHandOver(a) ? () => setHandingOver(a) : undefined}
           />
         ))}
 

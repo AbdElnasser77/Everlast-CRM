@@ -656,7 +656,7 @@ function CustomerDetailDrawer({ customer, conv, onClose, onSaved, onDeleted }: D
 
               {confirmDelete ? (
                 <div className="space-y-2">
-                  <p className="text-[12px] text-red-500 font-medium">Delete this contact? This cannot be undone.</p>
+                  <p className="text-[12px] text-red-500 font-medium">Delete this contact? Their whole chat history is deleted permanently — this cannot be undone. (If they opted out, that is kept.)</p>
                   {deleteError && <p className="text-[11px] text-red-500">{deleteError}</p>}
                   <div className="flex gap-2">
                     <button
@@ -1272,7 +1272,10 @@ export default function CRMPage() {
   const [bulkDeleteError, setBulkDeleteError] = useState<string | null>(null);
 
   // ─ Fetch conversations once (build lookup map) ─────────────────────────────
+  // Only with inbox access: MARKETING sees contacts, never their chats.
+  const canReadChats = can("conversation:read");
   useEffect(() => {
+    if (!canReadChats) return;
     apiGetConversations(1, 200)
       .then((res) => {
         const map = new Map<number | string, Conversation>();
@@ -1283,7 +1286,7 @@ export default function CRMPage() {
         setConvMap(map);
       })
       .catch(() => {});
-  }, []);
+  }, [canReadChats]);
 
   // Mirrors searchRef: paging callbacks are memoised, so they need a ref to
   // read the CURRENT filter rather than the one captured when they were made.
@@ -2083,7 +2086,7 @@ export default function CRMPage() {
             </div>
 
             <p className="text-[13px] text-gray-600 leading-relaxed">
-              Their conversations, messages, and campaign recipient records will also be permanently removed.
+              Their whole chat history — every conversation and message — and their campaign records are deleted permanently. Opt-outs are kept, so re-adding them can&apos;t make them messageable again.
             </p>
 
             {bulkDeleteError && <p className="text-[12px] text-red-500">{bulkDeleteError}</p>}
