@@ -2,25 +2,30 @@
 
 import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Cpu, MoonStar, ShieldCheck, Smartphone, Sparkles, UserRound, Users, type LucideIcon } from "lucide-react";
 import { useCurrentUser } from "@/components/CurrentUserProvider";
 import { PageSpinner } from "@/components/ui/spinner";
+import { SectionedLayout } from "@/components/SectionedLayout";
 import { UsersPanel } from "@/components/settings/UsersPanel";
 import { WhatsAppNumbersPanel } from "@/components/settings/WhatsAppNumbersPanel";
 import { QuietHoursPanel } from "@/components/settings/QuietHoursPanel";
 import { CampaignSafetyPanel } from "@/components/settings/CampaignSafetyPanel";
 import { MyAccountPanel } from "@/components/settings/MyAccountPanel";
 import { AiAssistantPanel } from "@/components/settings/AiAssistantPanel";
+import { AiModelPanel } from "@/components/settings/AiModelPanel";
 
-// The tab lives in the URL (?tab=) so a link — or the old /team page — can
-// open a specific one, and a reload stays where you were.
+// The section lives in the URL (?tab=) so a link — or the old /team page — can
+// open a specific one, and a reload stays where you were. `wide` sections hold
+// tables; the rest are forms and get a narrower centred column.
 const TABS = [
-  { key: "users", label: "Users" },
-  { key: "numbers", label: "WhatsApp numbers" },
-  { key: "quiet-hours", label: "Quiet hours" },
-  { key: "campaign-safety", label: "Campaign safety" },
-  { key: "ai-assistant", label: "AI assistant" },
-  { key: "account", label: "My account" },
-] as const;
+  { key: "users", label: "Users", group: "Workspace", icon: Users, wide: true, description: "Who can sign in, their roles and what they can access" },
+  { key: "numbers", label: "WhatsApp numbers", group: "Workspace", icon: Smartphone, wide: true, description: "The WhatsApp lines the team sends and receives on" },
+  { key: "quiet-hours", label: "Quiet hours", group: "Messaging", icon: MoonStar, wide: false, description: "When campaign messages are held back" },
+  { key: "campaign-safety", label: "Campaign safety", group: "Messaging", icon: ShieldCheck, wide: false, description: "Limits that protect patients and the number's quality" },
+  { key: "ai-assistant", label: "AI assistant", group: "AI", icon: Sparkles, wide: false, description: "Answers patients from the knowledge base and hands off to the team" },
+  { key: "ai-model", label: "AI model & Cloudflare", group: "AI", icon: Cpu, wide: false, description: "Provider account, models and behaviour" },
+  { key: "account", label: "My account", group: "Personal", icon: UserRound, wide: false, description: "Your profile and password" },
+] as const satisfies readonly { key: string; label: string; group: string; icon: LucideIcon; wide: boolean; description: string }[];
 
 type TabKey = (typeof TABS)[number]["key"];
 
@@ -46,47 +51,37 @@ function SettingsContent() {
   const searchParams = useSearchParams();
   const raw = searchParams.get("tab");
   const tab: TabKey = isTabKey(raw) ? raw : "users";
+  const current = TABS.find((t) => t.key === tab)!;
 
   function selectTab(key: TabKey) {
     router.replace(`/settings?tab=${key}`, { scroll: false });
   }
 
   return (
-    <div className="flex flex-col h-full bg-white font-[family-name:var(--font-geist-sans)]">
-      <PageHeader />
-
-      {/* Tabs */}
-      <div className="flex items-center gap-1 px-6 border-b border-gray-100 shrink-0 overflow-x-auto">
-        {TABS.map((t) => {
-          const active = t.key === tab;
-          return (
-            <button
-              key={t.key}
-              type="button"
-              onClick={() => selectTab(t.key)}
-              className={`relative px-3 py-3 text-[13px] font-semibold whitespace-nowrap transition-colors cursor-pointer ${
-                active ? "text-brand-fg" : "text-gray-500 hover:text-gray-800"
-              }`}
-            >
-              {t.label}
-              {active && <span className="absolute left-2 right-2 -bottom-px h-0.5 rounded-full bg-brand" />}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Active tab — keyed so switching always starts it fresh */}
-      <div className="flex-1 min-h-0 flex flex-col overflow-auto bg-canvas [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb]:rounded-full">
-        {tab === "users" && <UsersPanel key="users" />}
-        {tab === "numbers" && <WhatsAppNumbersPanel key="numbers" />}
-        {tab === "quiet-hours" && <QuietHoursPanel key="quiet-hours" />}
-        {tab === "campaign-safety" && <CampaignSafetyPanel key="campaign-safety" />}
-        {tab === "ai-assistant" && <AiAssistantPanel key="ai-assistant" />}
-        {tab === "account" && <MyAccountPanel key="account" />}
-      </div>
-    </div>
+    <SectionedLayout
+      title="Settings"
+      subtitle="Manage your workspace settings"
+      sections={TABS}
+      active={current}
+      onSelect={selectTab}
+      columnClassName={current.wide ? "max-w-5xl" : "max-w-2xl"}
+    >
+      {/* Active section — keyed so switching always starts it fresh */}
+      {tab === "users" && <UsersPanel key="users" />}
+      {tab === "numbers" && <WhatsAppNumbersPanel key="numbers" />}
+      {tab === "quiet-hours" && <QuietHoursPanel key="quiet-hours" />}
+      {tab === "campaign-safety" && <CampaignSafetyPanel key="campaign-safety" />}
+      {tab === "ai-assistant" && <AiAssistantPanel key="ai-assistant" onOpenModel={() => selectTab("ai-model")} />}
+      {tab === "ai-model" && (
+        <div key="ai-model" className="px-6 py-6">
+          <AiModelPanel />
+        </div>
+      )}
+      {tab === "account" && <MyAccountPanel key="account" />}
+    </SectionedLayout>
   );
 }
+
 
 export default function SettingsPage() {
   const router = useRouter();

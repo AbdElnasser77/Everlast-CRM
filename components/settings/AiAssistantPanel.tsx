@@ -8,7 +8,6 @@ import type { AiAssistantSetting, AiStatus } from "@/types";
 import { useToast } from "@/components/ui/toast";
 import { PageSpinner } from "@/components/ui/spinner";
 import { useActiveNumber } from "@/components/WhatsAppNumberProvider";
-import { AiModelPanel } from "@/components/settings/AiModelPanel";
 import {
   LoadError,
   SectionCard,
@@ -22,35 +21,13 @@ import {
 // The AI assistant that answers patients from the approved knowledge base.
 // Off until switched on here for chosen lines; it never answers a chat a flow
 // or a person is handling, and hands anything it can't answer to the team.
-// A second sub-tab, "AI model & Cloudflare", holds the provider settings.
+// The provider settings live in their own Settings section, "AI model &
+// Cloudflare" (AiModelPanel); onOpenModel jumps there.
 
-const SUB_TABS = [
-  { key: "assistant", label: "Assistant" },
-  { key: "model", label: "AI model & Cloudflare" },
-] as const;
-type SubTab = (typeof SUB_TABS)[number]["key"];
-
-export function AiAssistantPanel() {
-  const [sub, setSub] = useState<SubTab>("assistant");
+export function AiAssistantPanel({ onOpenModel }: { onOpenModel: () => void }) {
   return (
-    <div className="px-6 py-6 max-w-2xl space-y-5">
-      <div role="tablist" aria-label="AI assistant sections" className="inline-flex rounded-xl border border-gray-200 bg-white p-1">
-        {SUB_TABS.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            role="tab"
-            aria-selected={sub === t.key}
-            onClick={() => setSub(t.key)}
-            className={`px-3 py-1.5 rounded-lg text-[13px] font-semibold transition-colors cursor-pointer ${
-              sub === t.key ? "bg-brand-100 text-brand-fg" : "text-gray-500 hover:text-gray-800"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-      {sub === "assistant" ? <AssistantSettings onOpenModel={() => setSub("model")} /> : <AiModelPanel />}
+    <div className="px-6 py-6 max-w-2xl">
+      <AssistantSettings onOpenModel={onOpenModel} />
     </div>
   );
 }
