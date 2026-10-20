@@ -2,12 +2,11 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, useEffect, useRef, startTransition } from "react";
+import { useState, useEffect, startTransition } from "react";
 import type { ReactNode } from "react";
 import {
   MessageSquare,
   Eye,
-  CalendarCheck,
   Megaphone,
   Contact,
   LayoutDashboard,
@@ -23,9 +22,10 @@ import {
   X,
   LogOut,
   BookOpen,
+  BookMarked,
 } from "lucide-react";
 import { getSocket, disconnectSocket } from "@/lib/socket";
-import { apiLogout, apiGetStatsOverview, apiGetPendingApprovals, apiGetBookingRequestCounts } from "@/lib/api";
+import { apiLogout, apiGetLineCounts, apiGetPendingApprovals } from "@/lib/api";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { WhatsAppNumberProvider, useActiveNumber } from "@/components/WhatsAppNumberProvider";
 import { NumberSwitcher } from "@/components/NumberSwitcher";
@@ -77,10 +77,6 @@ function DashboardShell({ children }: { children: ReactNode }) {
   const unreadCount = unread.numberId === activeNumberId ? unread.count : 0;
   // Templates Meta approved/rejected since this browser last opened /templates.
   const [templateUpdates, setTemplateUpdates] = useState(0);
-  // Booking requests nobody has picked up yet, on the line in view — tagged
-  // with that line like `unread`, so a count from the previous line never shows.
-  const [newRequests, setNewRequests] = useState<{ numberId: string | null; count: number }>({ numberId: null, count: 0 });
-  const newRequestCount = newRequests.numberId === activeNumberId ? newRequests.count : 0;
   // Campaigns waiting for an admin's approval, across every number.
   const [pendingApprovals, setPendingApprovals] = useState(0);
   const canApprove = can("campaign:send");
@@ -91,24 +87,17 @@ function DashboardShell({ children }: { children: ReactNode }) {
     if (pathname.startsWith("/customers")) setContactsOpen(true);
   }, [pathname]);
 
-  // Hover-to-expand: opens on hover and collapses again on mouse-leave.
-  // A manual toggle "pins" it (won't auto-close).
-  const hoverExpandedRef = useRef(false);
-
-  function handleSidebarEnter() {
-    if (expanded) return;
-    hoverExpandedRef.current = true;
-    setExpanded(true);
-  }
-  function handleSidebarLeave() {
-    if (hoverExpandedRef.current) {
-      hoverExpandedRef.current = false;
-      setExpanded(false);
-    }
-  }
+  // The desktop drawer opens and closes only from its toggle button (or the
+  // Contacts item); hovering does nothing. It overlays the page, so it folds
+  // back to the icon rail after you navigate or click the backdrop.
   function toggleExpanded() {
-    hoverExpandedRef.current = false; // manual pin — don't auto-collapse on leave
     setExpanded((v) => !v);
+  }
+
+  const [expandedPath, setExpandedPath] = useState(pathname);
+  if (expandedPath !== pathname) {
+    setExpandedPath(pathname);
+    setExpanded(false);
   }
 
   async function handleLogout() {
@@ -124,12 +113,19 @@ function DashboardShell({ children }: { children: ReactNode }) {
   // effect does NOT re-run on its own when the number changes — activeNumberId is
   // in the dep array for exactly that reason. See `unread` above for why a stale
   // count cannot flash while the refetch is in flight.
+  const readsChats = can("conversation:read");
   useEffect(() => {
+    if (!readsChats) return; // no inbox, no badge (and the endpoint would 403)
     const forNumber = activeNumberId;
     function fetchUnread() {
-      apiGetStatsOverview()
-        // Unread CHATS, not messages — the badge works like WhatsApp's.
-        .then((res) => setUnread({ numberId: forNumber, count: res.data.unreadConversations }))
+      // Unread CHATS, not messages — the badge works like WhatsApp's. Read from
+      // the line counts (conversation:read, like the inbox itself) rather than
+      // /stats/overview, which needs stats:read and so 403'd for every AGENT.
+      apiGetLineCounts()
+        .then((res) => {
+          const line = res.data.find((l) => String(l.id) === forNumber);
+          setUnread({ numberId: forNumber, count: line?.unreadChats ?? 0 });
+        })
         .catch(() => {});
     }
     fetchUnread();
@@ -140,29 +136,7 @@ function DashboardShell({ children }: { children: ReactNode }) {
       socket.off("message.new", fetchUnread);
       socket.off("conversation.updated", fetchUnread);
     };
-  }, [activeNumberId]);
-
-  // The Bookings badge: new requests on this line, refreshed when one is
-  // created or changes, and every minute.
-  const canBook = can("conversation:write");
-  useEffect(() => {
-    if (!canBook) return;
-    const forNumber = activeNumberId;
-    function fetchRequests() {
-      apiGetBookingRequestCounts()
-        .then((res) => setNewRequests({ numberId: forNumber, count: res.data.new }))
-        .catch(() => {});
-    }
-    fetchRequests();
-    const timer = setInterval(fetchRequests, 60_000);
-    const socket = getSocket();
-    const events = ["booking_request.created", "booking_request.updated"];
-    events.forEach((e) => socket.on(e, fetchRequests));
-    return () => {
-      clearInterval(timer);
-      events.forEach((e) => socket.off(e, fetchRequests));
-    };
-  }, [canBook, activeNumberId]);
+  }, [activeNumberId, readsChats]);
 
   // Only admins approve, so only they get the badge. Counted across all numbers
   // (a submission on another line must not go unseen), refreshed on the
@@ -204,16 +178,16 @@ function DashboardShell({ children }: { children: ReactNode }) {
   // may read conversations for context elsewhere, but the inbox is for replying.
   const navBeforeContacts = [
     { href: "/chats",            icon: MessageSquare,   label: "Inbox",        enabled: true,  badge: unreadCount > 0 ? unreadCount : undefined, perm: "conversation:write" as const },
-    // Patients who want to book: the queue agents book from (in Dok32).
-    { href: "/bookings",         icon: CalendarCheck,   label: "Bookings",     enabled: true,  badge: newRequestCount > 0 ? newRequestCount : undefined, perm: "conversation:write" as const },
-    // Every agent's chats, who is waiting, booking progress (supervisors, admins).
+    // Every agent's chats and who is waiting (supervisors, admins).
     { href: "/supervision",      icon: Eye,             label: "Supervision",  enabled: true,  perm: "team:supervise" as const },
   ].filter((i) => can(i.perm));
   const navAfterContacts = [
     { href: "/campaigns",        icon: Megaphone,       label: "Campaigns",    enabled: true, perm: "campaign:read" as const, badge: canApprove && pendingApprovals > 0 ? pendingApprovals : undefined },
     // What the AI assistant may tell patients. Everyone reads it; admins edit and approve.
     { href: "/knowledge",        icon: BookOpen,        label: "Knowledge base", enabled: true, perm: "knowledge:read" as const },
-  ].filter((i) => can(i.perm));
+    // The in-app guide. Everyone gets it; its pages follow the reader's permissions.
+    { href: "/docs",             icon: BookMarked,      label: "Documentation", enabled: true, perm: null },
+  ].filter((i) => !i.perm || can(i.perm));
   const showContacts = can("contact:read");
   const contactsActive = isActive("/customers");
   const listsActive = isActive("/customers/lists");
@@ -336,10 +310,7 @@ function DashboardShell({ children }: { children: ReactNode }) {
       <button
         type="button"
         onClick={() => {
-          if (!expanded) {
-            hoverExpandedRef.current = false;
-            setExpanded(true);
-          }
+          if (!expanded) setExpanded(true);
           setContactsOpen((v) => !v);
         }}
         title={!expanded ? "Contacts" : undefined}
@@ -531,8 +502,6 @@ function DashboardShell({ children }: { children: ReactNode }) {
 
       {/* icon rail → full drawer */}
       <div
-        onMouseEnter={handleSidebarEnter}
-        onMouseLeave={handleSidebarLeave}
         className={`hidden lg:flex fixed top-0 left-0 h-full flex-col bg-white border-r border-gray-100 z-40 overflow-hidden transition-[width] duration-300 ease-in-out ${expanded ? EXPANDED_W : COLLAPSED_W}`}
       >
         {/* Logo row */}
