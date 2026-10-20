@@ -321,6 +321,12 @@
     :where(.dark) .border-\[\#D6DED9\],
     :where(.dark) .border-\[\#E5EAE7\] { border-color: #2e3531; }
     :where(.dark) .hover\:bg-\[\#c9ead4\]:hover { background-color: #24432f; }
+    /* The chat's WhatsApp-Web-like palette: canvas, team green, automation blue. */
+    :where(.dark) .bg-\[\#EFEAE2\] { background-color: #0b141a; }
+    :where(.dark) .bg-\[\#D9FDD3\] { background-color: #005c4b; }
+    :where(.dark) .border-\[\#BFE6B6\] { border-color: #0b6e5b; }
+    :where(.dark) .bg-\[\#DDEBFA\] { background-color: #1b3352; }
+    :where(.dark) .border-\[\#B9D3F0\] { border-color: #2a4a72; }
 
     /* Neutral avatar / panel fills */
     :where(.dark) .bg-\[\#EEF1EF\] { background-color: #232926; }

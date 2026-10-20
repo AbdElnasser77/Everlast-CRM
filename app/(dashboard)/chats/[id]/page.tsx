@@ -10,10 +10,14 @@ import {
   Send,
   Smile,
   Download,
+  ExternalLink,
+  FileText,
   X,
   LayoutTemplate,
   Clock,
   CornerUpLeft,
+  List as ListIcon,
+  Phone,
   ChevronDown,
   Trash2,
   Loader2,
@@ -68,7 +72,6 @@ import { isWindowClosed } from "@/lib/messagingWindow";
 import { AssigneePicker } from "@/components/AssigneePicker";
 import { ConversationStatusControl } from "@/components/ConversationStatusControl";
 import { ConversationOutcomeControl } from "@/components/ConversationOutcomeControl";
-import { BookingRequestBanner } from "@/components/bookings/BookingRequestBanner";
 import { OptOutBanner, isMarketingTemplate, isOptedOut, useOptOutState, type OptOutState } from "@/components/OptOut";
 import type { InboxConversation } from "@/lib/chatOutcome";
 
@@ -93,6 +96,34 @@ function CampaignReplyTag({ campaign, linkable }: { campaign: { id: number; name
     <Link href={`/campaigns/${campaign.id}`} className={`${cls} hover:bg-[#c9ead4]`} title="Open the campaign">{body}</Link>
   ) : (
     <span className={cls}>{body}</span>
+  );
+}
+
+/**
+ * One button under a template, card or flow message, drawn as WhatsApp does:
+ * a full-width row with a reply, link or phone icon. Not clickable for quick
+ * replies — they are the patient's to tap.
+ */
+function WaButton({ type, title, url, phoneNumber }: { type?: string; title: string; url?: string; phoneNumber?: string }) {
+  const cls = "flex items-center justify-center gap-1.5 px-3 py-2 text-[13px] font-semibold text-brand-fg";
+  if (type === "URL" && url) {
+    return (
+      <a href={url} target="_blank" rel="noreferrer" className={`${cls} hover:bg-black/5 dark:hover:bg-white/5`}>
+        <ExternalLink className="w-3.5 h-3.5 shrink-0" /> <WaText text={title} />
+      </a>
+    );
+  }
+  if (type === "PHONE_NUMBER" && phoneNumber) {
+    return (
+      <a href={`tel:${phoneNumber}`} className={`${cls} hover:bg-black/5 dark:hover:bg-white/5`}>
+        <Phone className="w-3.5 h-3.5 shrink-0" /> <WaText text={title} />
+      </a>
+    );
+  }
+  return (
+    <div className={cls}>
+      <CornerUpLeft className="w-3.5 h-3.5 shrink-0" /> <WaText text={title} />
+    </div>
   );
 }
 
@@ -425,32 +456,87 @@ function VideoMessage({ src }: { src: string | null }) {
   );
 }
 
-function DocumentMessage({ directSrc, mediaMsgId, isAgent }: { directSrc: string | null; mediaMsgId: number | null; isAgent: boolean }) {
-  async function handleDownload() {
-    let downloadUrl = directSrc;
-    if (!downloadUrl && mediaMsgId) {
-      try {
-        const blob = await apiFetchMediaBlob(mediaMsgId);
-        downloadUrl = URL.createObjectURL(blob);
-      } catch { return; }
+// What a document is, read from its stored URL's extension (storage keys always
+// end in one), so the bubble says "PDF document" before anyone opens it.
+// `viewable` = the browser shows it in a tab; anything else just downloads.
+const FILE_KINDS: Record<string, { label: string; badge: string; viewable?: boolean }> = {
+  pdf:  { label: "PDF document",      badge: "bg-red-600", viewable: true },
+  doc:  { label: "Word document",     badge: "bg-blue-600" },
+  docx: { label: "Word document",     badge: "bg-blue-600" },
+  xls:  { label: "Excel spreadsheet", badge: "bg-emerald-600" },
+  xlsx: { label: "Excel spreadsheet", badge: "bg-emerald-600" },
+  csv:  { label: "CSV spreadsheet",   badge: "bg-emerald-600" },
+  ppt:  { label: "PowerPoint",        badge: "bg-orange-600" },
+  pptx: { label: "PowerPoint",        badge: "bg-orange-600" },
+  txt:  { label: "Text file",         badge: "bg-gray-500", viewable: true },
+  zip:  { label: "ZIP archive",       badge: "bg-amber-600" },
+};
+
+function fileExtension(url: string | null): string | null {
+  if (!url) return null;
+  try {
+    const name = new URL(url).pathname.split("/").pop() ?? "";
+    return /\.([a-z0-9]{1,5})$/i.exec(name)?.[1].toLowerCase() ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function DocumentMessage({ directSrc, mediaMsgId }: { directSrc: string | null; mediaMsgId: number | null }) {
+  const [opening, setOpening] = useState(false);
+  const ext = fileExtension(directSrc);
+  const kind = (ext && FILE_KINDS[ext]) || { label: "Document", badge: "bg-gray-500", viewable: false };
+  const Icon = kind.viewable ? ExternalLink : Download;
+  const available = Boolean(directSrc || mediaMsgId);
+
+  // Storage is on another origin without CORS, so the browser can't force a
+  // named download — open it in a new tab instead (a plain same-tab click used
+  // to navigate the CRM away to the file). PDFs show the browser's viewer,
+  // which has its own download button; other types download straight away.
+  // Customer media that isn't stored yet comes through the proxy as a blob.
+  async function openFromProxy(e: React.MouseEvent) {
+    if (directSrc || !mediaMsgId) return;
+    e.preventDefault();
+    setOpening(true);
+    try {
+      const blob = await apiFetchMediaBlob(mediaMsgId);
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch {
+      // Media gone from WhatsApp — nothing to open.
+    } finally {
+      setOpening(false);
     }
-    if (!downloadUrl) return;
-    const a = document.createElement("a");
-    a.href = downloadUrl;
-    a.download = "document";
-    a.click();
-    if (!directSrc) URL.revokeObjectURL(downloadUrl);
   }
 
   return (
-    <button type="button" onClick={handleDownload}
-      className={`flex items-center gap-2 text-[13px] font-medium underline underline-offset-2 cursor-pointer ${
-        isAgent ? "text-brand-strong hover:text-[#1f3d2c]" : "text-brand-fg hover:text-[#2d5239]"
+    <a
+      href={directSrc ?? undefined}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={openFromProxy}
+      aria-disabled={!available}
+      className={`flex items-center gap-3 w-[260px] max-w-full rounded-xl bg-black/5 dark:bg-black/25 px-3 py-2.5 transition-colors ${
+        available ? "hover:bg-black/10 cursor-pointer" : "opacity-60 pointer-events-none"
       }`}
     >
-      <Download className="w-4 h-4 shrink-0" />
-      Download document
-    </button>
+      <span className={`relative w-9 h-11 shrink-0 rounded-md ${kind.badge} text-white flex items-end justify-center pb-1.5`}>
+        <FileText className="absolute top-1.5 w-4 h-4 opacity-80" />
+        <span className="text-[9px] font-bold tracking-wide">{(ext ?? "file").toUpperCase()}</span>
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[13px] font-medium text-gray-900 truncate">{kind.label}</span>
+        <span className="block text-[11.5px] text-gray-500">
+          {!available ? "Not available" : opening ? "Opening…" : kind.viewable ? "Click to view" : "Click to download"}
+        </span>
+      </span>
+      {opening ? <Loader2 className="w-4 h-4 shrink-0 text-gray-500 animate-spin" /> : <Icon className="w-4 h-4 shrink-0 text-gray-500" />}
+    </a>
   );
 }
 
@@ -480,7 +566,7 @@ function MessageContent({ msg, isAgent }: { msg: Message; isAgent: boolean }) {
   // directly; show placeholder until media_ready fires if not yet available.
   if (msg.messageType === "VIDEO") return <VideoMessage src={directSrc} />;
   if (msg.messageType === "AUDIO") return <AudioMessage directSrc={directSrc} mediaMsgId={mediaMsgId} />;
-  if (msg.messageType === "DOCUMENT") return <DocumentMessage directSrc={directSrc} mediaMsgId={mediaMsgId} isAgent={isAgent} />;
+  if (msg.messageType === "DOCUMENT") return <DocumentMessage directSrc={directSrc} mediaMsgId={mediaMsgId} />;
   if (msg.messageType === "STICKER") {
     if (!directSrc) return <p className="text-[13px] text-gray-400 italic">Sticker (loading…)</p>;
     return (
@@ -491,7 +577,8 @@ function MessageContent({ msg, isAgent }: { msg: Message; isAgent: boolean }) {
 
   return (
     <p className="text-[14px] leading-relaxed whitespace-pre-wrap break-words text-[#1F2A24]">
-      {msg.content}
+      {/* *bold*, _italic_, ~strike~ as WhatsApp shows them, not the raw markers */}
+      <WaText text={msg.content} />
     </p>
   );
 }
@@ -997,7 +1084,7 @@ export default function ConversationPage() {
     typingUsers,
   } = useMessages(id);
   const { can } = useCurrentUser();
-  // Marketing opt-out (this line / all lines): banner, Outcome menu, template picker.
+  // Marketing opt-out (this line / all lines): banner, Follow up menu, template picker.
   const optOut = useOptOutState(id);
 
   // The server said the window is closed (the client's clock or data may have
@@ -1521,9 +1608,9 @@ export default function ConversationPage() {
       )}
 
       {/* Chat background — tiled, stays fixed while messages scroll */}
-      <div className="absolute inset-0 pointer-events-none z-0 bg-[#E7ECE9]" />
+      <div className="absolute inset-0 pointer-events-none z-0 bg-[#EFEAE2]" />
 
-      {/* Header. Above the banner and messages (z-10): its Status / Outcome /
+      {/* Header. Above the banner and messages (z-10): its Status / Follow up /
           Assignee menus open downwards over them. */}
       <div className="relative z-30 flex items-center gap-3 px-5 py-3 bg-white border-b border-gray-100 shrink-0">
         <button
@@ -1554,7 +1641,7 @@ export default function ConversationPage() {
 
 
 
-        {/* Lifecycle, outcome and owner. All update live from the server's socket events,
+        {/* Lifecycle, follow-up and owner. All update live from the server's socket events,
             which patch the conversation list this header reads from. */}
         {conversation && (
           <>
@@ -1579,9 +1666,6 @@ export default function ConversationPage() {
           <PanelRight className="w-4.5 h-4.5" />
         </button>
       </div>
-
-      {/* The chat's open booking request, if any: what they asked for, and Book / Couldn't book */}
-      <BookingRequestBanner conversationId={id} patient={customer?.name || (customer?.phone ? `+${customer.phone}` : null)} />
 
       {/* Opted out of marketing: replying is fine, offers / campaign templates aren't */}
       <OptOutBanner conversationId={id} state={optOut} />
@@ -1719,9 +1803,10 @@ export default function ConversationPage() {
                     );
                 const senderChanged = groupStart;
                 const isBot = msg.senderType === "BOT";
-                // Team replies are soft brand green; automation is slate, so a
-                // person can always tell at a glance who actually wrote it.
-                const bubbleTone = isBot ? "bg-[#E1E8F0] border-[#C9D3DF]" : "bg-[#D3EBDC] border-[#B5D8C2]";
+                // WhatsApp-Web-like: team replies are WhatsApp green, automation
+                // (flows, AI) soft blue, the patient white on a beige canvas — so
+                // anyone can tell at a glance who actually wrote it.
+                const bubbleTone = isBot ? "bg-[#DDEBFA] border-[#B9D3F0]" : "bg-[#D9FDD3] border-[#BFE6B6]";
                 const nameLabel = (
                   <p className="text-[11px] font-medium text-gray-500 text-right mb-1 flex items-center justify-end gap-1">
                     {isBot && (
@@ -1794,52 +1879,48 @@ export default function ConversationPage() {
                             <MessageStatus isSending={isSending} status={msg.status} />
                           </div>
                         </div>
-                        {/* CTA buttons — below bubble, outside green area */}
+                        {/* Buttons — rows under the message, as WhatsApp draws them */}
                         {tpl.buttons && tpl.buttons.length > 0 && (
-                          <div className="space-y-1 mt-1">
-                            {tpl.buttons.map((btn) => {
-                              const cls = "flex items-center justify-center gap-1.5 py-1.5 bg-white border border-[#E5EAE7] rounded-xl text-[13px] font-medium text-brand-fg";
-                              if (btn.type === "URL" && btn.url) {
-                                return <a key={btn.id} href={btn.url} target="_blank" rel="noreferrer" className={cls}>🔗 {btn.title}</a>;
-                              }
-                              if (btn.type === "PHONE_NUMBER" && btn.phoneNumber) {
-                                return <a key={btn.id} href={`tel:${btn.phoneNumber}`} className={cls}>📞 {btn.title}</a>;
-                              }
-                              return <div key={btn.id} className={cls}>{btn.title}</div>;
-                            })}
+                          <div className={`mt-0.5 ${bubbleTone} border rounded-2xl overflow-hidden divide-y divide-black/10 dark:divide-white/10`}>
+                            {tpl.buttons.map((btn) => <WaButton key={btn.id} {...btn} />)}
                           </div>
                         )}
+                        {/* Carousel — swipeable cards, each a bubble of its own */}
                         {tpl.cards && tpl.cards.length > 0 && (
-                          <div className="mt-1 flex gap-2 overflow-x-auto pb-1 snap-x max-w-full">
+                          <div className="mt-1 flex gap-2 overflow-x-auto pb-1.5 snap-x max-w-full [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-black/15 dark:[&::-webkit-scrollbar-thumb]:bg-white/20">
                             {tpl.cards.map((card, ci) => (
-                              <div key={ci} className="snap-start shrink-0 w-[180px] bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-                                {card.mediaType === "IMAGE" && card.mediaUrl ? (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img src={card.mediaUrl} alt="" className="w-full h-24 object-cover" />
-                                ) : (
-                                  <div className="h-24 bg-gray-100 flex items-center justify-center text-[12px] text-gray-500">▶ Video</div>
-                                )}
-                                <p className="px-2.5 pt-2 text-[12px] text-gray-800 whitespace-pre-wrap line-clamp-4">{card.body}</p>
-                                <div className="p-1.5 space-y-1">
-                                  {card.buttons.map((b) =>
-                                    b.type === "URL" && b.url ? (
-                                      <a key={b.id} href={b.url} target="_blank" rel="noreferrer" className="block border border-gray-100 rounded-lg py-1.5 text-center text-[12px] font-medium text-brand-fg hover:bg-brand-50">🔗 {b.title}</a>
-                                    ) : (
-                                      <div key={b.id} className="border border-gray-100 rounded-lg py-1.5 text-center text-[12px] font-medium text-brand-fg">{b.title}</div>
-                                    ),
+                              <div key={ci} className={`snap-start shrink-0 w-[232px] flex flex-col ${bubbleTone} border rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(16,24,20,0.08)]`}>
+                                <div className="p-1 pb-0">
+                                  {card.mediaType === "IMAGE" && card.mediaUrl ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img src={card.mediaUrl} alt="" className="w-full h-36 object-cover rounded-xl" />
+                                  ) : (
+                                    <div className="h-36 rounded-xl bg-black/5 dark:bg-white/5 flex items-center justify-center text-[12px] text-gray-500">▶ Video</div>
                                   )}
                                 </div>
+                                <p className="flex-1 px-3 pt-2 pb-2.5 text-[13px] leading-snug text-[#1F2A24] whitespace-pre-wrap break-words">
+                                  <WaText text={card.body} />
+                                </p>
+                                {card.buttons.length > 0 && (
+                                  <div className="border-t border-black/10 dark:border-white/10 divide-y divide-black/10 dark:divide-white/10">
+                                    {card.buttons.map((b) => <WaButton key={b.id} {...b} />)}
+                                  </div>
+                                )}
                               </div>
                             ))}
                           </div>
                         )}
+                        {/* List message — the menu button, then its options */}
                         {tpl.list && (
-                          <div className="mt-1 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-                            <div className="py-2 text-center text-[13px] font-medium text-brand-fg border-b border-gray-100">☰ {tpl.list.buttonLabel}</div>
-                            <ul className="px-3 py-1.5 space-y-0.5">
+                          <div className={`mt-0.5 ${bubbleTone} border rounded-2xl overflow-hidden`}>
+                            <div className="flex items-center justify-center gap-1.5 py-2 text-[13px] font-semibold text-brand-fg border-b border-black/10 dark:border-white/10">
+                              <ListIcon className="w-4 h-4" /> {tpl.list.buttonLabel}
+                            </div>
+                            <ul className="divide-y divide-black/5 dark:divide-white/5">
                               {tpl.list.rows.map((r, ri) => (
-                                <li key={ri} className="text-[12px] text-gray-600 leading-snug">
-                                  {r.title}{r.description ? <span className="text-gray-400"> · {r.description}</span> : null}
+                                <li key={ri} className="px-3.5 py-1.5 leading-snug">
+                                  <p className="text-[13px] text-[#1F2A24]"><WaText text={r.title} /></p>
+                                  {r.description && <p className="text-[11.5px] text-gray-500"><WaText text={r.description} /></p>}
                                 </li>
                               ))}
                             </ul>
@@ -1957,7 +2038,7 @@ export default function ConversationPage() {
           {/* Typing indicator */}
           {typingUsers.length > 0 && (
             <div className="flex justify-end">
-              <div className="mt-3 bg-[#D3EBDC] border border-[#B5D8C2] rounded-2xl rounded-tr-md px-3.5 py-2">
+              <div className="mt-3 bg-[#D9FDD3] border border-[#BFE6B6] rounded-2xl rounded-tr-md px-3.5 py-2">
                 <span className="text-[12px] text-brand-fg/60 italic">
                   {typingUsers.join(", ")}{" "}
                   {typingUsers.length === 1 ? "is" : "are"} typing…
