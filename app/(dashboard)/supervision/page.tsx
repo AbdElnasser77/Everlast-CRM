@@ -3,7 +3,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CalendarDays, Eye, FileText, MessagesSquare, MonitorPlay, RefreshCw } from "lucide-react";
+import { Eye, FileText, MessagesSquare, MonitorPlay, RefreshCw } from "lucide-react";
 import { apiGetSupervisionConversations, apiGetSupervisionOverview } from "@/lib/api";
 import { getSocket } from "@/lib/socket";
 import { homePathFor } from "@/lib/permissions";
@@ -17,7 +17,6 @@ import { KpiStrip } from "@/components/supervision/KpiStrip";
 import { AgentBoard, type AgentFilter } from "@/components/supervision/AgentBoard";
 import { ConversationList, FILTER_TABS } from "@/components/supervision/ConversationList";
 import { ConversationDetail } from "@/components/supervision/ConversationDetail";
-import { BookingsPanel, parseBookingRange, writeBookingRange, type BookingRange } from "@/components/supervision/BookingsPanel";
 import { personName } from "@/components/supervision/format";
 
 // ── Supervision ───────────────────────────────────────────────────────────────
@@ -29,7 +28,7 @@ import { personName } from "@/components/supervision/format";
 // Live: socket events schedule a debounced refresh; a 30s poll covers lines this
 // socket isn't in (the socket only joins the active number's room).
 //
-// The view, filter, agent, line and open chat live in the URL. Switching the
+// The filter, agent, line and open chat live in the URL. Switching the
 // active number (needed to act on another line's chat) remounts the dashboard,
 // and the URL is what brings the supervisor straight back to the same chat.
 
@@ -38,7 +37,6 @@ const POLL_MS = 30_000;
 const DEBOUNCE_MS = 800;
 const LIVE_EVENTS = ["message.created", "conversation.updated", "conversation.assigned", "conversation.outcome", "conversation.note", "flow.handoff"];
 
-type View = "chats" | "bookings";
 type ListState = { key: string; rows: SupervisionConversation[] | null; total: number | null; error: Error | null };
 
 const SECTION_SCROLL =
@@ -93,7 +91,6 @@ function SupervisionScreen() {
   const { numbers } = useActiveNumber();
 
   // ── Selection (mirrored to the URL) ──
-  const [view, setView] = useState<View>(() => (params.get("view") === "bookings" ? "bookings" : "chats"));
   const [filter, setFilter] = useState<SupervisionFilter>(() => {
     const f = params.get("filter");
     return FILTER_TABS.some((t) => t.value === f) ? (f as SupervisionFilter) : "waiting";
@@ -101,7 +98,6 @@ function SupervisionScreen() {
   const [agentFilter, setAgentFilter] = useState<AgentFilter>(() => parseAgent(params.get("agent")));
   const [numberId, setNumberId] = useState<number | undefined>(() => parsePositiveInt(params.get("number")) ?? undefined);
   const [selectedId, setSelectedId] = useState<number | null>(() => parsePositiveInt(params.get("c")));
-  const [bookingRange, setBookingRange] = useState<BookingRange>(() => parseBookingRange(params));
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
 
@@ -122,15 +118,13 @@ function SupervisionScreen() {
 
   useEffect(() => {
     const q = new URLSearchParams();
-    if (view !== "chats") q.set("view", view);
     if (filter !== "waiting") q.set("filter", filter);
     if (agentFilter !== null) q.set("agent", String(agentFilter));
     if (numberId) q.set("number", String(numberId));
     if (selectedId) q.set("c", String(selectedId));
-    if (view === "bookings") writeBookingRange(bookingRange, q);
     const qs = q.toString();
     window.history.replaceState(null, "", qs ? `?${qs}` : window.location.pathname);
-  }, [view, filter, agentFilter, numberId, selectedId, bookingRange]);
+  }, [filter, agentFilter, numberId, selectedId]);
 
   // Search is server-side; wait for the typing to settle.
   useEffect(() => {
@@ -271,7 +265,6 @@ function SupervisionScreen() {
       if (agentFilter === null) {
         c.waiting = k.waiting;
         c.cold = k.goneCold;
-        c.booking = k.bookingRequestsOpen;
       } else if (agentFilter === "unassigned") {
         c.waiting = k.unassignedWaiting;
       } else {
@@ -284,18 +277,10 @@ function SupervisionScreen() {
     return c;
   }, [overview, agentFilter, total, filter, query]);
 
-  const numberLabels = useMemo(() => new Map(numbers.map((n) => [n.id, n.label])), [numbers]);
   const slaMinutes = overview?.slaMinutes ?? 30;
 
-  const pickFilter = (f: SupervisionFilter) => {
-    setFilter(f);
-    setView("chats");
-  };
+  const pickFilter = (f: SupervisionFilter) => setFilter(f);
   const pickAgent = (a: AgentFilter) => setAgentFilter(a);
-  const openChat = (id: number) => {
-    setView("chats");
-    setSelectedId(id);
-  };
   const refreshNow = () => setRefreshKey((k) => k + 1);
 
   // Escape closes the open chat (mostly for the mobile drawer).
@@ -329,26 +314,6 @@ function SupervisionScreen() {
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <div className="inline-flex bg-white border border-gray-100 rounded-lg p-1 gap-1">
-              {(
-                [
-                  ["chats", "Chats", MessagesSquare],
-                  ["bookings", "Bookings", CalendarDays],
-                ] as const
-              ).map(([key, label, Icon]) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setView(key)}
-                  className={`flex items-center gap-1.5 text-[13px] font-semibold rounded-md px-3 py-1.5 transition-colors cursor-pointer ${
-                    view === key ? "bg-brand text-white" : "text-gray-500 hover:text-gray-800"
-                  }`}
-                >
-                  <Icon className="w-3.5 h-3.5" />
-                  {label}
-                </button>
-              ))}
-            </div>
             {numbers.length > 1 && (
               <select
                 value={numberId ?? ""}
@@ -397,76 +362,62 @@ function SupervisionScreen() {
           </div>
         </div>
 
-        <KpiStrip overview={overview} loading={!overview} filter={view === "chats" ? filter : null} onFilter={pickFilter} />
+        <KpiStrip overview={overview} loading={!overview} filter={filter} onFilter={pickFilter} />
 
         <AgentBoard overview={overview} loading={!overview} agentFilter={agentFilter} onAgentFilter={pickAgent} now={now} onHandedOver={refreshNow} />
 
-        {view === "bookings" ? (
-          <BookingsPanel
-            numberId={numberId}
-            agentId={typeof agentFilter === "number" ? agentFilter : null}
-            agentLabel={typeof agentFilter === "number" ? (agentLabel?.replace(/’s chats$/, "") ?? null) : null}
-            numberLabels={numberLabels}
-            refreshKey={refreshKey}
-            now={now}
-            range={bookingRange}
-            onRange={setBookingRange}
-            onOpenChat={openChat}
-          />
-        ) : (
-          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden lg:grid lg:grid-cols-[minmax(340px,420px)_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)] lg:h-[calc(100dvh-7rem)] lg:min-h-[560px]">
-            {/* Master: the chat list */}
-            <div className="flex flex-col min-h-0 h-[75dvh] lg:h-auto lg:border-r border-gray-100">
-              {current?.error && !rows ? (
-                <ErrorPanel compact error={current.error} reset={() => setRetry((n) => n + 1)} title="Couldn't load chats" />
-              ) : (
-                <ConversationList
-                  filter={filter}
-                  onFilter={setFilter}
-                  counts={counts}
-                  search={search}
-                  onSearch={setSearch}
-                  rows={rows}
-                  total={total}
-                  loading={!current}
-                  loadingMore={loadingMore}
-                  hasMore={hasMore}
-                  onLoadMore={loadMore}
-                  selectedId={selectedId}
-                  onSelect={setSelectedId}
-                  slaMinutes={slaMinutes}
-                  now={now}
-                  scopeLabel={agentLabel}
-                />
-              )}
-            </div>
-
-            {/* Detail: a column on desktop, a full-screen drawer below lg */}
-            {selectedId !== null ? (
-              <div className="fixed inset-0 z-[70] flex flex-col bg-white lg:static lg:z-auto min-h-0">
-                <ConversationDetail
-                  key={selectedId}
-                  conversationId={selectedId}
-                  refreshKey={refreshKey}
-                  now={now}
-                  onClose={() => setSelectedId(null)}
-                  onChanged={refreshNow}
-                  onOpenChat={(id) => setSelectedId(id)}
-                />
-              </div>
+        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden lg:grid lg:grid-cols-[minmax(340px,420px)_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)] lg:h-[calc(100dvh-7rem)] lg:min-h-[560px]">
+          {/* Master: the chat list */}
+          <div className="flex flex-col min-h-0 h-[75dvh] lg:h-auto lg:border-r border-gray-100">
+            {current?.error && !rows ? (
+              <ErrorPanel compact error={current.error} reset={() => setRetry((n) => n + 1)} title="Couldn't load chats" />
             ) : (
-              <div className="hidden lg:flex flex-col items-center justify-center text-center px-8 bg-canvas">
-                <div className="w-12 h-12 rounded-2xl bg-white border border-gray-100 flex items-center justify-center mb-3">
-                  <MessagesSquare className="w-5 h-5 text-gray-300" />
-                </div>
-                <p className="text-[14px] font-semibold text-gray-700">Pick a chat to see it in full</p>
-                <p className="text-[12.5px] text-gray-400 mt-1 max-w-xs">
-                  Latest messages, how long each reply took, bookings, flow answers, notes and who handled it.
-                </p>
-              </div>
+              <ConversationList
+                filter={filter}
+                onFilter={setFilter}
+                counts={counts}
+                search={search}
+                onSearch={setSearch}
+                rows={rows}
+                total={total}
+                loading={!current}
+                loadingMore={loadingMore}
+                hasMore={hasMore}
+                onLoadMore={loadMore}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+                slaMinutes={slaMinutes}
+                now={now}
+                scopeLabel={agentLabel}
+              />
             )}
           </div>
-        )}
+
+          {/* Detail: a column on desktop, a full-screen drawer below lg */}
+          {selectedId !== null ? (
+            <div className="fixed inset-0 z-[70] flex flex-col bg-white lg:static lg:z-auto min-h-0">
+              <ConversationDetail
+                key={selectedId}
+                conversationId={selectedId}
+                refreshKey={refreshKey}
+                now={now}
+                onClose={() => setSelectedId(null)}
+                onChanged={refreshNow}
+                onOpenChat={(id) => setSelectedId(id)}
+              />
+            </div>
+          ) : (
+            <div className="hidden lg:flex flex-col items-center justify-center text-center px-8 bg-canvas">
+              <div className="w-12 h-12 rounded-2xl bg-white border border-gray-100 flex items-center justify-center mb-3">
+                <MessagesSquare className="w-5 h-5 text-gray-300" />
+              </div>
+              <p className="text-[14px] font-semibold text-gray-700">Pick a chat to see it in full</p>
+              <p className="text-[12.5px] text-gray-400 mt-1 max-w-xs">
+                Latest messages, how long each reply took, flow answers, notes and who handled it.
+              </p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

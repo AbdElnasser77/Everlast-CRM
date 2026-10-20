@@ -2,7 +2,7 @@
 
 import { Plus, Trash2, X } from "lucide-react";
 import type { AssignableUser, FlowInputType, FlowMediaType, FlowNodeData, FlowNodeType, FlowOption, Template } from "@/types";
-import { BUILT_IN_VARIABLES, FLOW_LIMITS, SLOT_DEFAULTS, STEP_META, VARIABLE_RE, carouselSnapshot, templateStartButtons, uid } from "@/lib/flows";
+import { BUILT_IN_VARIABLES, FLOW_LIMITS, STEP_META, VARIABLE_RE, carouselSnapshot, templateStartButtons, uid } from "@/lib/flows";
 import { CardsEditor } from "./CardsEditor";
 
 const inputCls =
@@ -423,36 +423,12 @@ export function StepEditor({ type, data, problems, onChange, onDelete, templates
         )}
 
         {type === "slot_picker" && (
-          <>
-            <p className="text-[12px] text-gray-600 bg-brand-50 border border-brand/15 rounded-lg px-3 py-2 leading-relaxed">
-              Shows the nearest days with free times in the clinic system (Dok32), then that day&apos;s free times. Nothing is
-              booked — an agent still books it in Dok32. Saves <span className="font-mono">preferred_date</span>,{" "}
-              <span className="font-mono">preferred_time</span> and <span className="font-mono">{"{{slot_label}}"}</span>{" "}
-              (e.g. “Tue 21 Oct, 4:30 PM”) for later messages.
-            </p>
-            {([
-              ["dayText", "Asking for the day", FLOW_LIMITS.body, 3, "Sent with the list of free days."],
-              ["timeText", "Asking for the time", FLOW_LIMITS.body, 3, "Sent with the day's free times. {{day}} is the chosen day."],
-              ["noSlotsText", "When no day is free", FLOW_LIMITS.text, 3, "The flow then carries on, and the request still reaches the team."],
-              ["fallbackDayText", "If the clinic system is down: day question", FLOW_LIMITS.text, 2, "Asked as a plain question; the answer is saved as typed."],
-              ["fallbackTimeText", "If the clinic system is down: time question", FLOW_LIMITS.text, 2, "Asked as a plain question; the answer is saved as typed."],
-            ] as const).map(([key, label, max, rows, help]) => (
-              <Field key={key} label={label} aside={<Counter value={data[key]} max={max} />}>
-                <textarea
-                  rows={rows}
-                  className={`${inputCls} resize-y`}
-                  value={data[key] ?? ""}
-                  placeholder={SLOT_DEFAULTS[key]}
-                  onChange={(e) => set({ [key]: e.target.value })}
-                />
-                <p className="text-[11px] text-gray-400 mt-1">{help} Leave empty for the default.</p>
-              </Field>
-            ))}
-            <p className="text-[11px] text-gray-400 leading-relaxed">
-              A patient can tap a day and time, or type them (“tomorrow”, “25 Oct”, “4:30 pm”). After 3 answers it can&apos;t
-              use, it takes what they typed as it is.
-            </p>
-          </>
+          // Retired step in an older flow: the flow can't be saved until it's gone.
+          <p className="text-[12px] text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 leading-relaxed">
+            The Pick appointment step is no longer available. Delete this step and connect the step before it to what
+            should happen next — the flow can&apos;t be saved while it&apos;s here. Until then, a patient who reaches it
+            is handed to the team.
+          </p>
         )}
 
         {type === "tag" && (

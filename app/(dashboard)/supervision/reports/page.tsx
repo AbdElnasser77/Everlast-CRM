@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ArrowLeft, ArrowRight, CalendarCheck, FileText, Megaphone, MessagesSquare, ScrollText, Users, type LucideIcon } from "lucide-react";
+import { ArrowLeft, ArrowRight, FileText, Megaphone, MessagesSquare, ScrollText, Users, type LucideIcon } from "lucide-react";
 import { ReportGate } from "@/components/supervision/report/ReportShell";
 
 // ── Reports hub ───────────────────────────────────────────────────────────────
@@ -13,42 +13,35 @@ const REPORTS: { slug: string; title: string; description: string; icon: LucideI
   {
     slug: "overview",
     title: "Overview",
-    description: "The whole period on a few pages: chats, response times, team, bookings, campaigns, plus chosen transcripts.",
+    description: "The whole period on a few pages: chats, response times, team, campaigns, plus chosen transcripts.",
     icon: FileText,
     formats: ["PDF"],
   },
   {
     slug: "transcripts",
     title: "Transcripts",
-    description: "Filter chats by agent, line, outcome, late or unanswered replies, and print up to 100 full conversations.",
+    description: "Filter chats by agent, line, follow-up, late or unanswered replies, and print up to 100 full conversations.",
     icon: ScrollText,
     formats: ["PDF"],
   },
   {
-    slug: "bookings",
-    title: "Bookings & couldn’t book",
-    description: "Every booking request: what was asked, where the patient came from, who took it, how fast, what was booked or why not.",
-    icon: CalendarCheck,
-    formats: ["PDF", "CSV"],
-  },
-  {
     slug: "team",
     title: "Team performance",
-    description: "Speed and results per person: response-time bands, slowest replies, outcomes, bookings, day-by-day trend, busiest hours.",
+    description: "Speed and results per person: response-time bands, slowest replies, follow-ups, day-by-day trend, busiest hours.",
     icon: Users,
     formats: ["PDF", "CSV"],
   },
   {
     slug: "campaigns",
     title: "Campaigns",
-    description: "Each campaign from sent to booked: delivery, reads, replies, booking requests, patients booked, couldn’t-book reasons, opt-outs.",
+    description: "Each campaign from sent to replied: delivery, reads, replies, failures, opt-outs.",
     icon: Megaphone,
     formats: ["PDF", "CSV"],
   },
   {
     slug: "chats",
     title: "Chats",
-    description: "One row per chat with every detail — who handled it, how fast, longest wait, outcome, booking, source — to filter in Excel.",
+    description: "One row per chat with every detail — who handled it, how fast, longest wait, follow-up, campaign — to filter in Excel.",
     icon: MessagesSquare,
     formats: ["PDF", "Excel"],
   },

@@ -3,26 +3,22 @@
 import { Search, StickyNote, X } from "lucide-react";
 import type { SupervisionConversation, SupervisionFilter } from "@/types";
 import { Spinner } from "@/components/ui/spinner";
-import { FlowChip, NumberChip, OutcomeChip, RequestChip, WaitChip } from "./chips";
-import { WAIT_WARN_MINUTES, formatPhone, requestSummary, initials, messagePreview, patientName, personInitials, personName, timeAgo } from "./format";
+import { FlowChip, NumberChip, OutcomeChip, WaitChip } from "./chips";
+import { WAIT_WARN_MINUTES, formatPhone, initials, messagePreview, patientName, personInitials, personName, timeAgo } from "./format";
 
 export const FILTER_TABS: { value: SupervisionFilter; label: string }[] = [
   { value: "waiting", label: "Waiting" },
   { value: "cold", label: "Gone cold" },
-  { value: "booking", label: "Booking requests" },
   { value: "halfway", label: "Dropped halfway" },
   { value: "follow_up", label: "Follow up" },
-  { value: "booked", label: "Booked" },
   { value: "all", label: "All chats" },
 ];
 
-const EMPTY: Record<SupervisionFilter, { title: string; sub: string }> = {
+const EMPTY: Partial<Record<SupervisionFilter, { title: string; sub: string }>> = {
   waiting: { title: "Nobody is waiting — nice.", sub: "Every patient who wrote in today has had a reply." },
   cold: { title: "Nothing has gone cold.", sub: "Patients still waiting a day after they wrote show here." },
-  booking: { title: "No open booking requests.", sub: "Requests from the booking flow or an agent show here until they’re booked or closed." },
   halfway: { title: "Nobody dropped out of a flow.", sub: "Patients who stop or go quiet halfway through a flow show here." },
   follow_up: { title: "No follow-ups scheduled.", sub: "Chats an agent marked “Follow up” show here, soonest first." },
-  booked: { title: "No booked chats yet.", sub: "Chats an agent marked as Booked show here." },
   all: { title: "No chats here yet.", sub: "Conversations from every WhatsApp line show here." },
 };
 
@@ -37,12 +33,9 @@ function Row({
   slaMinutes,
   now,
   onSelect,
-  showRequest,
 }: {
   c: SupervisionConversation;
   selected: boolean;
-  /** Booking requests tab: show the open request instead of the flow's guess. */
-  showRequest: boolean;
   slaMinutes: number;
   now: number;
   onSelect: () => void;
@@ -53,8 +46,6 @@ function Row({
   const name = patientName(c.customer);
   const prefix = c.lastSenderType ? SENDER_PREFIX[c.lastSenderType] : "";
   const preview = c.lastMessage ? messagePreview({ messageType: null, content: c.lastMessage }) : "";
-  const request = showRequest ? c.openRequest : null;
-  const requested = request ? requestSummary(request.requested) : "";
 
   return (
     <button
@@ -103,22 +94,11 @@ function Row({
           <WaitChip minutes={waiting} slaMinutes={slaMinutes} />
         </div>
 
-        {/* State: outcome, flow, notes · line, owner */}
+        {/* State: follow-up, flow, notes · line, owner */}
         <div className="flex items-center gap-1.5 mt-1.5 min-h-[20px]">
           <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
-            <OutcomeChip outcome={c.outcome} booking={c.latestBooking} followUpAt={c.followUpAt} followUpOverdue={c.followUpOverdue} />
-            {request ? (
-              <>
-                <RequestChip request={request} overSla={request.openMinutes != null && request.openMinutes >= slaMinutes} />
-                {requested && (
-                  <span title={requested} className="text-[11px] text-gray-500 truncate min-w-0">
-                    {requested}
-                  </span>
-                )}
-              </>
-            ) : (
-              <FlowChip flow={c.flow} booked={c.outcome === "BOOKED"} />
-            )}
+            <OutcomeChip outcome={c.outcome} followUpAt={c.followUpAt} followUpOverdue={c.followUpOverdue} />
+            <FlowChip flow={c.flow} />
             {c.noteCount > 0 && (
               <span title={`${c.noteCount} note${c.noteCount === 1 ? "" : "s"}`} className="inline-flex items-center gap-0.5 text-[10.5px] text-gray-400">
                 <StickyNote className="w-3 h-3" />
@@ -187,7 +167,7 @@ export function ConversationList({
   /** "Sara's chats", "Unassigned chats" — shown when an agent filter is on. */
   scopeLabel: string | null;
 }) {
-  const empty = EMPTY[filter];
+  const empty = EMPTY[filter] ?? EMPTY.all!;
 
   return (
     <div className="flex flex-col min-h-0 h-full">
@@ -283,7 +263,7 @@ export function ConversationList({
           </div>
         ) : (
           rows.map((c) => (
-            <Row key={c.id} c={c} showRequest={filter === "booking"} selected={selectedId === c.id} slaMinutes={slaMinutes} now={now} onSelect={() => onSelect(c.id)} />
+            <Row key={c.id} c={c} selected={selectedId === c.id} slaMinutes={slaMinutes} now={now} onSelect={() => onSelect(c.id)} />
           ))
         )}
 

@@ -393,9 +393,6 @@ export interface Campaign {
   deliveredCount?: number;
   readCount?: number;
   repliedCount?: number;
-  // Appointments booked from this campaign's booking requests.
-  bookedCount?: number;
-  bookingRequestsCount?: number;
   createdById: number;
   createdAt: string;
   updatedAt: string;
@@ -650,7 +647,6 @@ export interface FollowUpDueEvent {
  */
 export interface HandOverResult {
   chats: number;
-  bookingRequests: number;
   to: { id: number; name: string | null; username: string } | null;
 }
 
@@ -718,30 +714,11 @@ export interface FlowNodeData {
   // carousel: snapshot of the template's cards (label + quick replies).
   // cards: the product cards themselves (id, media, text, buttons).
   cards?: FlowCard[];
-  // slot_picker (Pick appointment): the patient-facing texts; empty = the
-  // server's default wording. Saves preferred_date / preferred_time.
-  dayText?: string;
-  timeText?: string;
-  noSlotsText?: string;
-  fallbackDayText?: string;
-  fallbackTimeText?: string;
   // tag
   tag?: string;
   // assign
   agentId?: number | null;
   [key: string]: unknown;
-}
-
-// ─── Clinic availability (Dok32, read-only: GET /api/availability/*) ─────────
-export type ClinicDayStatus = "OPEN" | "FULL" | "CLOSED" | "NOT_SCHEDULED" | "PAST" | "TOO_FAR";
-
-export interface ClinicDay {
-  date: string; // YYYY-MM-DD, clinic-local
-  status: ClinicDayStatus;
-  slots: string[]; // free start times, HH:MM — only when OPEN
-  label: string; // "Tue 21 Oct"
-  /** /day only: what the patient is told about a day that isn't open. */
-  message?: string | null;
 }
 
 export interface FlowNode { id: string; type: FlowNodeType; position: { x: number; y: number }; data: FlowNodeData }
@@ -1057,126 +1034,18 @@ export interface AdminWhatsAppNumber {
   activeCampaigns?: number;
 }
 
-// ── Chat outcomes, bookings, notes ────────────────────────────────────────
+// ── Chat outcomes and notes ───────────────────────────────────────────────
 
+// The raw API union. Only "FOLLOW_UP" can be set now; "BOOKED" (booking was
+// removed), "NOT_INTERESTED" and "NO_ANSWER" (dropped reporting labels) only
+// appear on old rows, and the UI
+// reads them as no outcome — see activeOutcome() in lib/chatOutcome.ts.
 export type ConversationOutcome = "BOOKED" | "NOT_INTERESTED" | "FOLLOW_UP" | "NO_ANSWER";
 
 export interface PersonRef {
   id: number;
   name: string | null;
   username: string;
-}
-
-export interface Booking {
-  id: number;
-  conversationId: number;
-  customerId: number;
-  whatsappNumberId: number;
-  appointmentAt: string;
-  service: string | null;
-  doctor?: string | null;
-  // The appointment's reference in Dok32, if the agent noted it.
-  dok32Ref?: string | null;
-  note: string | null;
-  // The booking request it came from, and the campaign it's credited to
-  // (proven or agent-confirmed only).
-  requestId?: number | null;
-  campaignId?: number | null;
-  leadSource?: LeadSource | null;
-  status: "BOOKED" | "CANCELLED";
-  cancelledAt: string | null;
-  createdAt: string;
-  createdBy?: PersonRef | null;
-}
-
-// ── Booking requests ──────────────────────────────────────────────────────
-
-export type BookingRequestStatus = "NEW" | "IN_PROGRESS" | "BOOKED" | "NOT_BOOKED";
-
-// Where a patient came from. CAMPAIGN needs a campaign; OTHER needs a note.
-export type LeadSource = "CAMPAIGN" | "INSTAGRAM" | "GOOGLE" | "REFERRAL" | "WALK_IN" | "RETURNING" | "OTHER";
-// AUTOMATIC = proven (came through the campaign's flow / replied to its
-// message); SUGGESTED = a campaign reached them lately, no proof — the agent
-// must confirm; CONFIRMED = an agent chose it. null = nothing known.
-export type LeadSourceStatus = "AUTOMATIC" | "SUGGESTED" | "CONFIRMED";
-
-// What "where did this patient come from" sends.
-export interface LeadSourceInput {
-  leadSource: LeadSource;
-  campaignId?: number;
-  note?: string;
-}
-
-export interface BookingSourceOptions {
-  leadSources: { value: LeadSource; label: string }[];
-  // This line's campaigns from the last 90 days.
-  campaigns: { id: number; name: string; startedAt: string | null }[];
-}
-export type NotBookedReason = "NO_ANSWER" | "NOT_INTERESTED" | "PRICE" | "CALL_BACK_LATER" | "BOOKED_ELSEWHERE" | "OTHER";
-
-// One appointment as the agent enters it when booking (service, date, time
-// required; the rest optional).
-export interface AppointmentInput {
-  service: string;
-  appointmentAt: string; // ISO
-  doctor?: string;
-  dok32Ref?: string;
-  note?: string;
-}
-
-// "This patient wants to book" — from the booking flow (FLOW) or an agent (AGENT).
-export interface BookingRequest {
-  id: number;
-  conversationId: number;
-  customerId: number;
-  whatsappNumberId: number;
-  source: "FLOW" | "AGENT";
-  // Credited campaign (proven or confirmed) — what campaign results count.
-  campaignId: number | null;
-  campaign?: { id: number; name: string } | null;
-  // A campaign that reached them lately, with no proof (needs confirming).
-  suggestedCampaignId?: number | null;
-  suggestedCampaign?: { id: number; name: string } | null;
-  leadSource?: LeadSource | null;
-  sourceStatus?: LeadSourceStatus | null;
-  sourceNote?: string | null;
-  sourceConfirmedAt?: string | null;
-  flowRunId: number | null;
-  // What the patient asked for, as collected: { service, preferred_date, contact_number, … }.
-  requested: Record<string, unknown>;
-  note: string | null;
-  status: BookingRequestStatus;
-  claimedById: number | null;
-  claimedBy?: PersonRef | null;
-  claimedAt: string | null;
-  handledById: number | null;
-  handledBy?: PersonRef | null;
-  handledAt: string | null;
-  notBookedReason: NotBookedReason | null;
-  notBookedNote: string | null;
-  createdAt: string;
-  updatedAt: string;
-  bookings: Booking[];
-  customer?: { id: number; name: string | null; phone: string };
-  conversation?: {
-    id: number;
-    status: "OPEN" | "PENDING" | "RESOLVED";
-    lastMessage: string | null;
-    lastMessageAt: string | null;
-    lastSenderType: "CUSTOMER" | "AGENT" | "BOT" | null;
-    awaitingReplySince: string | null;
-    assignedAgent: PersonRef | null;
-  };
-  // Working minutes it has been open (null once closed).
-  openMinutes?: number | null;
-}
-
-export interface BookingRequestCounts {
-  new: number;
-  inProgress: number;
-  open: number;
-  mine: number;
-  bookedToday: number;
 }
 
 export interface ConversationNote {
@@ -1194,7 +1063,6 @@ export interface ConversationOutcomeState {
   outcomeAt: string | null;
   outcomeBy: PersonRef | null;
   followUpAt: string | null;
-  bookings: Booking[];
 }
 
 // ── Supervision ───────────────────────────────────────────────────────────
@@ -1213,7 +1081,6 @@ export interface SupervisionAgent {
   // Their latest reply today (null if none yet).
   lastReplyAt: string | null;
   avgResponseMinutes: number | null;
-  bookedToday: number;
 }
 
 export interface SupervisionOverview {
@@ -1226,10 +1093,6 @@ export interface SupervisionOverview {
     // Patients waiting more than a day (the "Gone cold" tab).
     goneCold: number;
     longestWaitMinutes: number;
-    bookedToday: number;
-    bookingRequestsOpen: number;
-    bookingRequestsNew: number;
-    bookingRequestsOverSla: number;
     droppedHalfwayToday: number;
     flowsStartedToday: number;
     followUpsDue: number;
@@ -1245,14 +1108,13 @@ export interface SupervisionFlowState {
   flowName: string | null;
   status: "ACTIVE" | "COMPLETED" | "HANDED_OFF" | "STOPPED" | "EXPIRED" | "FAILED" | "STALLED";
   droppedHalfway: boolean;
-  bookingRequested: boolean;
   answers: Record<string, unknown>;
   startedAt: string;
   updatedAt: string;
 }
 
 // waiting = started waiting in the last 24h; cold = waiting longer than that.
-export type SupervisionFilter = "waiting" | "cold" | "booking" | "halfway" | "follow_up" | "booked" | "all";
+export type SupervisionFilter = "waiting" | "cold" | "halfway" | "follow_up" | "all";
 
 // The same patient's chat on another line (the list shows one row per patient).
 export interface SupervisionOtherChat {
@@ -1288,9 +1150,6 @@ export interface SupervisionConversation {
   followUpAt: string | null;
   followUpOverdue: boolean;
   flow: SupervisionFlowState | null;
-  latestBooking: Booking | null;
-  // The chat's open booking request, if any.
-  openRequest: BookingRequest | null;
   noteCount: number;
   // This patient's other chats that match the same tab (other lines).
   otherChats: SupervisionOtherChat[];
@@ -1312,8 +1171,6 @@ export interface SupervisionTimeline {
   waitingMinutes: number | null;
   overSla: boolean;
   slaMinutes: number;
-  bookings: Booking[];
-  bookingRequests: BookingRequest[];
   notes: ConversationNote[];
   flowRuns: SupervisionFlowState[];
   messages: {
@@ -1336,8 +1193,7 @@ export interface SupervisionTimeline {
 
 // One line of the live dashboard feed. type is "patient_message",
 // "agent_message", or an event: conversation.assigned / claimed /
-// status_changed / outcome_set / booking_cancelled, flow.handed_off,
-// booking_request.created / booked / not_booked. details is the event's data
+// status_changed / outcome_set, flow.handed_off. details is the event's data
 // (e.g. { agentUsername, previousAgentUsername }, { outcome }, { status }).
 export interface SupervisionActivity {
   id: string;
@@ -1368,17 +1224,8 @@ export interface SupervisionReport {
     withinSlaPercent: number | null;
     lateResponses: number;
     unanswered: number;
-    bookingRequests: number;
-    bookingRequestsBySource: Partial<Record<"FLOW" | "AGENT", number>>;
-    requestsBooked: number;
-    requestsNotBooked: number;
-    requestsStillOpen: number;
-    notBookedReasons: Partial<Record<NotBookedReason, number>>;
-    appointmentsBooked: number;
-    appointmentsCancelled: number;
-    // Booked appointments by where the patient came from (UNKNOWN = not set).
-    bookingsByLeadSource: Record<string, number>;
-    // Outcome changes made in the period: BOOKED / NOT_INTERESTED / FOLLOW_UP / NO_ANSWER / CLEARED.
+    // Outcome changes made in the period: FOLLOW_UP / CLEARED (old periods may also
+    // hold the legacy NOT_INTERESTED / NO_ANSWER / BOOKED, which the reports ignore).
     outcomes: Record<string, number>;
   };
   agents: {
@@ -1392,25 +1239,7 @@ export interface SupervisionReport {
     firstResponses: number;
     avgResponseMinutes: number | null;
     lateResponses: number;
-    appointmentsBooked: number;
-    requestsBooked: number;
-    requestsNotBooked: number;
     outcomesSet: number;
-  }[];
-  bookings: {
-    id: number;
-    customer: { id: number; name: string | null; phone: string };
-    service: string | null;
-    appointmentAt: string;
-    doctor: string | null;
-    dok32Ref: string | null;
-    note: string | null;
-    status: "BOOKED" | "CANCELLED";
-    bookedBy: PersonRef | null;
-    bookedAt: string;
-    campaign: string | null;
-    leadSource: LeadSource | null;
-    conversationId: number;
   }[];
   campaigns: {
     id: number;
@@ -1422,8 +1251,6 @@ export interface SupervisionReport {
     sent: number;
     failed: number;
     replied: number;
-    bookingRequests: number;
-    booked: number;
   }[];
   // Every chat with a message in the period.
   chats: {
@@ -1433,7 +1260,6 @@ export interface SupervisionReport {
     assignedAgent: PersonRef | null;
     status: "OPEN" | "PENDING" | "RESOLVED";
     outcome: ConversationOutcome | null;
-    request: { status: BookingRequestStatus; notBookedReason: NotBookedReason | null } | null;
     messages: number;
     patientMessages: number;
     avgResponseMinutes: number | null;
@@ -1468,68 +1294,6 @@ export interface DetailedReportMeta {
 export type ResponseBandKey = "under5" | "5to15" | "15to30" | "30to60" | "over60";
 export type ResponseBands = Record<ResponseBandKey, number>;
 
-export interface BookingsReportAppointment {
-  id: number;
-  service: string | null;
-  appointmentAt: string;
-  doctor: string | null;
-  dok32Ref: string | null;
-  note: string | null;
-  status: "BOOKED" | "CANCELLED";
-  bookedBy: string | null;
-  bookedAt: string;
-}
-
-export interface BookingsReportRequest {
-  id: number;
-  conversationId: number | null;
-  createdAt: string;
-  customer: { id: number; name: string | null; phone: string };
-  line: string | null;
-  openedVia: "FLOW" | "AGENT";
-  /** The raw answers collected: { service, preferred_date, … }. */
-  requested: Record<string, unknown> | null;
-  note: string | null;
-  leadSource: string | null;
-  /** AUTOMATIC | SUGGESTED | CONFIRMED | null. */
-  sourceStatus: string | null;
-  campaign: string | null;
-  suggestedCampaign: string | null;
-  status: BookingRequestStatus;
-  claimedBy: string | null;
-  claimedAt: string | null;
-  handledBy: string | null;
-  handledAt: string | null;
-  minutesToPickUp: number | null;
-  minutesToClose: number | null;
-  notBookedReason: string | null;
-  notBookedNote: string | null;
-  appointmentsBooked: number;
-  appointmentsCancelled: number;
-  appointments: BookingsReportAppointment[];
-}
-
-export interface BookingsReport extends DetailedReportMeta {
-  summary: {
-    requests: number;
-    byStatus: Partial<Record<BookingRequestStatus, number>>;
-    byOpenedVia: Partial<Record<"FLOW" | "AGENT", number>>;
-    /** Lead source keys plus SUGGESTED (a guess, not confirmed) and UNKNOWN. */
-    byLeadSource: Record<string, number>;
-    notBookedReasons: Record<string, number>;
-    appointmentsBooked: number;
-    appointmentsCancelled: number;
-    patientsBooked: number;
-    /** Booked ÷ closed (booked + couldn't book), in %. */
-    bookingRate: number | null;
-    avgMinutesToPickUp: number | null;
-    avgMinutesToClose: number | null;
-  };
-  /** By the person who closed the request. */
-  byAgent: { agent: string; booked: number; notBooked: number; appointments: number; avgMinutesToClose: number | null }[];
-  requests: BookingsReportRequest[];
-}
-
 export interface TeamReportAgent {
   id: number;
   name: string | null;
@@ -1546,14 +1310,9 @@ export interface TeamReportAgent {
   withinSlaPercent: number | null;
   lateResponses: number;
   responseBands: ResponseBands;
-  /** Outcomes set: BOOKED / NOT_INTERESTED / FOLLOW_UP / NO_ANSWER / CLEARED. */
+  /** Outcomes set: FOLLOW_UP / CLEARED (legacy NOT_INTERESTED / NO_ANSWER / BOOKED are ignored). */
   outcomes: Record<string, number>;
   notesWritten: number;
-  requestsTaken: number;
-  requestsBooked: number;
-  requestsNotBooked: number;
-  appointmentsBooked: number;
-  patientsBooked: number;
   openChatsNow: number;
 }
 
@@ -1570,7 +1329,6 @@ export interface TeamReport extends DetailedReportMeta {
     lateResponses: number;
     unanswered: number;
     responseBands: ResponseBands;
-    appointmentsBooked: number;
   };
   agents: TeamReportAgent[];
   daily: {
@@ -1581,7 +1339,6 @@ export interface TeamReport extends DetailedReportMeta {
     avgFirstResponseMinutes: number | null;
     lateResponses: number;
     unanswered: number;
-    appointmentsBooked: number;
   }[];
   /** 24 entries, clinic time. */
   hourly: { hour: number; patientMessages: number; staffReplies: number }[];
@@ -1605,25 +1362,12 @@ export interface CampaignsReportCampaign {
   delivered: number;
   read: number;
   replied: number;
-  bookingRequests: number;
-  /** Requests where this campaign is only a suggestion (not confirmed). */
-  suggestedRequests: number;
-  requestsBooked: number;
-  requestsNotBooked: number;
-  requestsOpen: number;
-  notBookedReasons: Record<string, number>;
-  patientsBooked: number;
-  appointmentsBooked: number;
-  /** Booked appointments by service ("—" = not recorded). */
-  services: Record<string, number>;
   optOuts: number;
-  /** Percentages of sent (bookedOfReplied: of replied), one decimal; null when the base is 0. */
+  /** Percentages of sent, one decimal; null when the base is 0. */
   rates: {
     delivered: number | null;
     read: number | null;
     replied: number | null;
-    booked: number | null;
-    bookedOfReplied: number | null;
     optOut: number | null;
   };
 }
@@ -1635,9 +1379,6 @@ export interface CampaignsReport extends DetailedReportMeta {
     delivered: number;
     read: number;
     replied: number;
-    bookingRequests: number;
-    patientsBooked: number;
-    appointmentsBooked: number;
     optOuts: number;
   } | null;
   campaigns: CampaignsReportCampaign[];
@@ -1667,12 +1408,7 @@ export interface ChatsReportChat {
   longestWaitMinutes: number;
   lateResponses: number;
   unanswered: boolean;
-  /** Status of the chat's latest booking request. */
-  bookingRequest: BookingRequestStatus | null;
-  notBookedReason: string | null;
-  leadSource: string | null;
   campaign: string | null;
-  appointments: number;
   notes: number;
 }
 

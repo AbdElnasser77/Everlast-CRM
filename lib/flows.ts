@@ -27,31 +27,22 @@ export const STEP_META: Record<FlowNodeType, StepMeta> = {
   list: { label: "List", hint: "A menu of up to 10 options", color: "#8C7BC0" },
   carousel: { label: "Carousel template", hint: "An approved carousel template (paid per send)", color: "#0E8C7A" },
   cards: { label: "Product cards", hint: "Swipeable cards with images and buttons — free in the chat window", color: "#D9466F" },
-  question: { label: "Question", hint: "Ask something and save the answer (e.g. a booking date)", color: "#E2A33B" },
-  slot_picker: { label: "Pick appointment", hint: "The patient picks a day and time that are free in the clinic system", color: "#2F8F6B" },
+  question: { label: "Question", hint: "Ask something and save the answer (e.g. their name)", color: "#E2A33B" },
+  // Retired step: it can no longer be added or saved, but older flows may
+  // still contain one, so it renders as a "delete this step" card. At runtime
+  // the server hands the patient to the team when a flow reaches it.
+  slot_picker: {
+    label: "Pick appointment (no longer available — delete this step)",
+    hint: "This step was retired. Delete it to save the flow — a patient who reaches it is handed to the team.",
+    color: "#9CA3AF",
+  },
   tag: { label: "Tag", hint: "Add a tag to the customer", color: "#4AA7C2" },
   assign: { label: "Hand to agent", hint: "Assign the chat to a person — automation stops", color: "#C8475B" },
   end: { label: "End", hint: "Optionally send a last message, then stop", color: "#6B7280" },
 };
 
 /** Step types offered in the palette (the Start step is created with the flow). */
-export const ADDABLE_STEPS: FlowNodeType[] = ["message", "list", "cards", "carousel", "question", "slot_picker", "tag", "assign", "end"];
-
-/**
- * A Pick appointment step's wording — mirrors SLOT_DEFAULTS in the server's
- * flowEngine.js, which uses these whenever a text is left empty. {{day}} is
- * the chosen day ("Tue 21 Oct").
- */
-export const SLOT_DEFAULTS = {
-  dayText: "📅 Which day suits you best? Pick a day below, or type a date (e.g. 25 Oct).",
-  timeText: "🕒 Which time suits you on {{day}}? Pick a time below, or type one (e.g. 4:30 pm).",
-  noSlotsText: "Sorry, we have no free appointments in the coming days — one of our team will contact you to arrange a time.",
-  fallbackDayText: "Which day suits you?",
-  fallbackTimeText: "What time suits you best?",
-} as const;
-
-/** What a Pick appointment step saves (fixed names — booking requests read them). */
-export const SLOT_VARIABLES = ["preferred_date", "preferred_time", "slot_label"];
+export const ADDABLE_STEPS: FlowNodeType[] = ["message", "list", "cards", "carousel", "question", "tag", "assign", "end"];
 
 export const RUN_STATUS_META: Record<FlowRunStatus, { label: string; cls: string }> = {
   ACTIVE: { label: "In progress", cls: "bg-blue-50 text-blue-700" },
@@ -78,8 +69,8 @@ export function defaultData(type: FlowNodeType): FlowNodeData {
       return { text: "", cards: [newFlowCard(2), newFlowCard(2)] };
     case "question":
       return { text: "", inputType: "text", variable: "" };
-    case "slot_picker":
-      return { ...SLOT_DEFAULTS };
+    case "slot_picker": // retired — never added any more
+      return {};
     case "tag":
       return { tag: "" };
     case "assign":
@@ -117,7 +108,9 @@ export function outputsOf(type: FlowNodeType, data: FlowNodeData): [string, stri
     case "question":
       return [["next", "After a valid answer"]];
     case "slot_picker":
-      return [["next", "After a day and time"]];
+      // Retired: kept only so an old flow's existing line still draws. It is
+      // never followed — the patient is handed to the team here.
+      return [["next", "Not used — delete this step"]];
     case "tag":
       return [["next", "Then"]];
     default:
@@ -141,7 +134,7 @@ export function previewOf(node: { type: FlowNodeType; data: FlowNodeData }): str
     case "question":
       return d.text || "No text yet";
     case "slot_picker":
-      return d.dayText || SLOT_DEFAULTS.dayText;
+      return "No longer available. Delete this step and reconnect the flow — a patient who reaches it is handed to the team.";
     case "carousel":
       return d.cards?.length ? `${d.cards.length} cards: ${d.cards.map((c) => c.label).join(", ")}` : "Choose a carousel template";
     case "cards":

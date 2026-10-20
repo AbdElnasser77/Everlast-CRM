@@ -13,7 +13,7 @@ import { PICKS, periodLabel, pickIds, reportFileName } from "@/components/superv
 
 // ── Overview report ───────────────────────────────────────────────────────────
 //
-// A period's numbers (summary, team, bookings, campaigns, chats) plus chosen
+// A period's numbers (summary, team, campaigns, chats) plus chosen
 // chat transcripts, as one A4 document. The old /supervision/report URL
 // redirects here.
 
@@ -46,7 +46,7 @@ function OverviewScreen() {
   return (
     <ReportShell
       title="Overview report"
-      description="A period’s chats, response times, bookings and campaigns — with chosen transcripts — as a PDF."
+      description="A period’s chats, response times and campaigns — with chosen transcripts — as a PDF."
       icon={FileText}
       period={period}
       data={report}

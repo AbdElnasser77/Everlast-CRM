@@ -76,7 +76,7 @@ export default function LoginPage() {
             Every client conversation, in one calm place.
           </h1>
           <p className="text-white/60 text-[15px] leading-relaxed max-w-[340px]">
-            Messages, campaigns and bookings for the front desk team — synced in
+            Messages, campaigns and follow-ups for the front desk team — synced in
             real time.
           </p>
         </div>

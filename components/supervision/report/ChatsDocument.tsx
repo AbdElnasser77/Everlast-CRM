@@ -1,52 +1,40 @@
 // Chats — one row per chat with a message in the period: who handled it, how
-// fast, the longest wait, outcome, booking and source.
+// fast, the longest wait, follow-up and campaign.
 
 import type { ChatsReport, ChatsReportChat } from "@/types";
-import { formatMinutes, formatPhone, notBookedReasonLabel } from "../format";
+import { formatMinutes, formatPhone } from "../format";
 import {
   CHAT_STATUS_ORDER,
-  OUTCOME_ORDER,
   type TimeFormat,
+  chatOutcomeCounts,
   chatStatusLabel,
-  leadSourceReportLabel,
+  hasOutcome,
   orderedEntries,
   outcomeOrNone,
-  requestStatusLabel,
 } from "./reportFormat";
 import { CountTable, Empty, Kpi, ReportCover, ReportEnd, Section, docContext, n, standardFacts } from "./parts";
-
-/** The chat's booking request as one phrase: "Booked", "Couldn’t book · Price", "Open · in progress". */
-export function chatBookingLabel(c: Pick<ChatsReportChat, "bookingRequest" | "notBookedReason">): string {
-  if (!c.bookingRequest) return "";
-  if (c.bookingRequest === "NOT_BOOKED") return `Couldn’t book · ${notBookedReasonLabel(c.notBookedReason)}`;
-  return requestStatusLabel(c.bookingRequest);
-}
 
 function Summary({ report }: { report: ChatsReport }) {
   const s = report.summary;
   const rows = report.chats;
   const sum = (f: (c: ChatsReportChat) => number) => rows.reduce((a, c) => a + f(c), 0);
-  const withRequest = rows.filter((c) => c.bookingRequest).length;
   return (
     <Section title="Summary">
-      <div className="sr-kpis sr-kpis-5">
+      <div className="sr-kpis">
         <Kpi label="Chats" value={n(s.chats)} sub="with a message in the period" />
         <Kpi label="Unanswered" value={n(s.unanswered)} sub="patient still waiting" tone={s.unanswered > 0 ? "bad" : undefined} />
         <Kpi label="With late replies" value={n(s.withLateResponses)} sub={`${report.slaMinutes} min or more`} tone={s.withLateResponses > 0 ? "bad" : undefined} />
         <Kpi label="Patient messages" value={n(sum((c) => c.patientMessages))} />
         <Kpi label="Staff messages" value={n(sum((c) => c.staffMessages))} sub={`${n(sum((c) => c.botMessages))} bot · ${n(sum((c) => c.campaignMessages))} campaign`} />
-        <Kpi label="Booking requests" value={n(withRequest)} sub="chats with one" />
-        <Kpi label="Outcome: booked" value={n(s.byOutcome.BOOKED ?? 0)} tone={(s.byOutcome.BOOKED ?? 0) > 0 ? "good" : undefined} />
-        <Kpi label="Appointments" value={n(sum((c) => c.appointments))} sub="on these chats, all time" />
         <Kpi label="Opted out" value={n(rows.filter((c) => c.optedOut).length)} sub="patients" />
         <Kpi label="Chats with notes" value={n(rows.filter((c) => c.notes > 0).length)} sub={`${n(sum((c) => c.notes))} notes`} />
       </div>
       <div className="sr-threecol">
         <div>
-          <div className="sr-h3">By outcome</div>
+          <div className="sr-h3">By follow-up</div>
           <CountTable
-            head={["Outcome", "Chats"]}
-            rows={orderedEntries(s.byOutcome, OUTCOME_ORDER, { last: ["NONE"] }).map(([k, v]) => ({ key: k, label: outcomeOrNone(k), count: v, muted: k === "NONE" }))}
+            head={["Follow-up", "Chats"]}
+            rows={chatOutcomeCounts(s.byOutcome).map(([k, v]) => ({ key: k, label: outcomeOrNone(k), count: v, muted: k === "NONE" }))}
             shareOf={s.chats}
             empty="No chats in this period."
           />
@@ -77,7 +65,6 @@ function Summary({ report }: { report: ChatsReport }) {
 
 function ChatRow({ c, tf }: { c: ChatsReportChat; tf: TimeFormat }) {
   const others = c.repliedBy.filter((x) => x !== c.assignedTo);
-  const booking = chatBookingLabel(c);
   return (
     <tr>
       <td>
@@ -96,10 +83,11 @@ function ChatRow({ c, tf }: { c: ChatsReportChat; tf: TimeFormat }) {
         {others.length > 0 ? <span className="sr-sub">replied: {others.join(", ")}</span> : null}
       </td>
       <td>{chatStatusLabel(c.status)}</td>
-      <td className={c.outcome === "BOOKED" ? "sr-good" : undefined}>
-        {c.outcome ? outcomeOrNone(c.outcome) : <span className="sr-muted">—</span>}
-        {c.outcomeBy ? <span className="sr-sub">by {c.outcomeBy}</span> : null}
-        {c.followUpAt ? <span className="sr-sub sr-nowrap">follow up {tf.short(c.followUpAt)}</span> : null}
+      <td>
+        {/* Only a follow-up shows; a legacy outcome counts as none. */}
+        {hasOutcome(c.outcome) ? outcomeOrNone(c.outcome) : <span className="sr-muted">—</span>}
+        {hasOutcome(c.outcome) && c.outcomeBy ? <span className="sr-sub">by {c.outcomeBy}</span> : null}
+        {hasOutcome(c.outcome) && c.followUpAt ? <span className="sr-sub sr-nowrap">follow up {tf.short(c.followUpAt)}</span> : null}
       </td>
       <td className="sr-nowrap">
         {tf.short(c.firstMessageAt)}
@@ -116,12 +104,7 @@ function ChatRow({ c, tf }: { c: ChatsReportChat; tf: TimeFormat }) {
       <td className={`sr-num${c.longestWaitMinutes >= 60 ? " sr-bad" : ""}`}>{c.longestWaitMinutes > 0 ? formatMinutes(c.longestWaitMinutes) : "—"}</td>
       <td className={`sr-num${c.lateResponses > 0 ? " sr-bad" : ""}`}>{n(c.lateResponses)}</td>
       <td className={c.unanswered ? "sr-bad" : ""}>{c.unanswered ? "Yes" : ""}</td>
-      <td className={c.bookingRequest === "BOOKED" ? "sr-good" : undefined}>{booking || <span className="sr-muted">—</span>}</td>
-      <td>
-        {c.leadSource ? leadSourceReportLabel(c.leadSource) : c.campaign ? "Campaign" : <span className="sr-muted">—</span>}
-        {c.campaign ? <span className="sr-sub">{c.campaign}</span> : null}
-      </td>
-      <td className="sr-num">{n(c.appointments)}</td>
+      <td>{c.campaign || <span className="sr-muted">—</span>}</td>
       <td className="sr-num">{n(c.notes)}</td>
     </tr>
   );
@@ -142,7 +125,7 @@ function Chats({ report, tf }: { report: ChatsReport; tf: TimeFormat }) {
                 <th>Line</th>
                 <th>Assigned to</th>
                 <th>Status</th>
-                <th>Outcome</th>
+                <th>Follow-up</th>
                 <th>
                   First message
                   <span className="sr-sub">Last message</span>
@@ -156,9 +139,7 @@ function Chats({ report, tf }: { report: ChatsReport; tf: TimeFormat }) {
                 <th className="sr-num">Longest wait</th>
                 <th className="sr-num">Late</th>
                 <th>Unans.</th>
-                <th>Booking request</th>
-                <th>Source</th>
-                <th className="sr-num">Appts</th>
+                <th>Campaign</th>
                 <th className="sr-num">Notes</th>
               </tr>
             </thead>
@@ -169,7 +150,7 @@ function Chats({ report, tf }: { report: ChatsReport; tf: TimeFormat }) {
             </tbody>
           </table>
           <p className="sr-note">
-            Messages and response times count only this period. Longest wait includes a patient still waiting. Booking request = the chat’s latest one.
+            Messages and response times count only this period. Longest wait includes a patient still waiting.
           </p>
           {report.truncated && (
             <p className="sr-note">

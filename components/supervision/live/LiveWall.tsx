@@ -6,7 +6,6 @@ import {
   Activity,
   AlertTriangle,
   CalendarCheck,
-  CalendarClock,
   Clock,
   Inbox,
   Maximize,
@@ -56,8 +55,6 @@ const LIVE_EVENTS = [
   "conversation.assigned",
   "conversation.outcome",
   "flow.handoff",
-  "booking_request.created",
-  "booking_request.updated",
 ];
 
 const PRESENCE_ORDER = { ONLINE: 0, ON_BREAK: 1, OFFLINE: 2 } as const;
@@ -127,25 +124,23 @@ function Kpi({
   value,
   sub,
   alert,
-  good,
 }: {
   label: string;
   icon: ReactNode;
   value: ReactNode;
   sub: ReactNode;
   alert?: boolean;
-  good?: boolean;
 }) {
   return (
     <div className={`${PANEL} relative px-5 py-4 flex flex-col min-w-0 overflow-hidden ${alert ? "!border-red-400/40 !bg-red-500/[0.08]" : ""}`}>
       {alert && <span aria-hidden className="absolute left-0 top-4 bottom-4 w-1 rounded-r-full bg-red-400" />}
       <span className="flex items-center justify-between gap-2">
         <span className="text-[12px] 2xl:text-[13px] font-semibold uppercase tracking-wider text-wall-ink/50 truncate">{label}</span>
-        <span className={alert ? "text-red-700" : good ? "text-emerald-700" : "text-wall-ink/30"}>{icon}</span>
+        <span className={alert ? "text-red-700" : "text-wall-ink/30"}>{icon}</span>
       </span>
       <span
         className={`text-[40px] 2xl:text-[52px] font-bold leading-none tabular-nums mt-2 ${
-          alert ? "text-red-700" : good ? "text-emerald-700" : "text-wall-ink"
+          alert ? "text-red-700" : "text-wall-ink"
         }`}
       >
         {value}
@@ -158,8 +153,8 @@ function Kpi({
 function KpiRow({ overview }: { overview: SupervisionOverview | null }) {
   if (!overview) {
     return (
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 2xl:gap-4">
-        {Array.from({ length: 6 }).map((_, i) => (
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 2xl:gap-4">
+        {Array.from({ length: 4 }).map((_, i) => (
           <div key={i} className={`${PANEL} h-[132px] 2xl:h-[148px] animate-pulse`} />
         ))}
       </div>
@@ -168,7 +163,7 @@ function KpiRow({ overview }: { overview: SupervisionOverview | null }) {
   const k = overview.kpis;
   const sla = overview.slaMinutes;
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 2xl:gap-4">
+    <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 2xl:gap-4">
       <Kpi
         label="Waiting now"
         icon={<Clock className="w-5 h-5" />}
@@ -195,35 +190,6 @@ function KpiRow({ overview }: { overview: SupervisionOverview | null }) {
         sub={k.goneCold > 0 ? <span className="text-amber-700">Waiting over a day</span> : "None waiting over a day"}
       />
       <Kpi
-        label="Booking requests"
-        icon={<CalendarClock className="w-5 h-5" />}
-        value={k.bookingRequestsOpen}
-        alert={(k.bookingRequestsOverSla ?? 0) > 0}
-        sub={
-          k.bookingRequestsOpen === 0 ? (
-            "None open"
-          ) : (
-            <>
-              {(k.bookingRequestsNew ?? 0) > 0 ? (
-                <span className="text-amber-700 font-semibold">{k.bookingRequestsNew} not picked up</span>
-              ) : (
-                <span className="text-emerald-700">All picked up</span>
-              )}
-              {(k.bookingRequestsOverSla ?? 0) > 0 && (
-                <span className="text-red-700 font-bold"> · {k.bookingRequestsOverSla} over {sla} min</span>
-              )}
-            </>
-          )
-        }
-      />
-      <Kpi
-        label="Booked today"
-        icon={<CalendarCheck className="w-5 h-5" />}
-        value={k.bookedToday}
-        good={k.bookedToday > 0}
-        sub="Appointments set by the team"
-      />
-      <Kpi
         label="Avg first response"
         icon={<Timer className="w-5 h-5" />}
         value={formatMinutes(k.avgFirstResponseMinutes)}
@@ -245,12 +211,12 @@ function KpiRow({ overview }: { overview: SupervisionOverview | null }) {
 
 // ── Agents ──
 
-function AgentStat({ label, value, tone }: { label: string; value: string | number; tone?: "red" | "green" | "muted" }) {
+function AgentStat({ label, value, tone }: { label: string; value: string | number; tone?: "red" | "muted" }) {
   return (
     <div className="min-w-0">
       <p
         className={`text-[20px] 2xl:text-[22px] font-bold leading-none tabular-nums ${
-          tone === "red" ? "text-red-700" : tone === "green" ? "text-emerald-700" : tone === "muted" ? "text-wall-ink/25" : "text-wall-ink"
+          tone === "red" ? "text-red-700" : tone === "muted" ? "text-wall-ink/25" : "text-wall-ink"
         }`}
       >
         {value}
@@ -293,7 +259,7 @@ function AgentTile({ agent, slaMinutes, now }: { agent: SupervisionAgent; slaMin
           </p>
         </div>
       </div>
-      <div className="grid grid-cols-5 gap-2 mt-3 pt-3 border-t border-wall-ink/[0.06]">
+      <div className="grid grid-cols-4 gap-2 mt-3 pt-3 border-t border-wall-ink/[0.06]">
         <AgentStat label="Open" value={agent.openChats} tone={agent.openChats === 0 ? "muted" : undefined} />
         <AgentStat
           label={late ? `${agent.waitingOverSla} late` : "Waiting"}
@@ -302,7 +268,6 @@ function AgentTile({ agent, slaMinutes, now }: { agent: SupervisionAgent; slaMin
         />
         <AgentStat label="Replies" value={agent.repliesToday} tone={agent.repliesToday === 0 ? "muted" : undefined} />
         <AgentStat label="Avg" value={formatMinutes(agent.avgResponseMinutes)} tone={agent.avgResponseMinutes === null ? "muted" : undefined} />
-        <AgentStat label="Booked" value={agent.bookedToday} tone={agent.bookedToday > 0 ? "green" : "muted"} />
       </div>
     </div>
   );
@@ -873,7 +838,7 @@ export function LiveWall() {
                 <div className="h-full flex flex-col items-center justify-center text-center py-10">
                   <Activity className="w-8 h-8 text-wall-ink/20 mb-2" />
                   <p className="text-[15px] font-semibold text-wall-ink/70">{feedNow.error ? "Couldn't load the feed" : "Quiet for now"}</p>
-                  <p className="text-[13px] text-wall-ink/40 mt-1">Messages, hand-offs and bookings show up here as they happen.</p>
+                  <p className="text-[13px] text-wall-ink/40 mt-1">Messages, hand-offs and follow-ups show up here as they happen.</p>
                 </div>
               ) : (
                 <ul className="space-y-1.5">

@@ -34,7 +34,7 @@ function formatRelativeTime(iso: string | null): string {
 }
 
 // Roles with an inbox (conversation:write on the server, config/permissions.js).
-// Moving someone OFF these releases their open chats and booking requests.
+// Moving someone OFF these releases their open chats.
 const INBOX_ROLES: UserRole[] = ["ADMIN", "SUPERVISOR", "AGENT"];
 
 function getInitials(user: AgentUser): string {
@@ -369,7 +369,7 @@ function EditUserDrawer({ open, user, onClose, onSaved }: EditDrawerProps) {
         username: username.trim(),
         role,
       });
-      // A role without an inbox released their chats and requests to the queue.
+      // A role without an inbox released their chats to the queue.
       if (res.handedOver) toast.success(`Saved · ${handOverSummary(res.handedOver)}`);
       onSaved();
       onClose();
@@ -403,8 +403,8 @@ function EditUserDrawer({ open, user, onClose, onSaved }: EditDrawerProps) {
           </div>
           {user && INBOX_ROLES.includes(user.role) && !INBOX_ROLES.includes(role) && (
             <p className="mt-3 text-[12px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-              {ROLE_COPY[role].label} has no inbox: {user.name || user.username}&apos;s open chats and the booking requests they&apos;ve
-              taken will be released back to the queue, and they&apos;ll be signed out.
+              {ROLE_COPY[role].label} has no inbox: {user.name || user.username}&apos;s open chats will be released back to the
+              queue, and they&apos;ll be signed out.
             </p>
           )}
         </div>
@@ -514,8 +514,8 @@ interface DeleteConfirmDrawerProps {
 function DeleteConfirmDrawer({ open, user, active, onClose, onDeleted, onDeactivateInstead }: DeleteConfirmDrawerProps) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // The server refuses to delete anyone with chats, replies or bookings in
-  // the history (USER_HAS_HISTORY): deactivating is the way out.
+  // The server refuses to delete anyone with chats or replies in the
+  // history (USER_HAS_HISTORY): deactivating is the way out.
   const [history, setHistory] = useState<string | null>(null);
 
   useEffect(() => {
@@ -532,7 +532,7 @@ function DeleteConfirmDrawer({ open, user, active, onClose, onDeleted, onDeactiv
       onClose();
     } catch (err) {
       if (err instanceof ApiError && err.code === "USER_HAS_HISTORY") {
-        setHistory(err.message || "This person has chats, replies or bookings in the history. Deactivate them instead.");
+        setHistory(err.message || "This person has chats or replies in the history. Deactivate them instead.");
         return;
       }
       setError(err instanceof Error ? err.message : "Failed to delete user");
@@ -611,7 +611,7 @@ const ROLE_COPY: Record<UserRole, { label: string; blurb: string }> = {
   MARKETING: { label: "Marketing", blurb: "Campaigns, audiences and templates" },
   SUPERVISOR: {
     label: "Supervisor",
-    blurb: "An agent who also manages the agents: sees every chat, waiting times, bookings and outcomes on the Supervision page. Can reply, reassign and leave notes; can read campaign results.",
+    blurb: "An agent who also manages the agents: sees every chat, waiting times and follow-ups on the Supervision page. Can reply, reassign and leave notes; can read campaign results.",
   },
   AGENT: { label: "Agent", blurb: "Inbox, contacts and replies" },
 };

@@ -11,7 +11,6 @@ import {
 import type { AuditLog, StatsOverview, MessageChartDay, AgentStat } from "@/types";
 import { useCurrentUser } from "@/components/CurrentUserProvider";
 import { PageSpinner } from "@/components/ui/spinner";
-import ClinicDayBoard from "@/components/ClinicDayBoard";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -239,8 +238,6 @@ export default function DashboardPage() {
   // name: see CurrentUserProvider. `ready` is false until /users/me answers.
   const { ready, can } = useCurrentUser();
   const allowed = can("stats:read");
-  const canSeeClinic = can("clinic:read");
-  const [tab, setTab] = useState<"overview" | "clinic">("overview");
   const [overview, setOverview] = useState<StatsOverview | null>(null);
   const [chartDays, setChartDays] = useState<{ label: string; incoming: number; outgoing: number }[]>([]);
   const [agents, setAgents] = useState<AgentStat[]>([]);
@@ -314,29 +311,6 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {canSeeClinic && (
-        <div className="mt-5 inline-flex bg-white border border-gray-100 rounded-lg p-1 gap-1">
-          {([
-            ["overview", "Overview"],
-            ["clinic", "Clinic day"],
-          ] as const).map(([key, label]) => (
-            <button
-              key={key}
-              onClick={() => setTab(key)}
-              className={`text-[13px] font-semibold rounded-md px-3.5 py-1.5 transition-colors ${
-                tab === key ? "bg-brand text-white" : "text-gray-500 hover:text-gray-800"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {tab === "clinic" && canSeeClinic ? (
-        <ClinicDayBoard />
-      ) : (
-      <>
       {/* Stat cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
         <StatCard
@@ -394,8 +368,6 @@ export default function DashboardPage() {
           <AgentPerformanceTable agents={agents} />
         )}
       </div>
-      </>
-      )}
     </div>
   );
 }

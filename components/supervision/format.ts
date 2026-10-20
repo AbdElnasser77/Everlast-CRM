@@ -75,7 +75,7 @@ export function dayLabel(iso: string): string {
   return shortDate(iso);
 }
 
-/** Local YYYY-MM-DD, for grouping and for the bookings date range. */
+/** Local YYYY-MM-DD, for grouping by day. */
 export function localDay(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
@@ -161,54 +161,4 @@ export function answerText(v: unknown): string {
   } catch {
     return String(v);
   }
-}
-
-// ── Booking requests ──────────────────────────────────────────────────────
-
-export const NOT_BOOKED_REASON_LABEL: Record<string, string> = {
-  NO_ANSWER: "No answer",
-  NOT_INTERESTED: "Not interested",
-  PRICE: "Price",
-  CALL_BACK_LATER: "Call back later",
-  BOOKED_ELSEWHERE: "Booked elsewhere",
-  OTHER: "Other",
-};
-
-export function notBookedReasonLabel(reason: string | null | undefined): string {
-  if (!reason) return "No reason given";
-  return NOT_BOOKED_REASON_LABEL[reason] ?? humanizeKey(reason);
-}
-
-/** A collected answer, with a bare date ("2026-10-14" / ISO) shown as "Tue 14 Oct". */
-export function requestedValue(key: string, v: unknown): string {
-  if (typeof v === "string" && /date|day|when/i.test(key) && /^\d{4}-\d{2}-\d{2}/.test(v)) {
-    const d = new Date(v.length === 10 ? `${v}T00:00:00` : v);
-    if (!Number.isNaN(d.getTime())) return v.length === 10 ? shortDate(d.toISOString()) : dateTime(v);
-  }
-  return answerText(v);
-}
-
-const SERVICE_KEYS = ["service", "treatment", "requested_service", "service_name"];
-const DATE_KEYS = ["preferred_date", "date", "preferred_day", "appointment_date"];
-const TIME_KEYS = ["preferred_time", "time", "time_slot"];
-
-function firstValue(requested: Record<string, unknown> | null | undefined, keys: string[]): { key: string; value: unknown } | null {
-  if (!requested) return null;
-  for (const k of keys) {
-    const v = requested[k];
-    if (v !== null && v !== undefined && v !== "") return { key: k, value: v };
-  }
-  return null;
-}
-
-/** One short line of what was asked for: "Teeth cleaning · Tue 14 Oct · evening". Empty if nothing useful. */
-export function requestSummary(requested: Record<string, unknown> | null | undefined): string {
-  const parts: string[] = [];
-  const service = firstValue(requested, SERVICE_KEYS);
-  if (service) parts.push(answerText(service.value));
-  const date = firstValue(requested, DATE_KEYS);
-  if (date) parts.push(requestedValue(date.key, date.value));
-  const time = firstValue(requested, TIME_KEYS);
-  if (time) parts.push(answerText(time.value));
-  return parts.join(" · ");
 }

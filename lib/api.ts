@@ -485,9 +485,9 @@ export function apiCreateUser(data: { name?: string; username: string; password:
 
 /**
  * `isActive: false` deactivates (they're signed out and can't sign in). When
- * that — or a role change — takes away their inbox, their open chats and taken
- * booking requests go to `handOverTo` (a user id), or back to the queue when
- * it's null/omitted; `handedOver` says what moved.
+ * that — or a role change — takes away their inbox, their open chats go to
+ * `handOverTo` (a user id), or back to the queue when it's null/omitted;
+ * `handedOver` says what moved.
  */
 export function apiUpdateUser(
   id: number | string,
@@ -518,7 +518,7 @@ export function apiUpdateMyStatus(status: import("@/types").UserStatus) {
   return apiFetch<import("@/types").UserResponse>("/api/users/me/status", { method: "PUT", body: JSON.stringify({ status }) });
 }
 
-/** End of shift: my open chats and taken booking requests to a colleague, or back to the queue (no id). */
+/** End of shift: my open chats to a colleague, or back to the queue (no id). */
 export function apiHandOverMine(toUserId: number | null) {
   return apiFetch<{ success: boolean; data: import("@/types").HandOverResult }>("/api/users/me/hand-over", {
     method: "POST",
@@ -526,7 +526,7 @@ export function apiHandOverMine(toUserId: number | null) {
   }, { numberScoped: false });
 }
 
-/** Supervisor: move someone's open chats and taken booking requests (they're off, absent…). */
+/** Supervisor: move someone's open chats (they're off, absent…). */
 export function apiSupervisionHandOver(fromUserId: number, toUserId: number | null) {
   return apiFetch<{ success: boolean; data: import("@/types").HandOverResult }>("/api/supervision/hand-over", {
     method: "POST",
@@ -548,12 +548,6 @@ export function apiGetStatsMessages(days = 7) {
 
 export function apiGetStatsAgents() {
   return apiFetch<import("@/types").StatsAgentsResponse>("/api/stats/agents");
-}
-
-// The n8n clinic-day board, proxied by the backend. `html` is a full page.
-export function apiGetClinicDay(date?: string) {
-  const qs = date ? `?date=${encodeURIComponent(date)}` : "";
-  return apiFetch<{ success: boolean; data: { html: string } }>(`/api/stats/clinic-day${qs}`);
 }
 
 export function apiGetStatsConversations() {
@@ -1033,25 +1027,16 @@ export function apiUpdateMyProfile(name: string) {
   );
 }
 
-// ── Chat outcome, bookings, notes (agents and supervisors) ──
+// ── Chat outcome and notes (agents and supervisors) ──
 export function apiSetConversationOutcome(
   conversationId: number,
   body:
-    | { outcome: "BOOKED"; appointments: import("@/types").AppointmentInput[]; source?: import("@/types").LeadSourceInput }
-    | { outcome: "BOOKED"; booking: { appointmentAt: string; service?: string; note?: string } }
     | { outcome: "FOLLOW_UP"; followUpAt: string }
-    | { outcome: "NOT_INTERESTED" | "NO_ANSWER" | null },
+    | { outcome: null }, // cancels the follow-up
 ) {
   return apiFetch<{ success: boolean; data: import("@/types").ConversationOutcomeState }>(
     `/api/conversations/${conversationId}/outcome`,
     { method: "PUT", body: JSON.stringify(body) },
-  );
-}
-
-export function apiCancelBooking(conversationId: number, bookingId: number) {
-  return apiFetch<{ success: boolean; data: import("@/types").ConversationOutcomeState }>(
-    `/api/conversations/${conversationId}/bookings/${bookingId}/cancel`,
-    { method: "POST" },
   );
 }
 
@@ -1068,120 +1053,6 @@ export function apiAddConversationNote(conversationId: number, body: string) {
 
 export function apiDeleteConversationNote(conversationId: number, noteId: number) {
   return apiFetch<{ success: boolean }>(`/api/conversations/${conversationId}/notes/${noteId}`, { method: "DELETE" });
-}
-
-// ── Booking requests (the agents' booking queue, for the line in view) ──
-export function apiGetBookingRequests(params: {
-  status?: "open" | import("@/types").BookingRequestStatus | "all";
-  mine?: boolean;
-  search?: string;
-  page?: number;
-  limit?: number;
-} = {}) {
-  const q = new URLSearchParams();
-  if (params.status) q.set("status", params.status);
-  if (params.mine) q.set("mine", "1");
-  if (params.search) q.set("search", params.search);
-  if (params.page) q.set("page", String(params.page));
-  if (params.limit) q.set("limit", String(params.limit));
-  return apiFetch<{
-    success: boolean;
-    data: import("@/types").BookingRequest[];
-    pagination: { total: number; page: number; limit: number; totalPages: number };
-  }>(`/api/booking-requests?${q}`);
-}
-
-export function apiGetBookingRequestCounts() {
-  return apiFetch<{ success: boolean; data: import("@/types").BookingRequestCounts }>("/api/booking-requests/counts");
-}
-
-export function apiGetBookingRequest(id: number) {
-  return apiFetch<{ success: boolean; data: import("@/types").BookingRequest }>(`/api/booking-requests/${id}`);
-}
-
-// Take it. A colleague's request answers 409 REQUEST_CLAIMED (details.claimedBy)
-// unless force: true.
-export function apiClaimBookingRequest(id: number, opts: { force?: boolean } = {}) {
-  return apiFetch<{ success: boolean; data: import("@/types").BookingRequest }>(`/api/booking-requests/${id}/claim`, {
-    method: "POST",
-    body: JSON.stringify(opts),
-  });
-}
-
-// Record the appointment(s) booked in Dok32 (1–10). Also works on an already
-// BOOKED request (the patient added something).
-// source: where the patient came from — required (400 SOURCE_REQUIRED) unless
-// the request's sourceStatus is AUTOMATIC or CONFIRMED.
-export function apiBookRequest(id: number, appointments: import("@/types").AppointmentInput[], source?: import("@/types").LeadSourceInput) {
-  return apiFetch<{ success: boolean; data: import("@/types").BookingRequest }>(`/api/booking-requests/${id}/book`, {
-    method: "POST",
-    body: JSON.stringify({ appointments, ...(source ? { source } : {}) }),
-  });
-}
-
-// Set or correct where a request's patient came from (its appointments follow).
-export function apiSetBookingRequestSource(id: number, source: import("@/types").LeadSourceInput) {
-  return apiFetch<{ success: boolean; data: import("@/types").BookingRequest }>(`/api/booking-requests/${id}/source`, {
-    method: "PUT",
-    body: JSON.stringify(source),
-  });
-}
-
-// Choices for "where did this patient come from" on the line in view.
-export function apiGetBookingSourceOptions() {
-  return apiFetch<{ success: boolean; data: import("@/types").BookingSourceOptions }>("/api/booking-requests/source-options");
-}
-
-// Close without an appointment. reason OTHER needs a note.
-/**
- * Couldn't book. The chat's outcome follows the reason on the server; "Will
- * call back later" needs `followUpAt` (the chat becomes Follow up then) —
- * without it the server answers 400 FOLLOW_UP_REQUIRED.
- */
-export function apiNotBookedRequest(id: number, reason: import("@/types").NotBookedReason, note?: string, followUpAt?: string) {
-  return apiFetch<{ success: boolean; data: import("@/types").BookingRequest }>(`/api/booking-requests/${id}/not-booked`, {
-    method: "POST",
-    body: JSON.stringify({ reason, note, ...(followUpAt ? { followUpAt } : {}) }),
-  });
-}
-
-export function apiReopenBookingRequest(id: number) {
-  return apiFetch<{ success: boolean; data: import("@/types").BookingRequest }>(`/api/booking-requests/${id}/reopen`, { method: "POST" });
-}
-
-// ── Clinic availability (Dok32, read-only) ──
-// Every one answers 503 DOK32_UNAVAILABLE when the clinic system can't be reached.
-
-/** The nearest open days, soonest first (may be fewer than `count`, or none). */
-export function apiGetAvailableDays(count = 10) {
-  return apiFetch<{ success: boolean; data: import("@/types").ClinicDay[] }>(`/api/availability/days?count=${count}`);
-}
-
-/** One day, with `message` for a day that isn't open. */
-export function apiGetAvailabilityDay(date: string) {
-  return apiFetch<{ success: boolean; data: import("@/types").ClinicDay }>(`/api/availability/day?date=${encodeURIComponent(date)}`);
-}
-
-/** Whether one time is still free right now. */
-export function apiCheckSlot(date: string, time: string) {
-  return apiFetch<{ success: boolean; data: { date: string; time: string; free: boolean } }>(
-    `/api/availability/check?date=${encodeURIComponent(date)}&time=${encodeURIComponent(time)}`,
-  );
-}
-
-/** How a booking flow reads a typed answer ("tomorrow", "4:30 pm"). */
-export function apiParsePatientWhen(text: string) {
-  return apiFetch<{ success: boolean; data: { date: string | null; time: string | null } }>(
-    `/api/availability/parse?text=${encodeURIComponent(text)}`,
-  );
-}
-
-// The patient asked to book in chat: open a request (it starts IN_PROGRESS, yours).
-export function apiCreateBookingRequest(conversationId: number, body: { service?: string; preferredDate?: string; note?: string } = {}) {
-  return apiFetch<{ success: boolean; data: import("@/types").BookingRequest }>(`/api/conversations/${conversationId}/booking-requests`, {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
 }
 
 // ── Supervision (team:supervise). Across all numbers; numberId narrows. ──
@@ -1249,17 +1120,12 @@ function reportQuery(params: ReportQuery): URLSearchParams {
   return q;
 }
 
-/** Booking requests opened or closed in the period, with appointments and couldn't-book reasons. */
-export function apiGetBookingsReport(params: ReportQuery) {
-  return apiFetch<{ success: boolean; data: import("@/types").BookingsReport }>(`/api/supervision/reports/bookings?${reportQuery(params)}`, {}, { numberScoped: false });
-}
-
 /** Team and per-person speed, volume and results, day by day and hour by hour. */
 export function apiGetTeamReport(params: ReportQuery) {
   return apiFetch<{ success: boolean; data: import("@/types").TeamReport }>(`/api/supervision/reports/team?${reportQuery(params)}`, {}, { numberScoped: false });
 }
 
-/** Campaigns started in the period, from sent to booked. */
+/** Campaigns started in the period, from sent to replied. */
 export function apiGetCampaignsReport(params: ReportQuery) {
   return apiFetch<{ success: boolean; data: import("@/types").CampaignsReport }>(`/api/supervision/reports/campaigns?${reportQuery(params)}`, {}, { numberScoped: false });
 }
@@ -1267,15 +1133,6 @@ export function apiGetCampaignsReport(params: ReportQuery) {
 /** One row per chat with a message in the period (up to 5000). */
 export function apiGetChatsReport(params: ReportQuery) {
   return apiFetch<{ success: boolean; data: import("@/types").ChatsReport }>(`/api/supervision/reports/chats?${reportQuery(params)}`, {}, { numberScoped: false });
-}
-
-export function apiGetSupervisionBookings(params: { from?: string; to?: string; agentId?: number; status?: "BOOKED" | "CANCELLED" | "all"; numberId?: number } = {}) {
-  const q = new URLSearchParams();
-  for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null && v !== "") q.set(k, String(v));
-  return apiFetch<{
-    success: boolean;
-    data: (import("@/types").Booking & { customer: { id: number; name: string | null; phone: string }; conversation: { id: number; whatsappNumberId: number } })[];
-  }>(`/api/supervision/bookings?${q}`, {}, { numberScoped: false });
 }
 
 // ── Opt-out from a chat: any agent records one; only an admin (optout:lift) lifts one ──
@@ -1294,9 +1151,9 @@ export function apiLiftOptOut(conversationId: number, scope: "line" | "all") {
   );
 }
 
-// Unread chats / waiting (last 24h) / new booking requests on every active line.
+// Unread chats / waiting (last 24h) on every active line.
 export function apiGetLineCounts() {
-  return apiFetch<{ success: boolean; data: { id: number; label: string; unreadChats: number; waiting: number; newBookingRequests: number }[] }>(
+  return apiFetch<{ success: boolean; data: { id: number; label: string; unreadChats: number; waiting: number }[] }>(
     "/api/conversations/line-counts", {}, { numberScoped: false },
   );
 }

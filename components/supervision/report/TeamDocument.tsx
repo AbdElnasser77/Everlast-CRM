@@ -4,7 +4,7 @@
 
 import type { TeamReport, TeamReportAgent } from "@/types";
 import { formatMinutes } from "../format";
-import { BAND_LABEL, BAND_ORDER, OUTCOME_LABEL, OUTCOME_ORDER, ROLE_LABEL, outcomeLabel, parseDay, percent, share } from "./reportFormat";
+import { BAND_LABEL, BAND_ORDER, OUTCOME_LABEL, OUTCOME_ORDER, ROLE_LABEL, parseDay, percent, share } from "./reportFormat";
 import { BandLegend, BandStack, BarRow, Empty, Kpi, MiniBar, ReportCover, ReportEnd, Section, docContext, n, standardFacts } from "./parts";
 
 const agentName = (a: Pick<TeamReportAgent, "name" | "username">) => a.name || a.username;
@@ -29,7 +29,6 @@ function TeamSummary({ report }: { report: TeamReport }) {
         <Kpi label={`Answered within ${report.slaMinutes} min`} value={percent(t.withinSlaPercent)} tone={slaTone(t.withinSlaPercent)} />
         <Kpi label="Late responses" value={n(t.lateResponses)} sub={`${report.slaMinutes} min or more`} tone={t.lateResponses > 0 ? "bad" : undefined} />
         <Kpi label="Unanswered" value={n(t.unanswered)} sub="patient still waiting" tone={t.unanswered > 0 ? "bad" : undefined} />
-        <Kpi label="Appointments booked" value={n(t.appointmentsBooked)} tone={t.appointmentsBooked > 0 ? "good" : undefined} />
         <Kpi label="People active" value={n(report.agents.filter((a) => a.replies > 0).length)} sub={`${n(report.agents.length)} with any activity`} />
       </div>
     </Section>
@@ -132,9 +131,8 @@ function AgentSpeed({ report }: { report: TeamReport }) {
 function AgentResults({ report }: { report: TeamReport }) {
   const rows = report.agents;
   if (rows.length === 0) return null;
-  // Outcome columns: the usual ones, then anything else that was set.
-  const extra = [...new Set(rows.flatMap((a) => Object.keys(a.outcomes)))].filter((k) => !OUTCOME_ORDER.includes(k));
-  const outcomeKeys = [...OUTCOME_ORDER, ...extra];
+  // Follow-ups set / cancelled. Legacy outcomes (Booked / Not interested / No answer) in old periods aren't listed.
+  const outcomeKeys = OUTCOME_ORDER;
   const sum = (f: (a: TeamReportAgent) => number) => rows.reduce((t, a) => t + f(a), 0);
   return (
     <Section title="Per person — results">
@@ -144,14 +142,10 @@ function AgentResults({ report }: { report: TeamReport }) {
             <th>Name</th>
             {outcomeKeys.map((k) => (
               <th key={k} className="sr-num">
-                {OUTCOME_LABEL[k] ?? outcomeLabel(k)}
+                {OUTCOME_LABEL[k]}
               </th>
             ))}
             <th className="sr-num">Notes</th>
-            <th className="sr-num">Requests taken</th>
-            <th className="sr-num">Booked / couldn’t</th>
-            <th className="sr-num">Appts booked</th>
-            <th className="sr-num">Patients booked</th>
           </tr>
         </thead>
         <tbody>
@@ -164,12 +158,6 @@ function AgentResults({ report }: { report: TeamReport }) {
                 </td>
               ))}
               <td className="sr-num">{n(a.notesWritten)}</td>
-              <td className="sr-num">{n(a.requestsTaken)}</td>
-              <td className="sr-num">
-                {n(a.requestsBooked)} / {n(a.requestsNotBooked)}
-              </td>
-              <td className="sr-num">{n(a.appointmentsBooked)}</td>
-              <td className="sr-num">{n(a.patientsBooked)}</td>
             </tr>
           ))}
           {rows.length > 1 && (
@@ -181,19 +169,12 @@ function AgentResults({ report }: { report: TeamReport }) {
                 </td>
               ))}
               <td className="sr-num">{n(sum((a) => a.notesWritten))}</td>
-              <td className="sr-num">{n(sum((a) => a.requestsTaken))}</td>
-              <td className="sr-num">
-                {n(sum((a) => a.requestsBooked))} / {n(sum((a) => a.requestsNotBooked))}
-              </td>
-              <td className="sr-num">{n(sum((a) => a.appointmentsBooked))}</td>
-              <td className="sr-num">{n(sum((a) => a.patientsBooked))}</td>
             </tr>
           )}
         </tbody>
       </table>
       <p className="sr-note">
-        Outcomes = times the person set each outcome on a chat. Requests taken = booking requests they picked up in the period; booked / couldn’t =
-        requests they closed.
+        Follow up / Follow-up cancelled = times the person set or cancelled a follow-up on a chat.
       </p>
     </Section>
   );
@@ -225,7 +206,6 @@ function Daily({ report }: { report: TeamReport }) {
               <th className="sr-num">Avg first response</th>
               <th className="sr-num">Late</th>
               <th className="sr-num">Unanswered</th>
-              <th className="sr-num">Appts booked</th>
             </tr>
           </thead>
           <tbody>
@@ -241,7 +221,6 @@ function Daily({ report }: { report: TeamReport }) {
                 <td className="sr-num">{formatMinutes(d.avgFirstResponseMinutes)}</td>
                 <td className={`sr-num${d.lateResponses > 0 ? " sr-bad" : ""}`}>{n(d.lateResponses)}</td>
                 <td className={`sr-num${d.unanswered > 0 ? " sr-bad" : ""}`}>{n(d.unanswered)}</td>
-                <td className="sr-num">{n(d.appointmentsBooked)}</td>
               </tr>
             ))}
             {rows.length > 1 && (
@@ -253,7 +232,6 @@ function Daily({ report }: { report: TeamReport }) {
                 <td className="sr-num">{formatMinutes(report.team.avgResponseMinutes)}</td>
                 <td className="sr-num">{n(sum((d) => d.lateResponses))}</td>
                 <td className="sr-num">{n(sum((d) => d.unanswered))}</td>
-                <td className="sr-num">{n(sum((d) => d.appointmentsBooked))}</td>
               </tr>
             )}
           </tbody>

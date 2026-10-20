@@ -4,9 +4,9 @@
 // says which; Dubai until it does), whatever the browser's own zone is — a
 // supervisor printing from a laptop abroad still gets clinic times.
 
-import type { BookingRequestStatus, NotBookedReason, ResponseBandKey, SupervisionReport, UserRole } from "@/types";
-import { LEAD_SOURCE_ORDER, leadSourceName } from "@/lib/bookingRequests";
-import { humanizeKey, notBookedReasonLabel } from "../format";
+import type { ResponseBandKey, SupervisionReport, UserRole } from "@/types";
+import { activeOutcome } from "@/lib/chatOutcome";
+import { humanizeKey } from "../format";
 
 export const CLINIC_TZ = "Asia/Dubai";
 /** The API's limit on one report, in days (both ends included). */
@@ -190,34 +190,43 @@ export const ROLE_LABEL: Record<UserRole, string> = {
   MARKETING: "Marketing",
 };
 
+/**
+ * Outcome keys the reports show: a chat's follow-up, and (in the per-person
+ * counts) follow-ups cancelled. Anything else the server sends — the legacy
+ * BOOKED / NOT_INTERESTED / NO_ANSWER on old chats or in old periods — counts
+ * as no outcome and isn't listed (see activeOutcome).
+ */
 export const OUTCOME_LABEL: Record<string, string> = {
-  BOOKED: "Booked",
-  NOT_INTERESTED: "Not interested",
   FOLLOW_UP: "Follow up",
-  NO_ANSWER: "No answer",
-  CLEARED: "Cleared",
+  CLEARED: "Follow-up cancelled",
 };
 
+export const OUTCOME_ORDER = ["FOLLOW_UP", "CLEARED"];
+
+/** A chat's outcome key for the reports: "FOLLOW_UP", or "NONE" (incl. legacy values). */
+export const chatOutcomeKey = (o: string | null | undefined): "FOLLOW_UP" | "NONE" => activeOutcome(o) ?? "NONE";
+
+/** True when a chat has an outcome worth showing (a follow-up). */
+export const hasOutcome = (o: string | null | undefined) => activeOutcome(o) !== null;
+
+/** A chat's outcome, "—" for none (incl. legacy values). */
 export function outcomeLabel(o: string | null | undefined): string {
-  if (!o) return "—";
-  return OUTCOME_LABEL[o] ?? humanizeKey(o);
+  return hasOutcome(o) ? OUTCOME_LABEL.FOLLOW_UP : "—";
 }
 
-export const REASON_ORDER: NotBookedReason[] = ["NO_ANSWER", "NOT_INTERESTED", "PRICE", "CALL_BACK_LATER", "BOOKED_ELSEWHERE", "OTHER"];
-export const OUTCOME_ORDER = ["BOOKED", "FOLLOW_UP", "NOT_INTERESTED", "NO_ANSWER", "CLEARED"];
+/** Only the outcome counts the reports show (OUTCOME_ORDER), zeros kept; legacy keys dropped. */
+export const outcomeCounts = (record: Record<string, number> | null | undefined): [string, number][] =>
+  OUTCOME_ORDER.map((k) => [k, record?.[k] ?? 0]);
 
-export function requestLabel(r: { status: BookingRequestStatus; notBookedReason: NotBookedReason | null } | null): string {
-  if (!r) return "—";
-  switch (r.status) {
-    case "NEW":
-      return "Open · new";
-    case "IN_PROGRESS":
-      return "Open · in progress";
-    case "BOOKED":
-      return "Booked";
-    case "NOT_BOOKED":
-      return `Couldn’t book · ${notBookedReasonLabel(r.notBookedReason)}`;
+/** The chats report's per-chat-outcome counts: follow-up, then no outcome (legacy values folded in). */
+export function chatOutcomeCounts(byOutcome: Record<string, number> | null | undefined): [string, number][] {
+  let followUp = 0;
+  let none = 0;
+  for (const [k, v] of Object.entries(byOutcome ?? {})) {
+    if (chatOutcomeKey(k) === "FOLLOW_UP") followUp += v ?? 0;
+    else none += v ?? 0;
   }
+  return ([["FOLLOW_UP", followUp], ["NONE", none]] as [string, number][]).filter(([, v]) => v > 0);
 }
 
 export function percent(n: number | null | undefined): string {
@@ -238,29 +247,12 @@ export function share(part: number, whole: number): number | null {
 
 // ── Labels for the detailed reports ───────────────────────────────────────
 
-export const REQUEST_STATUS_ORDER: BookingRequestStatus[] = ["NEW", "IN_PROGRESS", "BOOKED", "NOT_BOOKED"];
-
-/** A booking request's status as the reports say it. */
-export const REQUEST_STATUS_REPORT_LABEL: Record<BookingRequestStatus, string> = {
-  NEW: "Open · nobody picked it up",
-  IN_PROGRESS: "Open · in progress",
-  BOOKED: "Booked",
-  NOT_BOOKED: "Couldn’t book",
-};
-
-export function requestStatusLabel(s: string | null | undefined): string {
-  if (!s) return "—";
-  return REQUEST_STATUS_REPORT_LABEL[s as BookingRequestStatus] ?? humanizeKey(s);
-}
-
-export const OPENED_VIA_LABEL: Record<string, string> = { FLOW: "Booking flow", AGENT: "Agent" };
-
 export const CHAT_STATUS_ORDER = ["OPEN", "PENDING", "RESOLVED"];
 export const CHAT_STATUS_LABEL: Record<string, string> = { OPEN: "Open", PENDING: "Pending", RESOLVED: "Resolved" };
 export const chatStatusLabel = (s: string | null | undefined) => (s ? CHAT_STATUS_LABEL[s] ?? humanizeKey(s) : "—");
 
-/** Outcome incl. the chats report's NONE bucket. */
-export const outcomeOrNone = (o: string | null | undefined) => (!o || o === "NONE" ? "No outcome" : outcomeLabel(o));
+/** Outcome incl. the chats report's NONE bucket (legacy values read as none). */
+export const outcomeOrNone = (o: string | null | undefined) => (hasOutcome(o) ? outcomeLabel(o) : "No follow-up");
 
 export const CAMPAIGN_STATUS_LABEL: Record<string, string> = {
   DRAFT: "Draft",
@@ -273,24 +265,6 @@ export const CAMPAIGN_STATUS_LABEL: Record<string, string> = {
 };
 export const campaignStatusLabel = (s: string | null | undefined) => (s ? CAMPAIGN_STATUS_LABEL[s] ?? humanizeKey(s) : "—");
 export const campaignCategoryLabel = (s: string | null | undefined) => (s ? humanizeKey(s) : "—");
-
-/** How sure we are of a lead source. */
-export const SOURCE_STATUS_LABEL: Record<string, string> = {
-  AUTOMATIC: "proven",
-  CONFIRMED: "confirmed by an agent",
-  SUGGESTED: "suggested, not confirmed",
-};
-
-/** Lead-source keys in report order; SUGGESTED (a guess) and UNKNOWN go last. */
-export const LEAD_SOURCE_REPORT_ORDER: string[] = [...LEAD_SOURCE_ORDER];
-export const LEAD_SOURCE_REPORT_LAST = ["SUGGESTED", "UNKNOWN"] as const;
-
-/** "Campaign", "Instagram", "Campaign (not confirmed)", "Unknown". */
-export function leadSourceReportLabel(key: string | null | undefined): string {
-  if (key === "SUGGESTED") return "Campaign (not confirmed)";
-  if (!key || key === "UNKNOWN") return "Unknown";
-  return leadSourceName(key);
-}
 
 export const BAND_ORDER: ResponseBandKey[] = ["under5", "5to15", "15to30", "30to60", "over60"];
 export const BAND_LABEL: Record<ResponseBandKey, string> = {
@@ -317,7 +291,7 @@ export function orderedEntries(
   return [...known, ...other, ...tail];
 }
 
-/** "Everlast Bookings 2026-10-01 to 2026-10-13" — file names and the PDF's suggested name. */
+/** "Everlast Chats 2026-10-01 to 2026-10-13" — file names and the PDF's suggested name. */
 export function reportFileName(report: string, from: string, to: string): string {
   return `Everlast ${report} ${from} to ${to}`;
 }
@@ -356,10 +330,8 @@ type ReportChat = SupervisionReport["chats"][number];
 
 export const PICKS = {
   attention: (c: ReportChat) => c.lateResponses > 0 || c.unanswered,
-  booked: (c: ReportChat) => c.outcome === "BOOKED" || c.request?.status === "BOOKED",
-  notBooked: (c: ReportChat) => c.request?.status === "NOT_BOOKED",
   /** The default: anything a supervisor would want to read. */
-  default: (c: ReportChat) => c.lateResponses > 0 || c.unanswered || c.outcome === "BOOKED" || c.request?.status === "NOT_BOOKED",
+  default: (c: ReportChat) => c.lateResponses > 0 || c.unanswered,
   all: () => true,
 } as const;
 
@@ -458,6 +430,7 @@ export function reportCss(footer: string, { landscape = false }: { landscape?: b
 .sr-msg-bot .sr-msg-who,.sr-msg-campaign .sr-msg-who{color:#6b7280}
 .sr-msg-bot .sr-msg-text,.sr-msg-campaign .sr-msg-text{color:#4b5563}
 .sr-end{margin-top:22pt;padding-top:6pt;border-top:.75pt solid #d1d5db;font-size:7.5pt;color:#6b7280;display:flex;justify-content:space-between;gap:8pt}
+.sr-kpis-3{grid-template-columns:repeat(3,1fr)}
 .sr-kpis-5{grid-template-columns:repeat(5,1fr)}
 .sr-threecol{display:grid;grid-template-columns:repeat(3,1fr);gap:12pt;margin-top:4pt}
 .sr-table-tiny{font-size:7.25pt;line-height:1.25}

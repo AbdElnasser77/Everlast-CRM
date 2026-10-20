@@ -64,7 +64,7 @@ export default function FlowsPage() {
         <div>
           <h1 className="font-bold text-2xl text-gray-900">Flows</h1>
           <p className="text-sm text-gray-400 mt-0.5 max-w-2xl">
-            Automations that answer a campaign&apos;s buttons: send the next message, show options, ask for booking details, tag the customer and hand them to an agent.
+            Automations that answer a campaign&apos;s buttons: send the next message, show options, ask questions, tag the customer and hand them to an agent.
           </p>
         </div>
         {canWrite && (

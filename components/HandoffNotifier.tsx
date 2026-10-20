@@ -4,10 +4,9 @@
 //   - a flow hands a customer to a person ("Connect me" / an Assign step) —
 //     "flow.handoff"; the AI assistant raises the same event (source "ai")
 //     with its reason and summary, and `urgent` for red-flag words — shown red;
-//   - a new booking request comes in — "booking_request.alert";
 //   - a follow-up a chat was set to has fallen due — "follow_up.due", sent only
 //     to the agent responsible for it (every tab, any line).
-// The first two go to every connected user who can reply on that number, on
+// The first goes to every connected user who can reply on that number, on
 // EVERY line they may use — nothing here filters by the active line. Shown as:
 //   - an alert card that stays until dismissed (a waiting customer shouldn't
 //     vanish after five seconds like a toast),
@@ -17,10 +16,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Bot, BellRing, CalendarClock, CalendarPlus, X } from "lucide-react";
+import { AlertTriangle, Bot, BellRing, CalendarClock, X } from "lucide-react";
 import { getActiveNumber } from "@/lib/api";
 import { getSocket } from "@/lib/socket";
-import { requestPreferred, requestService } from "@/lib/bookingRequests";
 import { useCurrentUser } from "@/components/CurrentUserProvider";
 import { useActiveNumber } from "@/components/WhatsAppNumberProvider";
 import { fmtWhen } from "@/lib/chatOutcome";
@@ -52,17 +50,8 @@ function handoffTitle(h: Handoff): string {
   return `${who(h)} wants to talk to an agent`;
 }
 
-interface BookingAlert {
-  requestId: number;
-  conversationId: number;
-  source: "FLOW" | "AGENT" | string;
-  requested: Record<string, unknown> | null;
-  whatsappNumberId: number;
-}
-
 type Alert =
   | { kind: "handoff"; key: string; at: string; h: Handoff }
-  | { kind: "booking"; key: string; at: string; b: BookingAlert }
   | { kind: "follow_up"; key: string; at: string; f: FollowUpDueEvent };
 
 function chime() {
@@ -90,12 +79,6 @@ function chime() {
 
 const who = (h: { customerName: string | null; customerPhone: string }) => h.customerName || `+${h.customerPhone}`;
 const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-
-/** "Botox · Fri 17 Oct 2026 · evening", or null when the flow collected nothing yet. */
-function bookingWhat(b: BookingAlert): string | null {
-  const req = { requested: b.requested ?? {} };
-  return [requestService(req), requestPreferred(req)].filter(Boolean).join(" · ") || null;
-}
 
 export default function HandoffNotifier() {
   const router = useRouter();
@@ -139,11 +122,6 @@ export default function HandoffNotifier() {
     goTo(h.whatsappNumberId, `/chats/${h.conversationId}`);
   }, [dismiss, goTo]);
 
-  const openBooking = useCallback((b: BookingAlert, where: "chat" | "bookings") => {
-    dismiss(`booking-${b.requestId}`);
-    goTo(b.whatsappNumberId, where === "chat" ? `/chats/${b.conversationId}` : "/bookings");
-  }, [dismiss, goTo]);
-
   const openFollowUp = useCallback((f: FollowUpDueEvent) => {
     dismiss(`follow-up-${f.conversationId}`);
     goTo(f.whatsappNumberId, `/chats/${f.conversationId}`);
@@ -171,22 +149,6 @@ export default function HandoffNotifier() {
       }
     };
 
-    const onBooking = (b: BookingAlert) => {
-      // One an agent opened by hand is already theirs ("it's yours") — the
-      // alert is for patients who asked through a flow.
-      if (b.source === "AGENT") return;
-      push({ kind: "booking", key: `booking-${b.requestId}`, at: new Date().toISOString(), b });
-      chime();
-      if (canNotify()) {
-        const what = bookingWhat(b);
-        const n = new Notification("New booking request", {
-          body: [what, multiLine ? lineLabel(b.whatsappNumberId) : null].filter(Boolean).join(" · ") || "A patient wants to book",
-          tag: `booking-${b.requestId}`,
-        });
-        n.onclick = () => { window.focus(); openBooking(b, "chat"); n.close(); };
-      }
-    };
-
     // Already addressed to the right person by the server — no filtering here.
     const onFollowUp = (f: FollowUpDueEvent) => {
       push({ kind: "follow_up", key: `follow-up-${f.conversationId}`, at: new Date().toISOString(), f });
@@ -201,14 +163,12 @@ export default function HandoffNotifier() {
     };
 
     socket.on("flow.handoff", onHandoff);
-    socket.on("booking_request.alert", onBooking);
     socket.on("follow_up.due", onFollowUp);
     return () => {
       socket.off("flow.handoff", onHandoff);
-      socket.off("booking_request.alert", onBooking);
       socket.off("follow_up.due", onFollowUp);
     };
-  }, [me, push, openHandoff, openBooking, openFollowUp, lineLabel, multiLine]);
+  }, [me, push, openHandoff, openFollowUp, lineLabel, multiLine]);
 
   if (alerts.length === 0) return null;
 
@@ -271,71 +231,32 @@ export default function HandoffNotifier() {
           );
         }
 
-        if (a.kind === "follow_up") {
-          const f = a.f;
-          const otherLine = multiLine && String(f.whatsappNumberId) !== activeNumberId;
-          return (
-            <div key={a.key} className="bg-white rounded-2xl shadow-xl border border-red-200 overflow-hidden animate-in slide-in-from-bottom-2">
-              <div className="flex items-start gap-3 p-4">
-                <span className="w-9 h-9 rounded-full bg-red-50 text-red-600 flex items-center justify-center shrink-0">
-                  <CalendarClock className="w-4.5 h-4.5" />
-                </span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[13px] font-bold text-gray-900 leading-snug">
-                    Follow up now · <span className="break-words">{who(f)}</span>
-                  </p>
-                  <p className="text-[12px] text-red-600 font-medium mt-0.5">Was due {fmtWhen(f.followUpAt)}</p>
-                  {multiLine && (
-                    <p className="text-[11px] text-gray-400 mt-0.5">
-                      <span className={otherLine ? "font-semibold text-amber-700" : undefined}>{lineLabel(f.whatsappNumberId)}</span>
-                    </p>
-                  )}
-                </div>
-                <button type="button" onClick={() => dismiss(a.key)} title="Dismiss" className="w-7 h-7 rounded-full flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-600 shrink-0">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="flex items-center gap-2 px-4 pb-3">
-                <button type="button" onClick={() => openFollowUp(f)} className="flex-1 text-[13px] font-semibold text-white bg-brand hover:opacity-90 rounded-xl py-2">
-                  {otherLine ? "Switch line & open chat" : "Open chat"}
-                </button>
-                {enableDesktop}
-              </div>
-            </div>
-          );
-        }
-
-        const b = a.b;
-        const what = bookingWhat(b);
-        const otherLine = multiLine && String(b.whatsappNumberId) !== activeNumberId;
+        const f = a.f;
+        const otherLine = multiLine && String(f.whatsappNumberId) !== activeNumberId;
         return (
-          <div key={a.key} className="bg-white rounded-2xl shadow-xl border border-sky-200 overflow-hidden animate-in slide-in-from-bottom-2">
+          <div key={a.key} className="bg-white rounded-2xl shadow-xl border border-red-200 overflow-hidden animate-in slide-in-from-bottom-2">
             <div className="flex items-start gap-3 p-4">
-              <span className="w-9 h-9 rounded-full bg-sky-50 text-sky-700 flex items-center justify-center shrink-0">
-                <CalendarPlus className="w-4.5 h-4.5" />
+              <span className="w-9 h-9 rounded-full bg-red-50 text-red-600 flex items-center justify-center shrink-0">
+                <CalendarClock className="w-4.5 h-4.5" />
               </span>
               <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-bold text-gray-900 leading-snug">New booking request</p>
-                <p className="text-[12px] text-gray-600 mt-0.5">
-                  {what ? <span className="font-semibold">{what}</span> : "A patient wants to book"}
+                <p className="text-[13px] font-bold text-gray-900 leading-snug">
+                  Follow up now · <span className="break-words">{who(f)}</span>
                 </p>
-                <p className="text-[11px] text-gray-400 mt-0.5">
-                  {b.source === "FLOW" ? "From the booking flow" : "New request"} · {fmtTime(a.at)}
-                  {multiLine && (
-                    <span className={otherLine ? "font-semibold text-amber-700" : undefined}> · {lineLabel(b.whatsappNumberId)}</span>
-                  )}
-                </p>
+                <p className="text-[12px] text-red-600 font-medium mt-0.5">Was due {fmtWhen(f.followUpAt)}</p>
+                {multiLine && (
+                  <p className="text-[11px] text-gray-400 mt-0.5">
+                    <span className={otherLine ? "font-semibold text-amber-700" : undefined}>{lineLabel(f.whatsappNumberId)}</span>
+                  </p>
+                )}
               </div>
               <button type="button" onClick={() => dismiss(a.key)} title="Dismiss" className="w-7 h-7 rounded-full flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-600 shrink-0">
                 <X className="w-4 h-4" />
               </button>
             </div>
             <div className="flex items-center gap-2 px-4 pb-3">
-              <button type="button" onClick={() => openBooking(b, "chat")} className="flex-1 text-[13px] font-semibold text-white bg-brand hover:opacity-90 rounded-xl py-2">
+              <button type="button" onClick={() => openFollowUp(f)} className="flex-1 text-[13px] font-semibold text-white bg-brand hover:opacity-90 rounded-xl py-2">
                 {otherLine ? "Switch line & open chat" : "Open chat"}
-              </button>
-              <button type="button" onClick={() => openBooking(b, "bookings")} className="text-[12px] font-semibold text-brand-fg border border-brand/30 hover:bg-brand-100 rounded-xl px-3 py-2">
-                Bookings
               </button>
               {enableDesktop}
             </div>

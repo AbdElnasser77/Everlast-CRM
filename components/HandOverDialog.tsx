@@ -1,7 +1,6 @@
 "use client";
 
-// Handing someone's open chats and taken booking requests to a colleague, or
-// back to the shared queue. One dialog for every way that happens:
+// Handing someone's open chats to a colleague, or back to the shared queue. One dialog for every way that happens:
 //   - end of shift (the agent's own status menu) — POST /users/me/hand-over,
 //   - a supervisor covering an absence (Supervision → Team) — POST /supervision/hand-over,
 //   - deactivating an account (Settings → Users) — PUT /users/:id { isActive: false, handOverTo }.
@@ -11,7 +10,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Inbox } from "lucide-react";
 import { apiGetAssignableUsers } from "@/lib/api";
 import type { AssignableUser, HandOverResult } from "@/types";
-import { DialogButtons, DialogShell, labelCls } from "@/components/bookings/DialogShell";
+import { DialogButtons, DialogShell, labelCls } from "@/components/DialogShell";
 import { Spinner } from "@/components/ui/spinner";
 
 const PRESENCE_DOT: Record<AssignableUser["status"], string> = {
@@ -29,18 +28,16 @@ const nameOf = (u: { name?: string | null; username: string }) => u.name || u.us
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-/** "Handed over 3 chats and 1 booking request to Sara" / "… back to the queue" / "Nothing to hand over". */
-export function handOverSummary(r: HandOverResult | null | undefined): string {
-  if (!r || (r.chats === 0 && r.bookingRequests === 0)) return "There were no open chats or booking requests to hand over";
-  return `Handed over ${plural(r.chats, "chat", "chats")} and ${plural(r.bookingRequests, "booking request", "booking requests")} ${
-    r.to ? `to ${nameOf(r.to)}` : "back to the queue"
-  }`;
+/** "Handed over 3 chats to Sara" / "… back to the queue" / "Nothing to hand over". */
+export function handOverSummary(r: Pick<HandOverResult, "chats" | "to"> | null | undefined): string {
+  if (!r || !r.chats) return "There were no open chats to hand over";
+  return `Handed over ${plural(r.chats, "chat", "chats")} ${r.to ? `to ${nameOf(r.to)}` : "back to the queue"}`;
 }
 
 export function HandOverDialog({
   title,
   intro,
-  heading = "Hand their open chats and booking requests to",
+  heading = "Hand their open chats to",
   excludeUserId,
   confirmLabel,
   danger = false,
@@ -100,7 +97,7 @@ export function HandOverDialog({
             </span>
             <span className="flex-1 min-w-0">
               Back to the queue
-              <span className="block text-[11px] font-normal text-gray-400">Unassigned chats; requests go back to New</span>
+              <span className="block text-[11px] font-normal text-gray-400">Their chats become unassigned</span>
             </span>
           </label>
           {people === null ? (

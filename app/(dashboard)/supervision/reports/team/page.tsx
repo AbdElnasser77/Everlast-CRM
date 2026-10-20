@@ -17,7 +17,7 @@ function TeamScreen() {
   return (
     <ReportShell
       title="Team performance"
-      description="Speed and results per person — response-time bands, slowest replies, outcomes, bookings — with the daily trend and busiest hours."
+      description="Speed and results per person — response-time bands, slowest replies, follow-ups — with the daily trend and busiest hours."
       icon={Users}
       period={period}
       data={data}

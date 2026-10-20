@@ -3,18 +3,17 @@
 // in the page's first load or the server bundle.
 
 import type { ChatsReport } from "@/types";
-import { formatPhone, notBookedReasonLabel } from "../format";
+import { formatPhone } from "../format";
 import { downloadBlob } from "./exportFiles";
 import {
   CHAT_STATUS_ORDER,
   CLINIC_TZ,
-  OUTCOME_ORDER,
+  chatOutcomeCounts,
   chatStatusLabel,
-  leadSourceReportLabel,
+  hasOutcome,
   orderedEntries,
   outcomeOrNone,
   periodLabel,
-  requestStatusLabel,
   wallClockDate,
 } from "./reportFormat";
 
@@ -31,8 +30,8 @@ const COLUMNS: Col[] = [
   { header: "Assigned to", key: "assignedTo", width: 18, kind: "text" },
   { header: "Replied by", key: "repliedBy", width: 24, kind: "text" },
   { header: "Status", key: "status", width: 11, kind: "text" },
-  { header: "Outcome", key: "outcome", width: 15, kind: "text" },
-  { header: "Outcome by", key: "outcomeBy", width: 18, kind: "text" },
+  { header: "Follow-up", key: "outcome", width: 15, kind: "text" },
+  { header: "Follow-up set by", key: "outcomeBy", width: 18, kind: "text" },
   { header: "Follow up at", key: "followUpAt", width: 17, kind: "date" },
   { header: "First message", key: "firstMessageAt", width: 17, kind: "date" },
   { header: "Last message", key: "lastMessageAt", width: 17, kind: "date" },
@@ -45,11 +44,7 @@ const COLUMNS: Col[] = [
   { header: "Longest wait (min)", key: "longestWaitMinutes", width: 11, kind: "minutes" },
   { header: "Late responses", key: "lateResponses", width: 10, kind: "int" },
   { header: "Unanswered", key: "unanswered", width: 11, kind: "text" },
-  { header: "Booking request", key: "bookingRequest", width: 26, kind: "text" },
-  { header: "Couldn't-book reason", key: "notBookedReason", width: 20, kind: "text" },
-  { header: "Lead source", key: "leadSource", width: 18, kind: "text" },
   { header: "Campaign", key: "campaign", width: 24, kind: "text" },
-  { header: "Appointments", key: "appointments", width: 12, kind: "int" },
   { header: "Notes", key: "notes", width: 8, kind: "int" },
 ];
 
@@ -80,9 +75,10 @@ export async function downloadChatsXlsx(report: ChatsReport, fileName: string, l
       assignedTo: c.assignedTo ?? "",
       repliedBy: c.repliedBy.join(", "),
       status: chatStatusLabel(c.status),
-      outcome: c.outcome ? outcomeOrNone(c.outcome) : "",
-      outcomeBy: c.outcomeBy ?? "",
-      followUpAt: wallClockDate(c.followUpAt, tz),
+      // Only a follow-up shows; a legacy outcome (Booked / Not interested / No answer) counts as none.
+      outcome: hasOutcome(c.outcome) ? outcomeOrNone(c.outcome) : "",
+      outcomeBy: hasOutcome(c.outcome) ? c.outcomeBy ?? "" : "",
+      followUpAt: hasOutcome(c.outcome) ? wallClockDate(c.followUpAt, tz) : null,
       firstMessageAt: wallClockDate(c.firstMessageAt, tz),
       lastMessageAt: wallClockDate(c.lastMessageAt, tz),
       patientMessages: c.patientMessages,
@@ -94,11 +90,7 @@ export async function downloadChatsXlsx(report: ChatsReport, fileName: string, l
       longestWaitMinutes: c.longestWaitMinutes,
       lateResponses: c.lateResponses,
       unanswered: c.unanswered ? "Yes" : "No",
-      bookingRequest: c.bookingRequest ? requestStatusLabel(c.bookingRequest) : "",
-      notBookedReason: c.bookingRequest === "NOT_BOOKED" ? notBookedReasonLabel(c.notBookedReason) : "",
-      leadSource: c.leadSource ? leadSourceReportLabel(c.leadSource) : "",
       campaign: c.campaign ?? "",
-      appointments: c.appointments,
       notes: c.notes,
     });
   }
@@ -154,7 +146,7 @@ export async function downloadChatsXlsx(report: ChatsReport, fileName: string, l
       r++;
     }
   };
-  block("By outcome", orderedEntries(s.byOutcome, OUTCOME_ORDER, { last: ["NONE"] }).map(([k, v]) => [outcomeOrNone(k), v]));
+  block("By follow-up", chatOutcomeCounts(s.byOutcome).map(([k, v]) => [outcomeOrNone(k), v]));
   block("By status (now)", orderedEntries(s.byStatus, CHAT_STATUS_ORDER).map(([k, v]) => [chatStatusLabel(k), v]));
   block("By line", orderedEntries(s.byLine, [], { last: ["—"] }).map(([k, v]) => [k === "—" ? "Unknown line" : k, v]));
 

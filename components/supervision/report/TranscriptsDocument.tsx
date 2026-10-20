@@ -4,8 +4,7 @@
 import type { ChatsReport, ChatsReportChat } from "@/types";
 import { formatMinutes, formatPhone } from "../format";
 import { Transcripts, type TranscriptsState } from "./ReportDocument";
-import { chatBookingLabel } from "./ChatsDocument";
-import { outcomeOrNone } from "./reportFormat";
+import { outcomeLabel } from "./reportFormat";
 import { Empty, ReportCover, ReportEnd, Section, docContext, n } from "./parts";
 
 export function TranscriptsDocument({
@@ -65,8 +64,7 @@ export function TranscriptsDocument({
                 <th>Patient</th>
                 <th>Line</th>
                 <th>Assigned to</th>
-                <th>Outcome</th>
-                <th>Booking request</th>
+                <th>Follow-up</th>
                 <th className="sr-num">Avg resp.</th>
                 <th className="sr-num">Late</th>
                 <th>Unans.</th>
@@ -83,8 +81,7 @@ export function TranscriptsDocument({
                   </td>
                   <td>{c.line || "—"}</td>
                   <td>{c.assignedTo || <span className="sr-muted">Unassigned</span>}</td>
-                  <td className={c.outcome === "BOOKED" ? "sr-good" : undefined}>{c.outcome ? outcomeOrNone(c.outcome) : "—"}</td>
-                  <td>{chatBookingLabel(c) || "—"}</td>
+                  <td>{outcomeLabel(c.outcome)}</td>
                   <td className="sr-num">{formatMinutes(c.avgResponseMinutes)}</td>
                   <td className={`sr-num${c.lateResponses > 0 ? " sr-bad" : ""}`}>{n(c.lateResponses)}</td>
                   <td className={c.unanswered ? "sr-bad" : ""}>{c.unanswered ? "Yes" : ""}</td>

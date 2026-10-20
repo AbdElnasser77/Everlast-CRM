@@ -1,44 +1,41 @@
 "use client";
 
-// Transcripts report: find chats (agent, line, outcome, late, unanswered,
-// booked, couldn't book, search) and tick up to 100 for printing. Screen only.
+// Transcripts report: find chats (agent, line, follow-up, late, unanswered,
+// search) and tick up to 100 for printing. Screen only.
 
 import { useMemo, type ReactNode } from "react";
 import { Loader2, Search } from "lucide-react";
 import type { ChatsReportChat } from "@/types";
 import { formatPhone } from "../format";
-import { chatBookingLabel } from "./ChatsDocument";
-import { MAX_TRANSCRIPTS, OUTCOME_ORDER, outcomeOrNone } from "./reportFormat";
+import { MAX_TRANSCRIPTS, chatOutcomeKey, outcomeOrNone } from "./reportFormat";
 
 export type ChatFilter = {
   /** "" = anyone; UNASSIGNED = nobody assigned; else a person's name (assigned or replied). */
   agent: string;
   line: string;
-  /** "" = any; NONE = no outcome; else an outcome key. */
+  /** "" = any; NONE = no follow-up; FOLLOW_UP = has one. */
   outcome: string;
   late: boolean;
   unanswered: boolean;
-  booked: boolean;
-  notBooked: boolean;
   search: string;
 };
 
-export const EMPTY_FILTER: ChatFilter = { agent: "", line: "", outcome: "", late: false, unanswered: false, booked: false, notBooked: false, search: "" };
+export const EMPTY_FILTER: ChatFilter = { agent: "", line: "", outcome: "", late: false, unanswered: false, search: "" };
 export const UNASSIGNED = "__unassigned";
 
-export const isBooked = (c: ChatsReportChat) => c.outcome === "BOOKED" || c.bookingRequest === "BOOKED" || c.appointments > 0;
-export const isNotBooked = (c: ChatsReportChat) => c.bookingRequest === "NOT_BOOKED";
-/** What a supervisor usually wants to read: late, unanswered, booked, couldn't book. */
-export const worthReading = (c: ChatsReportChat) => c.lateResponses > 0 || c.unanswered || isBooked(c) || isNotBooked(c);
+/** FOLLOW_UP or NONE — a legacy outcome (Booked / Not interested / No answer) counts as none. */
+const outcomeKey = (c: ChatsReportChat) => chatOutcomeKey(c.outcome);
+const FOLLOW_UP_FILTER_LABEL: Record<string, string> = { FOLLOW_UP: "With a follow-up", NONE: "No follow-up" };
+
+/** What a supervisor usually wants to read: late or unanswered. */
+export const worthReading = (c: ChatsReportChat) => c.lateResponses > 0 || c.unanswered;
 
 export function matches(c: ChatsReportChat, f: ChatFilter): boolean {
   if (f.agent === UNASSIGNED ? !!c.assignedTo : f.agent && c.assignedTo !== f.agent && !c.repliedBy.includes(f.agent)) return false;
   if (f.line && (c.line ?? "") !== f.line) return false;
-  if (f.outcome && (c.outcome ?? "NONE") !== f.outcome) return false;
+  if (f.outcome && outcomeKey(c) !== f.outcome) return false;
   if (f.late && c.lateResponses === 0) return false;
   if (f.unanswered && !c.unanswered) return false;
-  if (f.booked && !isBooked(c)) return false;
-  if (f.notBooked && !isNotBooked(c)) return false;
   const q = f.search.trim().toLowerCase();
   if (q) {
     const hay = [c.patient, c.phone, formatPhone(c.phone), c.line, c.assignedTo, ...c.repliedBy, ...c.tags, c.campaign].filter(Boolean).join(" ").toLowerCase();
@@ -52,11 +49,9 @@ export function describeFilter(f: ChatFilter): string[] {
   const out: string[] = [];
   if (f.agent) out.push(f.agent === UNASSIGNED ? "Unassigned chats" : `Agent: ${f.agent}`);
   if (f.line) out.push(`Line: ${f.line}`);
-  if (f.outcome) out.push(`Outcome: ${outcomeOrNone(f.outcome)}`);
+  if (f.outcome) out.push(FOLLOW_UP_FILTER_LABEL[f.outcome] ?? outcomeOrNone(f.outcome));
   if (f.late) out.push("With late replies");
   if (f.unanswered) out.push("Unanswered");
-  if (f.booked) out.push("Booked");
-  if (f.notBooked) out.push("Couldn’t book");
   if (f.search.trim()) out.push(`Search: “${f.search.trim()}”`);
   return out;
 }
@@ -102,8 +97,8 @@ export function ChatFilterPicker({
   const agents = useMemo(() => [...new Set(chats.flatMap((c) => [c.assignedTo, ...c.repliedBy]).filter((x): x is string => !!x))].sort(), [chats]);
   const lines = useMemo(() => [...new Set(chats.map((c) => c.line).filter((x): x is string => !!x))].sort(), [chats]);
   const outcomes = useMemo(() => {
-    const present = new Set<string>(chats.map((c) => c.outcome ?? "NONE"));
-    return [...OUTCOME_ORDER.filter((k) => present.has(k)), ...[...present].filter((k) => !OUTCOME_ORDER.includes(k) && k !== "NONE"), ...(present.has("NONE") ? ["NONE"] : [])];
+    const present = new Set<string>(chats.map(outcomeKey));
+    return (["FOLLOW_UP", "NONE"] as const).filter((k) => present.has(k));
   }, [chats]);
   const visible = useMemo(() => chats.filter((c) => matches(c, filter)), [chats, filter]);
   const filtered = describeFilter(filter).length > 0;
@@ -162,11 +157,11 @@ export function ChatFilterPicker({
             ))}
           </select>
         )}
-        <select aria-label="Outcome" value={filter.outcome} onChange={(e) => set({ outcome: e.target.value })} className={SELECT}>
-          <option value="">Any outcome</option>
+        <select aria-label="Follow-up" value={filter.outcome} onChange={(e) => set({ outcome: e.target.value })} className={SELECT}>
+          <option value="">Any follow-up</option>
           {outcomes.map((o) => (
             <option key={o} value={o}>
-              {outcomeOrNone(o)}
+              {FOLLOW_UP_FILTER_LABEL[o]}
             </option>
           ))}
         </select>
@@ -175,12 +170,6 @@ export function ChatFilterPicker({
         </Toggle>
         <Toggle on={filter.unanswered} onChange={(v) => set({ unanswered: v })}>
           Unanswered
-        </Toggle>
-        <Toggle on={filter.booked} onChange={(v) => set({ booked: v })}>
-          Booked
-        </Toggle>
-        <Toggle on={filter.notBooked} onChange={(v) => set({ notBooked: v })}>
-          Couldn’t book
         </Toggle>
         <label className="ml-auto relative flex items-center">
           <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 pointer-events-none" />
@@ -224,7 +213,6 @@ export function ChatFilterPicker({
           {visible.map((c) => {
             const on = selected.has(c.id);
             const disabled = !on && full;
-            const booking = chatBookingLabel(c);
             return (
               <li key={c.id}>
                 <label
@@ -251,12 +239,7 @@ export function ChatFilterPicker({
                   <span className="flex items-center gap-1 flex-wrap justify-end shrink-0 max-w-[50%]">
                     {c.lateResponses > 0 && <span className={`${BADGE} bg-red-50 text-red-700 border-red-200`}>{c.lateResponses} late</span>}
                     {c.unanswered && <span className={`${BADGE} bg-red-50 text-red-700 border-red-200`}>Unanswered</span>}
-                    {c.outcome && (
-                      <span className={`${BADGE} ${c.outcome === "BOOKED" ? "bg-brand-200 text-brand-strong border-brand/30" : "bg-gray-50 text-gray-500 border-gray-200"}`}>
-                        {outcomeOrNone(c.outcome)}
-                      </span>
-                    )}
-                    {booking && c.bookingRequest !== "BOOKED" && <span className={`${BADGE} bg-violet-50 text-violet-700 border-violet-200`}>{booking}</span>}
+                    {outcomeKey(c) !== "NONE" && <span className={`${BADGE} bg-gray-50 text-gray-500 border-gray-200`}>{outcomeOrNone(c.outcome)}</span>}
                   </span>
                 </label>
               </li>

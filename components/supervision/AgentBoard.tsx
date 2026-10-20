@@ -17,12 +17,12 @@ const PRESENCE_ORDER = { ONLINE: 0, ON_BREAK: 1, OFFLINE: 2 } as const;
 const SCROLLER =
   "flex gap-3 overflow-x-auto pb-1.5 -mb-1.5 [scrollbar-width:thin] [scrollbar-color:rgba(59,105,76,0.25)_transparent] [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-brand/25 [&::-webkit-scrollbar-thumb]:rounded-full";
 
-function Stat({ label, value, tone }: { label: string; value: string | number; tone?: "red" | "green" | "muted" }) {
+function Stat({ label, value, tone }: { label: string; value: string | number; tone?: "red" | "muted" }) {
   return (
     <div className="min-w-0">
       <p
         className={`text-[15px] font-bold leading-tight tabular-nums ${
-          tone === "red" ? "text-red-600" : tone === "green" ? "text-brand-fg" : tone === "muted" ? "text-gray-300" : "text-gray-800"
+          tone === "red" ? "text-red-600" : tone === "muted" ? "text-gray-300" : "text-gray-800"
         }`}
       >
         {value}
@@ -69,7 +69,7 @@ function AgentCard({ agent, active, now, onClick, onHandOver }: {
           </p>
         </div>
       </div>
-      <div className="grid grid-cols-5 gap-1.5 mt-3 pt-2.5 border-t border-gray-50">
+      <div className="grid grid-cols-4 gap-1.5 mt-3 pt-2.5 border-t border-gray-50">
         <Stat label="Open" value={agent.openChats} tone={agent.openChats === 0 ? "muted" : undefined} />
         <Stat
           label={late ? `${agent.waitingOverSla} late` : "Waiting"}
@@ -78,7 +78,6 @@ function AgentCard({ agent, active, now, onClick, onHandOver }: {
         />
         <Stat label="Replies" value={agent.repliesToday} tone={agent.repliesToday === 0 ? "muted" : undefined} />
         <Stat label="Avg" value={formatMinutes(agent.avgResponseMinutes)} tone={agent.avgResponseMinutes === null ? "muted" : undefined} />
-        <Stat label="Booked" value={agent.bookedToday} tone={agent.bookedToday > 0 ? "green" : "muted"} />
       </div>
     </button>
     {/* A sibling, not inside the card: a button can't hold a button. */}
@@ -86,8 +85,8 @@ function AgentCard({ agent, active, now, onClick, onHandOver }: {
       <button
         type="button"
         onClick={onHandOver}
-        title={`Hand over ${personName(agent)}'s chats and booking requests…`}
-        aria-label={`Hand over ${personName(agent)}'s chats and booking requests`}
+        title={`Hand over ${personName(agent)}'s chats…`}
+        aria-label={`Hand over ${personName(agent)}'s chats`}
         className="absolute top-3 right-3 w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-brand-fg transition-colors cursor-pointer"
       >
         <ArrowRightLeft className="w-3.5 h-3.5" />
@@ -221,8 +220,8 @@ export function AgentBoard({
           title={`Hand over ${personName(handingOver)}'s work`}
           intro={
             <>
-              {personName(handingOver)} has {handingOver.openChats} open chat{handingOver.openChats === 1 ? "" : "s"}. Their open chats and the
-              booking requests they&apos;ve taken go to a colleague, or back to the queue — useful when they&apos;re off or away.
+              {personName(handingOver)} has {handingOver.openChats} open chat{handingOver.openChats === 1 ? "" : "s"}. Their open chats go to a
+              colleague, or back to the queue — useful when they&apos;re off or away.
             </>
           }
           excludeUserId={handingOver.id}

@@ -330,22 +330,11 @@ export default function CampaignDetailPage() {
         )}
 
         {/* Stat cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           <StatCard label="Total sent" value={campaign.sentCount} sub={pct(campaign.sentCount, campaign.totalRecipients) + " of recipients"} />
           <StatCard label="Delivered" value={campaign.deliveredCount ?? 0} sub={pct(campaign.deliveredCount ?? 0, campaign.sentCount)} />
           <StatCard label="Read" value={campaign.readCount ?? 0} sub={pct(campaign.readCount ?? 0, campaign.sentCount)} />
           <StatCard label="Replied" value={campaign.repliedCount ?? 0} sub={pct(campaign.repliedCount ?? 0, campaign.sentCount)} />
-          <StatCard
-            label="Booking requests"
-            value={campaign.bookingRequestsCount ?? 0}
-            sub={(campaign.repliedCount ?? 0) > 0 ? `${pct(campaign.bookingRequestsCount ?? 0, campaign.repliedCount ?? 0)} of replies` : undefined}
-          />
-          <StatCard
-            label="Booked"
-            value={campaign.bookedCount ?? 0}
-            sub={`${campaign.bookedCount ?? 0} booked of ${campaign.repliedCount ?? 0} replied`}
-            color={(campaign.bookedCount ?? 0) > 0 ? "text-brand-fg" : "text-gray-800"}
-          />
           <StatCard label="Failed" value={campaign.failedCount} sub={pct(campaign.failedCount, campaign.totalRecipients)} color={campaign.failedCount > 0 ? "text-red-500" : "text-gray-800"} />
         </div>
 

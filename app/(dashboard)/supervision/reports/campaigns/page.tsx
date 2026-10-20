@@ -17,7 +17,7 @@ function CampaignsScreen() {
   return (
     <ReportShell
       title="Campaigns"
-      description="Each campaign that started in the period, from sent to booked — delivery, reads, replies, requests, patients booked, opt-outs."
+      description="Each campaign that started in the period, from sent to replied — delivery, reads, replies, failures, opt-outs."
       icon={Megaphone}
       period={period}
       data={data}

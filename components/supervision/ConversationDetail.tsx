@@ -6,8 +6,6 @@ import {
   ArrowLeft,
   ArrowRight,
   Bot,
-  CalendarCheck,
-  ClipboardList,
   ExternalLink,
   FileText,
   History,
@@ -23,14 +21,14 @@ import {
   X,
 } from "lucide-react";
 import { apiAddConversationNote, apiGetSupervisionTimeline, getActiveNumber } from "@/lib/api";
-import type { Booking, BookingRequest, SupervisionFlowState, SupervisionTimeline } from "@/types";
+import type { SupervisionFlowState, SupervisionTimeline } from "@/types";
 import { AssigneePicker } from "@/components/AssigneePicker";
 import { useActiveNumber } from "@/components/WhatsAppNumberProvider";
 import { useCurrentUser } from "@/components/CurrentUserProvider";
 import { useToast } from "@/components/ui/toast";
 import { Spinner } from "@/components/ui/spinner";
-import { LeadSourceChip } from "@/components/bookings/RequestParts";
-import { NumberChip, OutcomeChip, RequestChip, StatusChip, WaitChip } from "./chips";
+import { activeOutcome } from "@/lib/chatOutcome";
+import { NumberChip, OutcomeChip, StatusChip, WaitChip } from "./chips";
 import {
   WAIT_WARN_MINUTES,
   answerText,
@@ -42,12 +40,10 @@ import {
   humanizeKey,
   initials,
   localDay,
-  notBookedReasonLabel,
   parseStructured,
   patientName,
   personInitials,
   personName,
-  requestedValue,
   shortDate,
   timeAgo,
 } from "./format";
@@ -261,9 +257,6 @@ function FlowProgress({ runs, now }: { runs: SupervisionFlowState[]; now: number
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-[13px] font-semibold text-gray-800 truncate">{latest.flowName || "Untitled flow"}</span>
         <span className={`text-[10.5px] font-semibold px-1.5 py-px rounded ${st.cls}`}>{st.label}</span>
-        {latest.bookingRequested && (
-          <span className="text-[10.5px] font-semibold px-1.5 py-px rounded bg-violet-50 text-violet-700">Booking requested</span>
-        )}
       </div>
       <p className="text-[11px] text-gray-400 mt-0.5">
         Started {timeAgo(latest.startedAt, now)} · last step {timeAgo(latest.updatedAt, now)}
@@ -298,164 +291,6 @@ function FlowProgress({ runs, now }: { runs: SupervisionFlowState[]; now: number
   );
 }
 
-/** Service · doctor, the Dok32 ref and the agent's note, for one appointment. */
-function AppointmentFacts({ b }: { b: Pick<Booking, "service" | "doctor" | "dok32Ref" | "note" | "status"> }) {
-  const cancelled = b.status === "CANCELLED";
-  const line = [b.service, b.doctor].filter(Boolean).join(" · ");
-  return (
-    <>
-      {(line || b.dok32Ref) && (
-        <p className={`text-[12.5px] mt-0.5 flex items-center gap-2 flex-wrap ${cancelled ? "text-gray-400" : "text-gray-700"}`}>
-          {line && <span>{line}</span>}
-          {b.dok32Ref && (
-            <span title="Appointment reference in Dok32" className="text-[10.5px] font-mono font-medium text-gray-500 bg-white border border-gray-200 rounded px-1.5 py-px">
-              Dok32 {b.dok32Ref}
-            </span>
-          )}
-        </p>
-      )}
-      {b.note && <p className="text-[12px] text-gray-500 mt-1 whitespace-pre-wrap break-words">“{b.note}”</p>}
-    </>
-  );
-}
-
-/** How the request was opened (where the patient came from is the source chip). */
-const openedVia = (r: BookingRequest) => (r.source === "AGENT" ? "Added by an agent" : "Booking flow");
-
-function RequestCard({ r, now, slaMinutes }: { r: BookingRequest; now: number; slaMinutes: number }) {
-  const open = r.status === "NEW" || r.status === "IN_PROGRESS";
-  const overSla = open && r.openMinutes != null && r.openMinutes >= slaMinutes;
-  const asked = Object.entries(r.requested ?? {}).filter(([, v]) => v !== null && v !== undefined && v !== "");
-  const tone = open
-    ? overSla
-      ? "border-red-200 bg-red-50/40"
-      : "border-amber-200 bg-amber-50/30"
-    : r.status === "BOOKED"
-      ? "border-brand/20 bg-brand-50"
-      : "border-gray-100 bg-gray-50";
-  const bookings = r.bookings ?? [];
-  return (
-    <li className={`rounded-lg border p-3 ${tone}`}>
-      <div className="flex items-start justify-between gap-2 flex-wrap">
-        <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-          <RequestChip request={r} overSla={overSla} />
-          <LeadSourceChip req={r} className="min-w-0" />
-          <span className="text-[11.5px] text-gray-500 truncate">{openedVia(r)}</span>
-        </div>
-        <span className="text-[11px] text-gray-400 shrink-0" title={dateTime(r.createdAt)}>
-          Asked {timeAgo(r.createdAt, now)}
-          {open && r.openMinutes != null && (
-            <span className={overSla ? "text-red-600 font-semibold" : ""}> · open {formatMinutes(r.openMinutes)}</span>
-          )}
-        </span>
-      </div>
-
-      {asked.length > 0 ? (
-        <dl className="mt-2.5 grid grid-cols-[minmax(90px,auto)_1fr] gap-x-3 gap-y-1 text-[12.5px] bg-white/80 border border-gray-100 rounded-lg p-2.5">
-          {asked.map(([k, v]) => (
-            <div key={k} className="contents">
-              <dt className="text-gray-400">{humanizeKey(k)}</dt>
-              <dd className="text-gray-800 font-medium break-words">{requestedValue(k, v)}</dd>
-            </div>
-          ))}
-        </dl>
-      ) : (
-        <p className="text-[12px] text-gray-400 mt-2">Nothing specific requested.</p>
-      )}
-      {r.note && <p className="text-[12px] text-gray-500 mt-1.5 whitespace-pre-wrap break-words">“{r.note}”</p>}
-
-      <p className="text-[11px] text-gray-400 mt-2 leading-relaxed">
-        {r.claimedAt ? (
-          <>
-            Taken by <span className="text-gray-600 font-medium">{personName(r.claimedBy)}</span> · {timeAgo(r.claimedAt, now)}
-          </>
-        ) : open ? (
-          <span className={overSla ? "text-red-600 font-semibold" : "text-amber-700 font-medium"}>Nobody has picked it up yet</span>
-        ) : null}
-        {r.handledAt && (
-          <>
-            {r.claimedAt ? " · " : ""}
-            {r.status === "NOT_BOOKED" ? "Closed" : "Booked"} by <span className="text-gray-600 font-medium">{personName(r.handledBy)}</span> ·{" "}
-            {timeAgo(r.handledAt, now)}
-          </>
-        )}
-      </p>
-
-      {r.status === "NOT_BOOKED" && (
-        <div className="mt-2 rounded-md bg-white border border-gray-200 px-2.5 py-1.5 text-[12px]">
-          <span className="font-semibold text-gray-700">Couldn’t book · {notBookedReasonLabel(r.notBookedReason)}</span>
-          {r.notBookedNote && <p className="text-gray-500 mt-0.5 whitespace-pre-wrap break-words">“{r.notBookedNote}”</p>}
-        </div>
-      )}
-
-      {bookings.length > 0 && (
-        <ul className="mt-2.5 space-y-1.5">
-          {bookings.map((b) => {
-            const cancelled = b.status === "CANCELLED";
-            return (
-              <li key={b.id} className={`rounded-md border bg-white px-2.5 py-2 ${cancelled ? "border-gray-100" : "border-brand/20"}`}>
-                <div className="flex items-center justify-between gap-2">
-                  <span className={`text-[12.5px] font-semibold tabular-nums ${cancelled ? "text-gray-400 line-through" : "text-gray-900"}`}>
-                    {dateTime(b.appointmentAt)}
-                  </span>
-                  {cancelled && <span className="text-[10.5px] font-semibold px-1.5 py-px rounded bg-gray-200 text-gray-600 shrink-0">Cancelled</span>}
-                </div>
-                <AppointmentFacts b={b} />
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </li>
-  );
-}
-
-function BookingRequests({ requests, now, slaMinutes }: { requests: BookingRequest[]; now: number; slaMinutes: number }) {
-  if (requests.length === 0) return <Muted>No booking requests for this chat.</Muted>;
-  return (
-    <ul className="space-y-2.5">
-      {requests.map((r) => (
-        <RequestCard key={r.id} r={r} now={now} slaMinutes={slaMinutes} />
-      ))}
-    </ul>
-  );
-}
-
-function Bookings({ bookings, now }: { bookings: SupervisionTimeline["bookings"]; now: number }) {
-  if (bookings.length === 0) return <Muted>No appointment booked from this chat.</Muted>;
-  return (
-    <ul className="space-y-2">
-      {bookings.map((b) => {
-        const cancelled = b.status === "CANCELLED";
-        const past = new Date(b.appointmentAt).getTime() < now;
-        return (
-          <li key={b.id} className={`rounded-lg border p-3 ${cancelled ? "border-gray-100 bg-gray-50" : "border-brand/20 bg-brand-50"}`}>
-            <div className="flex items-start justify-between gap-2">
-              <p className={`text-[13px] font-semibold ${cancelled ? "text-gray-400 line-through" : "text-gray-900"}`}>
-                {dateTime(b.appointmentAt)}
-              </p>
-              {cancelled ? (
-                <span className="text-[10.5px] font-semibold px-1.5 py-px rounded bg-gray-200 text-gray-600 shrink-0">Cancelled</span>
-              ) : past ? (
-                <span className="text-[10.5px] font-semibold px-1.5 py-px rounded bg-gray-100 text-gray-500 shrink-0">Past</span>
-              ) : (
-                <span className="text-[10.5px] font-semibold px-1.5 py-px rounded bg-brand-200 text-brand-strong shrink-0">Upcoming</span>
-              )}
-            </div>
-            <AppointmentFacts b={b} />
-            <p className="text-[11px] text-gray-400 mt-1.5">
-              Booked by {b.createdBy ? personName(b.createdBy) : "—"} · {timeAgo(b.createdAt, now)}
-              {cancelled && b.cancelledAt && ` · cancelled ${timeAgo(b.cancelledAt, now)}`}
-            </p>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
-const OUTCOME_WORD: Record<string, string> = { BOOKED: "Booked", FOLLOW_UP: "Follow up", NOT_INTERESTED: "Not interested", NO_ANSWER: "No answer" };
-
 function describeHistory(h: SupervisionTimeline["history"][number]): string {
   const d = (h.details ?? {}) as Record<string, unknown>;
   const str = (v: unknown) => (typeof v === "string" && v ? v : null);
@@ -475,14 +310,11 @@ function describeHistory(h: SupervisionTimeline["history"][number]): string {
     }
     case "conversation.outcome_set": {
       const o = str(d.outcome);
-      if (!o) return "cleared the outcome";
-      let extra = "";
-      if (o === "BOOKED" && str(d.appointmentAt)) extra = ` · ${dateTime(d.appointmentAt as string)}${str(d.service) ? `, ${d.service}` : ""}`;
-      if (o === "FOLLOW_UP" && str(d.followUpAt)) extra = ` · due ${dateTime(d.followUpAt as string)}`;
-      return `marked it ${OUTCOME_WORD[o] ?? o}${extra}`;
+      if (!o) return "cancelled the follow-up";
+      if (o === "FOLLOW_UP") return `set a follow-up${str(d.followUpAt) ? ` · due ${dateTime(d.followUpAt as string)}` : ""}`;
+      // Older history can hold outcomes the CRM no longer sets (Booked / Not interested / No answer).
+      return `marked it ${humanizeKey(o)}`;
     }
-    case "conversation.booking_cancelled":
-      return "cancelled a booking";
     default:
       return h.action.replace(/^conversation\./, "").replace(/_/g, " ");
   }
@@ -492,7 +324,7 @@ function describeHistory(h: SupervisionTimeline["history"][number]): string {
 
 /**
  * Everything about one chat for the supervisor: latest messages, how long each
- * reply took, bookings, flow progress, notes and the ownership history.
+ * reply took, flow progress, notes and the ownership history.
  *
  * Reads are cross-number (supervision endpoints). Writes — reassigning, adding
  * a note — go through the conversation endpoints, which are scoped to the
@@ -632,8 +464,10 @@ export function ConversationDetail({
     );
   }
 
-  const latestBooking = data.bookings.find((b) => b.status === "BOOKED") ?? data.bookings[0] ?? null;
-  const followUpOverdue = data.outcome === "FOLLOW_UP" && !!data.followUpAt && new Date(data.followUpAt).getTime() <= now;
+  // Only a follow-up is current state; a legacy outcome (Booked / Not interested /
+  // No answer) reads as none — see activeOutcome.
+  const outcome = activeOutcome(data.outcome);
+  const followUpOverdue = outcome === "FOLLOW_UP" && !!data.followUpAt && new Date(data.followUpAt).getTime() <= now;
   const lineLabel = data.whatsappNumber.label;
 
   return (
@@ -680,7 +514,7 @@ export function ConversationDetail({
             </span>
           )}
           <WaitChip minutes={data.waitingMinutes} slaMinutes={data.slaMinutes} size="md" />
-          <OutcomeChip outcome={data.outcome} booking={latestBooking} followUpAt={data.followUpAt} followUpOverdue={followUpOverdue} />
+          <OutcomeChip outcome={outcome} followUpAt={data.followUpAt} followUpOverdue={followUpOverdue} />
 
           {canOpenInbox && (
             <div className="flex items-center gap-2 ml-auto">
@@ -704,11 +538,11 @@ export function ConversationDetail({
           )}
         </div>
 
-        {data.outcome && (
+        {outcome && (
           <p className="text-[11.5px] text-gray-400 mt-2">
-            Outcome set by <span className="text-gray-600 font-medium">{data.outcomeBy ? personName(data.outcomeBy) : "—"}</span>
+            Follow-up set by <span className="text-gray-600 font-medium">{data.outcomeBy ? personName(data.outcomeBy) : "—"}</span>
             {data.outcomeAt && ` · ${timeAgo(data.outcomeAt, now)}`}
-            {data.outcome === "FOLLOW_UP" && data.followUpAt && (
+            {data.followUpAt && (
               <span className={followUpOverdue ? "text-red-600 font-semibold" : ""}> · due {dateTime(data.followUpAt)}{followUpOverdue && " (overdue)"}</span>
             )}
           </p>
@@ -768,16 +602,6 @@ export function ConversationDetail({
           <Messages messages={data.messages} />
         </Section>
 
-        <Section
-          icon={<ClipboardList className="w-4 h-4" />}
-          title="Booking requests"
-          aside={
-            (data.bookingRequests?.length ?? 0) > 0 ? <span className="text-[11px] text-gray-400">{data.bookingRequests.length}</span> : undefined
-          }
-        >
-          <BookingRequests requests={data.bookingRequests ?? []} now={now} slaMinutes={data.slaMinutes} />
-        </Section>
-
         <div className="grid xl:grid-cols-2 gap-4 items-start">
           <Section
             icon={<Timer className="w-4 h-4" />}
@@ -787,14 +611,9 @@ export function ConversationDetail({
             <ResponseTimeline waits={data.waits} sla={data.slaMinutes} />
           </Section>
 
-          <div className="space-y-4 min-w-0">
-            <Section icon={<CalendarCheck className="w-4 h-4" />} title="Booking">
-              <Bookings bookings={data.bookings} now={now} />
-            </Section>
-            <Section icon={<Workflow className="w-4 h-4" />} title="Flow progress">
-              <FlowProgress runs={data.flowRuns} now={now} />
-            </Section>
-          </div>
+          <Section icon={<Workflow className="w-4 h-4" />} title="Flow progress">
+            <FlowProgress runs={data.flowRuns} now={now} />
+          </Section>
         </div>
 
         <div className="grid xl:grid-cols-2 gap-4 items-start">
@@ -853,7 +672,7 @@ export function ConversationDetail({
 
           <Section icon={<History className="w-4 h-4" />} title="History">
             {data.history.length === 0 ? (
-              <Muted>No assignment or outcome changes yet.</Muted>
+              <Muted>No assignment or follow-up changes yet.</Muted>
             ) : (
               <ul className="space-y-2.5">
                 {data.history.map((h, i) => (

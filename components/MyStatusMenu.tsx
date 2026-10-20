@@ -106,7 +106,7 @@ export function MyStatusMenu({ roleLabel }: { roleLabel?: string | null }) {
       {handOver && (
         <HandOverDialog
           title="Hand over my chats"
-          intro="End of shift? Your open chats and the booking requests you've taken go to a colleague, or back to the queue for whoever's next."
+          intro="End of shift? Your open chats go to a colleague, or back to the queue for whoever's next."
           heading="Hand them to"
           excludeUserId={me?.id ?? null}
           confirmLabel="Hand over"

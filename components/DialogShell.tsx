@@ -8,7 +8,7 @@ export const inputCls = "w-full border border-gray-200 rounded-lg px-2.5 py-2 te
 export const inputErrCls = "w-full border border-red-300 rounded-lg px-2.5 py-2 text-[13px] outline-none focus:border-red-400 bg-white";
 export const labelCls = "block text-[12px] font-semibold text-gray-500 mb-1";
 
-/** The app's modal: same look as the chat outcome and campaign dialogs. */
+/** The app's modal: same look as the chat follow-up and campaign dialogs. */
 export function DialogShell({ title, intro, onCancel, saving, width = "w-[420px]", children }: {
   title: string;
   intro?: ReactNode;

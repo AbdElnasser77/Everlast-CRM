@@ -3,18 +3,15 @@
 // preview and the PDF read the same.
 
 import type { ReportTranscript, SupervisionReport } from "@/types";
-import { LEAD_SOURCE_ORDER, leadSourceName } from "@/lib/bookingRequests";
-import { formatMinutes, formatPhone, notBookedReasonLabel, parseStructured, personName } from "../format";
+import { formatMinutes, formatPhone, parseStructured, personName } from "../format";
 import {
   OUTCOME_LABEL,
-  OUTCOME_ORDER,
-  REASON_ORDER,
+  outcomeCounts,
   ROLE_LABEL,
   makeTimeFormat,
   outcomeLabel,
   percent,
   periodLabel,
-  requestLabel,
   type TimeFormat,
   CLINIC_TZ,
 } from "./reportFormat";
@@ -33,28 +30,8 @@ export type TranscriptsState =
 
 function Summary({ report }: { report: SupervisionReport }) {
   const s = report.summary;
-  const flow = s.bookingRequestsBySource.FLOW ?? 0;
-  const agent = s.bookingRequestsBySource.AGENT ?? 0;
-  const reasonRows = [
-    ...REASON_ORDER.map((k) => [k, s.notBookedReasons[k] ?? 0] as const),
-    ...Object.entries(s.notBookedReasons).filter(([k]) => !REASON_ORDER.includes(k as never)).map(([k, v]) => [k, v ?? 0] as const),
-  ];
-  const outcomeRows = [
-    ...OUTCOME_ORDER.map((k) => [k, s.outcomes[k] ?? 0] as const),
-    ...Object.entries(s.outcomes).filter(([k]) => !OUTCOME_ORDER.includes(k)),
-  ];
-  const reasonTotal = reasonRows.reduce((a, [, v]) => a + v, 0);
-  const outcomeTotal = outcomeRows.reduce((a, [, v]) => a + v, 0);
-  // Where booked appointments came from: known sources in picker order, then
-  // anything new from the server, "Not recorded" last.
-  const bySource = s.bookingsByLeadSource ?? {};
-  const sourceRows = [
-    ...LEAD_SOURCE_ORDER.filter((k) => (bySource[k] ?? 0) > 0).map((k) => [k, bySource[k]] as const),
-    ...Object.entries(bySource).filter(([k, v]) => k !== "UNKNOWN" && !LEAD_SOURCE_ORDER.includes(k as never) && v > 0),
-    ...((bySource.UNKNOWN ?? 0) > 0 ? [["UNKNOWN", bySource.UNKNOWN] as const] : []),
-  ];
-  const sourceTotal = sourceRows.reduce((a, [, v]) => a + v, 0);
-
+  // Follow-ups set and cancelled; legacy outcomes (Booked / Not interested / No answer) aren't listed.
+  const outcomeRows = outcomeCounts(s.outcomes);
   return (
     <Section title="Summary">
       <div className="sr-kpis">
@@ -69,93 +46,27 @@ function Summary({ report }: { report: SupervisionReport }) {
         />
         <Kpi label="Late responses" value={n(s.lateResponses)} sub={`${report.slaMinutes} min or more`} tone={s.lateResponses > 0 ? "bad" : undefined} />
         <Kpi label="Unanswered" value={n(s.unanswered)} sub="patient still waiting" tone={s.unanswered > 0 ? "bad" : undefined} />
-        <Kpi label="Booking requests" value={n(s.bookingRequests)} sub={`Flow ${n(flow)} · Agent ${n(agent)}`} />
-        <Kpi label="Requests booked" value={n(s.requestsBooked)} tone={s.requestsBooked > 0 ? "good" : undefined} />
-        <Kpi label="Couldn’t book" value={n(s.requestsNotBooked)} />
-        <Kpi label="Requests still open" value={n(s.requestsStillOpen)} tone={s.requestsStillOpen > 0 ? "bad" : undefined} />
-        <Kpi label="Appointments booked" value={n(s.appointmentsBooked)} sub={`${n(s.appointmentsCancelled)} cancelled`} />
       </div>
 
       <div className="sr-twocol">
         <div>
-          <div className="sr-h3">Why requests couldn’t be booked</div>
+          <div className="sr-h3">Follow-ups by staff</div>
           <table className="sr-table">
             <thead>
               <tr>
-                <th>Reason</th>
-                <th className="sr-num">Requests</th>
-              </tr>
-            </thead>
-            <tbody>
-              {reasonRows.map(([k, v]) => (
-                <tr key={k}>
-                  <td>{notBookedReasonLabel(k)}</td>
-                  <td className="sr-num">{n(v)}</td>
-                </tr>
-              ))}
-              <tr className="sr-total">
-                <td>Total</td>
-                <td className="sr-num">{n(reasonTotal)}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <div>
-          <div className="sr-h3">Outcomes set by staff</div>
-          <table className="sr-table">
-            <thead>
-              <tr>
-                <th>Outcome</th>
-                <th className="sr-num">Times set</th>
+                <th>Follow-up</th>
+                <th className="sr-num">Times</th>
               </tr>
             </thead>
             <tbody>
               {outcomeRows.map(([k, v]) => (
                 <tr key={k}>
-                  <td>{OUTCOME_LABEL[k] ?? outcomeLabel(k)}</td>
+                  <td>{OUTCOME_LABEL[k]}</td>
                   <td className="sr-num">{n(v)}</td>
                 </tr>
               ))}
-              <tr className="sr-total">
-                <td>Total</td>
-                <td className="sr-num">{n(outcomeTotal)}</td>
-              </tr>
             </tbody>
           </table>
-        </div>
-      </div>
-
-      <div className="sr-twocol">
-        <div>
-          <div className="sr-h3">Where bookings came from</div>
-          {sourceRows.length === 0 ? (
-            <Empty>No appointments booked in this period.</Empty>
-          ) : (
-            <table className="sr-table">
-              <thead>
-                <tr>
-                  <th>Source</th>
-                  <th className="sr-num">Appointments</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sourceRows.map(([k, v]) => (
-                  <tr key={k}>
-                    <td className={k === "UNKNOWN" ? "sr-muted" : undefined}>{leadSourceName(k)}</td>
-                    <td className="sr-num">{n(v)}</td>
-                  </tr>
-                ))}
-                <tr className="sr-total">
-                  <td>Total</td>
-                  <td className="sr-num">{n(sourceTotal)}</td>
-                </tr>
-              </tbody>
-            </table>
-          )}
-          <p className="sr-note">
-            Campaign = proven (came through its booking flow or replied to it) or confirmed by an agent. A campaign the patient merely received
-            isn’t counted until someone confirms it.
-          </p>
         </div>
         <div />
       </div>
@@ -188,9 +99,7 @@ function Team({ report }: { report: SupervisionReport }) {
                 <th className="sr-num">First responses</th>
                 <th className="sr-num">Avg response</th>
                 <th className="sr-num">Late</th>
-                <th className="sr-num">Appts booked</th>
-                <th className="sr-num">Requests booked / not</th>
-                <th className="sr-num">Outcomes set</th>
+                <th className="sr-num">Follow-up changes</th>
               </tr>
             </thead>
             <tbody>
@@ -206,10 +115,6 @@ function Team({ report }: { report: SupervisionReport }) {
                   <td className="sr-num">{n(a.firstResponses)}</td>
                   <td className="sr-num">{formatMinutes(a.avgResponseMinutes)}</td>
                   <td className={`sr-num${a.lateResponses > 0 ? " sr-bad" : ""}`}>{n(a.lateResponses)}</td>
-                  <td className="sr-num">{n(a.appointmentsBooked)}</td>
-                  <td className="sr-num">
-                    {n(a.requestsBooked)} / {n(a.requestsNotBooked)}
-                  </td>
                   <td className="sr-num">{n(a.outcomesSet)}</td>
                 </tr>
               ))}
@@ -220,10 +125,6 @@ function Team({ report }: { report: SupervisionReport }) {
                 <td className="sr-num">{n(sum((a) => a.firstResponses))}</td>
                 <td className="sr-num">{formatMinutes(teamAvg)}</td>
                 <td className={`sr-num${late > 0 ? " sr-bad" : ""}`}>{n(late)}</td>
-                <td className="sr-num">{n(sum((a) => a.appointmentsBooked))}</td>
-                <td className="sr-num">
-                  {n(sum((a) => a.requestsBooked))} / {n(sum((a) => a.requestsNotBooked))}
-                </td>
                 <td className="sr-num">{n(sum((a) => a.outcomesSet))}</td>
               </tr>
             </tbody>
@@ -238,71 +139,13 @@ function Team({ report }: { report: SupervisionReport }) {
   );
 }
 
-function Bookings({ report, tf }: { report: SupervisionReport; tf: TimeFormat }) {
-  const rows = report.bookings;
-  const cancelled = rows.filter((b) => b.status === "CANCELLED").length;
-  return (
-    <Section title="Bookings" aside={rows.length ? `${n(rows.length)} appointment${rows.length === 1 ? "" : "s"}${cancelled ? ` · ${n(cancelled)} cancelled` : ""}` : undefined} pageBreak>
-      {rows.length === 0 ? (
-        <Empty>No bookings in this period.</Empty>
-      ) : (
-        <table className="sr-table sr-table-compact">
-          <thead>
-            <tr>
-              <th>Appointment</th>
-              <th>Patient</th>
-              <th>Service</th>
-              <th>Doctor</th>
-              <th>Dok32 ref</th>
-              <th>Booked by</th>
-              <th>Booked at</th>
-              <th>Source</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((b) => {
-              const x = b.status === "CANCELLED";
-              return (
-                <tr key={b.id} className={x ? "sr-struck" : undefined}>
-                  <td className="sr-nowrap">
-                    {tf.date(b.appointmentAt)}
-                    <span className="sr-sub">{tf.time(b.appointmentAt)}</span>
-                  </td>
-                  <td>
-                    <span dir="auto">{b.customer.name || "—"}</span>
-                    <span className="sr-sub sr-nowrap">{formatPhone(b.customer.phone)}</span>
-                  </td>
-                  <td>
-                    {b.service || "—"}
-                    {b.note ? <span className="sr-sub" dir="auto">{b.note}</span> : null}
-                  </td>
-                  <td>{b.doctor || "—"}</td>
-                  <td className="sr-nowrap">{b.dok32Ref || "—"}</td>
-                  <td>{b.bookedBy ? personName(b.bookedBy) : "—"}</td>
-                  <td className="sr-nowrap">{tf.short(b.bookedAt)}</td>
-                  <td>
-                    {b.leadSource || b.campaign ? leadSourceName(b.leadSource ?? "CAMPAIGN") : <span className="sr-muted">Not recorded</span>}
-                    {b.campaign && (b.leadSource === "CAMPAIGN" || !b.leadSource) ? <span className="sr-sub">{b.campaign}</span> : null}
-                  </td>
-                  <td className={x ? "" : "sr-good"}>{x ? "Cancelled" : "Booked"}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
-    </Section>
-  );
-}
-
 function Campaigns({ report, tf }: { report: SupervisionReport; tf: TimeFormat }) {
   const rows = report.campaigns;
   const t = rows.reduce(
-    (a, c) => ({ recipients: a.recipients + c.recipients, sent: a.sent + c.sent, failed: a.failed + c.failed, replied: a.replied + c.replied, requests: a.requests + c.bookingRequests, booked: a.booked + c.booked }),
-    { recipients: 0, sent: 0, failed: 0, replied: 0, requests: 0, booked: 0 },
+    (a, c) => ({ recipients: a.recipients + c.recipients, sent: a.sent + c.sent, failed: a.failed + c.failed, replied: a.replied + c.replied }),
+    { recipients: 0, sent: 0, failed: 0, replied: 0 },
   );
-  const conv = (booked: number, replied: number) => (replied > 0 ? percent((booked / replied) * 100) : "—");
+  const replyRate = (replied: number, sent: number) => (sent > 0 ? percent((replied / sent) * 100) : "—");
   return (
     <Section title="Campaigns">
       {rows.length === 0 ? (
@@ -319,9 +162,7 @@ function Campaigns({ report, tf }: { report: SupervisionReport; tf: TimeFormat }
                 <th className="sr-num">Sent</th>
                 <th className="sr-num">Failed</th>
                 <th className="sr-num">Replied</th>
-                <th className="sr-num">Booking requests</th>
-                <th className="sr-num">Booked</th>
-                <th className="sr-num">Conversion</th>
+                <th className="sr-num">Reply rate</th>
               </tr>
             </thead>
             <tbody>
@@ -334,9 +175,7 @@ function Campaigns({ report, tf }: { report: SupervisionReport; tf: TimeFormat }
                   <td className="sr-num">{n(c.sent)}</td>
                   <td className={`sr-num${c.failed > 0 ? " sr-bad" : ""}`}>{n(c.failed)}</td>
                   <td className="sr-num">{n(c.replied)}</td>
-                  <td className="sr-num">{n(c.bookingRequests)}</td>
-                  <td className="sr-num">{n(c.booked)}</td>
-                  <td className="sr-num">{conv(c.booked, c.replied)}</td>
+                  <td className="sr-num">{replyRate(c.replied, c.sent)}</td>
                 </tr>
               ))}
               {rows.length > 1 && (
@@ -346,14 +185,12 @@ function Campaigns({ report, tf }: { report: SupervisionReport; tf: TimeFormat }
                   <td className="sr-num">{n(t.sent)}</td>
                   <td className="sr-num">{n(t.failed)}</td>
                   <td className="sr-num">{n(t.replied)}</td>
-                  <td className="sr-num">{n(t.requests)}</td>
-                  <td className="sr-num">{n(t.booked)}</td>
-                  <td className="sr-num">{conv(t.booked, t.replied)}</td>
+                  <td className="sr-num">{replyRate(t.replied, t.sent)}</td>
                 </tr>
               )}
             </tbody>
           </table>
-          <p className="sr-note">Conversion = booked ÷ replied.</p>
+          <p className="sr-note">Reply rate = replied ÷ sent.</p>
         </>
       )}
     </Section>
@@ -378,8 +215,7 @@ function Chats({ report, tf }: { report: SupervisionReport; tf: TimeFormat }) {
                 <th className="sr-num">Avg response</th>
                 <th className="sr-num">Late</th>
                 <th>Unans.</th>
-                <th>Outcome</th>
-                <th>Request</th>
+                <th>Follow-up</th>
                 <th>Last message</th>
               </tr>
             </thead>
@@ -399,7 +235,6 @@ function Chats({ report, tf }: { report: SupervisionReport; tf: TimeFormat }) {
                   <td className={`sr-num${c.lateResponses > 0 ? " sr-bad" : ""}`}>{n(c.lateResponses)}</td>
                   <td className={c.unanswered ? "sr-bad" : ""}>{c.unanswered ? "✓" : ""}</td>
                   <td>{outcomeLabel(c.outcome)}</td>
-                  <td>{requestLabel(c.request)}</td>
                   <td className="sr-nowrap">{tf.short(c.lastMessageAt)}</td>
                 </tr>
               ))}
@@ -542,7 +377,6 @@ export function ReportDocument({
 
       <Summary report={report} />
       <Team report={report} />
-      <Bookings report={report} tf={tf} />
       <Campaigns report={report} tf={tf} />
       <Chats report={report} tf={tf} />
       <Transcripts state={transcripts} tf={tf} />

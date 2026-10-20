@@ -17,7 +17,7 @@ function ChatsScreen() {
   return (
     <ReportShell
       title="Chats"
-      description="One row per chat with a message in the period — who handled it, how fast, the longest wait, outcome, booking and source."
+      description="One row per chat with a message in the period — who handled it, how fast, the longest wait, follow-up and campaign."
       icon={MessagesSquare}
       period={period}
       data={data}

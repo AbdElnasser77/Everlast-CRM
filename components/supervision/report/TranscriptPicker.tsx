@@ -6,14 +6,12 @@ import { useMemo, useState } from "react";
 import { Loader2, Search } from "lucide-react";
 import type { SupervisionReport } from "@/types";
 import { formatPhone, personName } from "../format";
-import { MAX_TRANSCRIPTS, PICKS, outcomeLabel, pickIds, requestLabel } from "./reportFormat";
+import { MAX_TRANSCRIPTS, PICKS, hasOutcome, outcomeLabel, pickIds } from "./reportFormat";
 
 type ReportChat = SupervisionReport["chats"][number];
 
 const QUICK = [
   { label: "Late & unanswered", test: PICKS.attention },
-  { label: "Booked", test: PICKS.booked },
-  { label: "Couldn’t book", test: PICKS.notBooked },
   { label: "None", test: null },
   { label: `All (max ${MAX_TRANSCRIPTS})`, test: PICKS.all },
 ] as const;
@@ -124,16 +122,8 @@ export function TranscriptPicker({
                   <span className="flex items-center gap-1 flex-wrap justify-end shrink-0 max-w-[50%]">
                     {c.lateResponses > 0 && <span className={`${BADGE} bg-red-50 text-red-700 border-red-200`}>{c.lateResponses} late</span>}
                     {c.unanswered && <span className={`${BADGE} bg-red-50 text-red-700 border-red-200`}>Unanswered</span>}
-                    {c.outcome && (
-                      <span
-                        className={`${BADGE} ${c.outcome === "BOOKED" ? "bg-brand-200 text-brand-strong border-brand/30" : "bg-gray-50 text-gray-500 border-gray-200"}`}
-                      >
-                        {outcomeLabel(c.outcome)}
-                      </span>
-                    )}
-                    {c.request && c.request.status !== "BOOKED" && (
-                      <span className={`${BADGE} bg-violet-50 text-violet-700 border-violet-200`}>{requestLabel(c.request)}</span>
-                    )}
+                    {/* Only a follow-up shows; a legacy outcome counts as none. */}
+                    {hasOutcome(c.outcome) && <span className={`${BADGE} bg-gray-50 text-gray-500 border-gray-200`}>{outcomeLabel(c.outcome)}</span>}
                   </span>
                 </label>
               </li>

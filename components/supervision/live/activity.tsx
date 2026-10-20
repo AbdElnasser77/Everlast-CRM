@@ -4,22 +4,19 @@
 
 import type { ReactNode } from "react";
 import {
-  CalendarCheck,
   CalendarClock,
   CalendarX,
   CircleCheck,
-  ClipboardList,
+  Flag,
   Hand,
   MessageCircle,
-  PhoneMissed,
   Reply,
-  ThumbsDown,
   UserPlus,
   Workflow,
   Zap,
 } from "lucide-react";
 import type { SupervisionActivity } from "@/types";
-import { dateTime, humanizeKey, messagePreview, notBookedReasonLabel, patientName, personName } from "../format";
+import { dateTime, humanizeKey, messagePreview, patientName, personName } from "../format";
 
 export type Tone = "sky" | "green" | "violet" | "amber" | "red" | "gray";
 
@@ -48,13 +45,6 @@ export interface Described {
 function str(d: Record<string, unknown> | null, key: string): string | null {
   const v = d?.[key];
   return typeof v === "string" && v.trim() ? v : typeof v === "number" ? String(v) : null;
-}
-
-function appointmentLine(appointmentAt: string | null, service: string | null): string | null {
-  const parts: string[] = [];
-  if (appointmentAt && !Number.isNaN(new Date(appointmentAt).getTime())) parts.push(dateTime(appointmentAt));
-  if (service) parts.push(service);
-  return parts.length ? parts.join(" · ") : null;
 }
 
 const STATUS_WORD: Record<string, string> = { OPEN: "reopened", PENDING: "marked pending", RESOLVED: "resolved" };
@@ -143,22 +133,7 @@ export function describeActivity(a: SupervisionActivity): Described {
 
     case "conversation.outcome_set": {
       const outcome = str(d, "outcome");
-      const appt = appointmentLine(str(d, "appointmentAt"), str(d, "service"));
       const who = actor ?? "Someone";
-      if (outcome === "BOOKED") {
-        return {
-          icon: <CalendarCheck className={icon} />,
-          tone: "green",
-          title: (
-            <>
-              <B>{who}</B> booked <B>{patient}</B>
-            </>
-          ),
-          text: appt ?? extra,
-          notify: true,
-          plainTitle: `${who} booked ${patient}`,
-        };
-      }
       if (outcome === "FOLLOW_UP") {
         const due = str(d, "followUpAt");
         return {
@@ -174,9 +149,29 @@ export function describeActivity(a: SupervisionActivity): Described {
           plainTitle: `${who} set a follow-up for ${patient}`,
         };
       }
-      const label = outcome === "NOT_INTERESTED" ? "not interested" : outcome === "NO_ANSWER" ? "no answer" : humanizeKey(outcome ?? "outcome").toLowerCase();
+      if (!outcome) {
+        // Cancelled by someone, or by the server when the patient wrote again (no actor).
+        return {
+          icon: <CalendarX className={icon} />,
+          tone: "gray",
+          title: actor ? (
+            <>
+              <B>{actor}</B> cancelled the follow-up for <B>{patient}</B>
+            </>
+          ) : (
+            <>
+              Follow-up for <B>{patient}</B> cancelled
+            </>
+          ),
+          text: extra,
+          notify: false,
+          plainTitle: actor ? `${actor} cancelled the follow-up for ${patient}` : `Follow-up for ${patient} cancelled`,
+        };
+      }
+      // Legacy outcomes (Booked / Not interested / No answer) from older history.
+      const label = humanizeKey(outcome).toLowerCase();
       return {
-        icon: outcome === "NOT_INTERESTED" ? <ThumbsDown className={icon} /> : <PhoneMissed className={icon} />,
+        icon: <Flag className={icon} />,
         tone: "gray",
         title: (
           <>
@@ -188,20 +183,6 @@ export function describeActivity(a: SupervisionActivity): Described {
         plainTitle: `${who} marked ${patient} ${label}`,
       };
     }
-
-    case "conversation.booking_cancelled":
-      return {
-        icon: <CalendarX className={icon} />,
-        tone: "red",
-        title: (
-          <>
-            <B>{actor ?? "Someone"}</B> cancelled <B>{patient}</B>&rsquo;s booking
-          </>
-        ),
-        text: appointmentLine(str(d, "appointmentAt"), str(d, "service")) ?? extra,
-        notify: false,
-        plainTitle: `${patient}'s booking was cancelled`,
-      };
 
     case "flow.handed_off": {
       const flow = str(d, "flowName");
@@ -218,52 +199,6 @@ export function describeActivity(a: SupervisionActivity): Described {
         plainTitle: `Flow handed ${patient} to the team`,
       };
     }
-
-    case "booking_request.created":
-      return {
-        icon: <ClipboardList className={icon} />,
-        tone: "amber",
-        title: (
-          <>
-            <B>{patient}</B> asked to book
-          </>
-        ),
-        text: extra || "New booking request — nobody has it yet",
-        notify: true,
-        plainTitle: `New booking request from ${patient}`,
-      };
-
-    case "booking_request.booked": {
-      const list = Array.isArray(d?.appointments) ? (d?.appointments as Record<string, unknown>[]) : [];
-      const first = list[0] ?? null;
-      const line = first ? appointmentLine(str(first, "appointmentAt"), str(first, "service")) : null;
-      return {
-        icon: <CalendarCheck className={icon} />,
-        tone: "green",
-        title: (
-          <>
-            <B>{actor ?? "Someone"}</B> booked <B>{patient}</B>
-          </>
-        ),
-        text: line ? `${line}${list.length > 1 ? ` · +${list.length - 1} more` : ""}` : extra,
-        notify: true,
-        plainTitle: `${actor ?? "Someone"} booked ${patient}`,
-      };
-    }
-
-    case "booking_request.not_booked":
-      return {
-        icon: <CalendarX className={icon} />,
-        tone: "gray",
-        title: (
-          <>
-            <B>{actor ?? "Someone"}</B> couldn&rsquo;t book <B>{patient}</B>
-          </>
-        ),
-        text: notBookedReasonLabel(str(d, "reason")),
-        notify: false,
-        plainTitle: `Couldn't book ${patient}`,
-      };
 
     default:
       return {

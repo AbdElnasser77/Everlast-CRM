@@ -196,15 +196,10 @@ function RunningCard({
           { label: "Delivered", value: campaign.deliveredCount ?? 0 },
           { label: "Read", value: campaign.readCount ?? 0 },
           { label: "Replied", value: campaign.repliedCount ?? 0 },
-          { label: "Booked", value: campaign.bookedCount ?? 0 },
           { label: "Failed", value: failedCount },
         ].map(({ label, value }) => (
-          <div
-            key={label}
-            className="flex flex-col"
-            title={label === "Booked" ? `${value} booked of ${campaign.repliedCount ?? 0} replied` : undefined}
-          >
-            <span className={`text-[22px] font-bold leading-none ${label === "Booked" && value > 0 ? "text-brand-fg" : "text-gray-800"}`}>{value}</span>
+          <div key={label} className="flex flex-col">
+            <span className="text-[22px] font-bold leading-none text-gray-800">{value}</span>
             <span className="text-[11px] text-gray-400 mt-0.5">{label}</span>
           </div>
         ))}
@@ -586,7 +581,7 @@ export default function CampaignsPage() {
   const handleExport = () => {
     const completed = visible.filter((c) => c.status === "COMPLETED");
     const rows = [
-      ["Name", "Status", "Category", "Recipients", "Sent", "Failed", "Delivered", "Read", "Replied", "Booked", "Started", "Completed"],
+      ["Name", "Status", "Category", "Recipients", "Sent", "Failed", "Delivered", "Read", "Replied", "Started", "Completed"],
       ...completed.map((c) => [
         c.name,
         c.status,
@@ -597,7 +592,6 @@ export default function CampaignsPage() {
         c.deliveredCount ?? 0,
         c.readCount ?? 0,
         c.repliedCount ?? 0,
-        c.bookedCount ?? 0,
         c.startedAt ? new Date(c.startedAt).toISOString() : "",
         c.completedAt ? new Date(c.completedAt).toISOString() : "",
       ]),
@@ -931,7 +925,6 @@ export default function CampaignsPage() {
                     <th className="text-right px-4 py-3 font-semibold text-gray-500 text-[11px] uppercase tracking-wider">Delivered</th>
                     <th className="text-right px-4 py-3 font-semibold text-gray-500 text-[11px] uppercase tracking-wider">Read</th>
                     <th className="text-right px-4 py-3 font-semibold text-gray-500 text-[11px] uppercase tracking-wider">Replied</th>
-                    <th className="text-right px-4 py-3 font-semibold text-gray-500 text-[11px] uppercase tracking-wider">Booked</th>
                     <th className="text-right px-4 py-3 font-semibold text-gray-500 text-[11px] uppercase tracking-wider">Failed</th>
                     <th className="text-right px-5 py-3 font-semibold text-gray-500 text-[11px] uppercase tracking-wider">Status</th>
                   </tr>
@@ -987,17 +980,6 @@ export default function CampaignsPage() {
                           {c.sentCount > 0 && (
                             <span className="text-gray-400 text-[11px] ml-1">
                               · {Math.round(replyRate * 100)}%
-                            </span>
-                          )}
-                        </td>
-                        <td
-                          className="px-4 py-3.5 text-right whitespace-nowrap"
-                          title={`${c.bookedCount ?? 0} booked of ${c.repliedCount ?? 0} replied`}
-                        >
-                          <span className={(c.bookedCount ?? 0) > 0 ? "text-brand-fg font-semibold" : "text-gray-700"}>{c.bookedCount ?? 0}</span>
-                          {(c.repliedCount ?? 0) > 0 && (
-                            <span className="text-gray-400 text-[11px] ml-1">
-                              of {c.repliedCount} replied
                             </span>
                           )}
                         </td>

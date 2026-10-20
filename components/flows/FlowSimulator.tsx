@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Loader2, RotateCcw, Send, X } from "lucide-react";
+import { RotateCcw, Send, X } from "lucide-react";
 import { parsePhoneNumberFromString } from "libphonenumber-js";
-import type { ClinicDay, FlowGraph, FlowNode, FlowOption, Template } from "@/types";
-import { SLOT_DEFAULTS, flowCardLabel } from "@/lib/flows";
-import { apiCheckSlot, apiGetAvailabilityDay, apiGetAvailableDays, apiParsePatientWhen } from "@/lib/api";
+import type { FlowGraph, FlowNode, FlowOption, Template } from "@/types";
+import { flowCardLabel } from "@/lib/flows";
 import { WaText } from "@/components/templates/shared";
 
 // A dry run of the flow being edited — unsaved changes included. It walks the
@@ -34,52 +33,9 @@ type Waiting =
   | { kind: "buttons"; nodeId: string; options: FlowOption[] }
   | { kind: "list"; nodeId: string; options: FlowOption[]; label: string }
   | { kind: "question"; nodeId: string }
-  // Pick appointment: "loading" while the clinic system is asked.
-  | { kind: "slot"; nodeId: string; phase: SlotPhase; date?: string; misses: number }
   | null;
 
-type SlotPhase = "loading" | "day" | "time" | "fallback_date" | "fallback_time";
-type SlotWaiting = Extract<NonNullable<Waiting>, { kind: "slot" }>;
-type SlotAction = { kind: "enter" } | { kind: "tap"; option: FlowOption } | { kind: "text"; text: string };
-type SlotResult = "park" | "done";
-
 const MAX_STEPS = 25;
-
-// ── Pick appointment — the server's rules (flowEngine.js slotAdvance), with
-// the real free days and times from the clinic system. ──
-const SLOT_ROWS = 10;
-const MAX_SLOT_MISSES = 3;
-const PLAIN_TIME_RE = /^\d{1,2}([:.]\d{2})?\s*(am|pm|a\.m\.|p\.m\.)?$/i;
-const DAY_PARTS = [
-  { id: "morning", title: "🌅 Morning", has: (t: string) => t < "12:00" },
-  { id: "afternoon", title: "☀️ Afternoon", has: (t: string) => t >= "12:00" && t < "17:00" },
-  { id: "evening", title: "🌙 Evening", has: (t: string) => t >= "17:00" },
-];
-const ANOTHER_DAY: FlowOption = { id: "days", title: "📅 Another day" };
-
-/** "16:30" → "4:30 PM" */
-function fmtSlotTime(hhmm: string): string {
-  const [h, m] = hhmm.split(":").map(Number);
-  return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
-}
-
-const dayLabel = (iso: string) =>
-  new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-GB", { timeZone: "UTC", weekday: "short", day: "numeric", month: "short" });
-
-function spread<T>(list: T[], n: number): T[] {
-  if (list.length <= n) return list;
-  return Array.from({ length: n }, (_, i) => list[Math.round((i * (list.length - 1)) / (n - 1))]);
-}
-
-// The clinic system didn't answer — the step falls back, as on the server.
-class ClinicDown extends Error {}
-async function clinic<T>(call: Promise<{ data: T }>): Promise<T> {
-  try {
-    return (await call).data;
-  } catch (err) {
-    throw new ClinicDown(err instanceof Error ? err.message : "unavailable");
-  }
-}
 
 function interpolate(text: string | undefined, name: string, answers: Record<string, string>): string {
   if (!text) return "";
@@ -160,7 +116,6 @@ export function FlowSimulator({
   const [handedOff, setHandedOff] = useState(false);
   const handedOffRef = useRef(false); // set while walking, applied in settle()
   const scrollRef = useRef<HTMLDivElement>(null);
-  const genRef = useRef(0);
 
   const trigger = graph.nodes.find((n) => n.type === "trigger");
   const startButtons = trigger?.data.buttons || [];
@@ -238,8 +193,12 @@ export function FlowSimulator({
           out.push({ kind: "bot", text: say(d.text) });
           return { kind: "question", nodeId: n.id };
         case "slot_picker":
-          // Carries on in slotMove once the clinic system answers (see settle).
-          return { kind: "slot", nodeId: n.id, phase: "loading", misses: 0 };
+          // Retired Pick appointment step in an older flow: the server hands the
+          // patient to the team when a run reaches one, so it stops like a hand-off.
+          out.push({ kind: "event", text: "Reached a Pick appointment step, which is no longer available — delete it to save this flow.", tone: "warn" });
+          out.push({ kind: "event", text: "Handed to the team — the chat would now appear in the Unassigned queue. Automation stops.", tone: "end" });
+          handedOffRef.current = true;
+          return null;
         case "tag":
           out.push({ kind: "event", text: `Tag added to the customer: “${d.tag || "—"}”` });
           id = next(n.id, "next");
@@ -270,196 +229,6 @@ export function FlowSimulator({
     setWaiting(w);
     setAnswers(ans);
     onActiveNode?.(w && w.kind !== "start" ? w.nodeId : null);
-    if (w?.kind === "slot" && w.phase === "loading") void slotMove(w, ans, { kind: "enter" });
-  }
-
-  // One move of a Pick appointment step (the server's slotAdvance).
-  async function slotMove(w0: SlotWaiting, ans0: Record<string, string>, action: SlotAction) {
-    const n = node(w0.nodeId);
-    if (!n) return;
-    const gen = genRef.current;
-    const d = n.data;
-    const ans = { ...ans0 };
-    const out: Item[] = [];
-    if (action.kind === "tap") {
-      out.push({ kind: "user", text: action.option.title });
-      jumpNote(n.id, out);
-    }
-    if (action.kind === "text") out.push({ kind: "user", text: action.text });
-    const fresh = action.kind === "enter" || w0.phase === "loading";
-    const st: { phase: SlotPhase; date?: string; misses: number } = fresh ? { phase: "day", misses: 0 } : { phase: w0.phase, date: w0.date, misses: w0.misses };
-    setWaiting({ kind: "slot", nodeId: n.id, phase: "loading", misses: st.misses });
-    let chosenDate = st.phase === "time" ? st.date : undefined;
-
-    const text = (key: keyof typeof SLOT_DEFAULTS, extra: Record<string, string> = {}) =>
-      interpolate((d[key] as string | undefined) || SLOT_DEFAULTS[key], name, { ...ans, ...extra });
-    const bot = (it: Omit<Extract<Item, { kind: "bot" }>, "kind" | "nodeId">) => out.push({ kind: "bot", nodeId: n.id, ...it });
-
-    const done = (vals: Record<string, string>): SlotResult => {
-      delete ans.slot_status;
-      delete ans.slot_label;
-      Object.assign(ans, vals);
-      // Unchecked answers get a readable label too, as on the server.
-      if (!ans.slot_label && !ans.slot_status) {
-        const day = ans.preferred_date;
-        const time = ans.preferred_time;
-        const label = [day && /^\d{4}-\d{2}-\d{2}$/.test(day) ? dayLabel(day) : day, time && /^\d{2}:\d{2}$/.test(time) ? fmtSlotTime(time) : time].filter(Boolean);
-        if (label.length) ans.slot_label = label.join(", ");
-      }
-      const saved = [...Object.keys(vals), ...(ans.slot_label && !vals.slot_label ? ["slot_label"] : [])];
-      out.push({ kind: "event", text: `Saved ${saved.map((k) => `${k} = “${ans[k]}”`).join(", ")}` });
-      return "done";
-    };
-    const askFallbackDay = (): SlotResult => {
-      st.phase = "fallback_date";
-      bot({ text: text("fallbackDayText") });
-      return "park";
-    };
-    const askFallbackTime = (): SlotResult => {
-      st.phase = "fallback_time";
-      bot({ text: text("fallbackTimeText") });
-      return "park";
-    };
-
-    const showDays = async (intro?: string): Promise<SlotResult> => {
-      const days = await clinic(apiGetAvailableDays(SLOT_ROWS));
-      if (!days.length) {
-        bot({ text: text("noSlotsText") });
-        return done({ slot_status: "NONE_AVAILABLE", slot_checked: "false" });
-      }
-      st.phase = "day";
-      st.date = undefined;
-      bot({
-        text: intro ? `${intro}\n\nHere are the nearest available days — pick one below, or type a date (e.g. 25 Oct).` : text("dayText"),
-        list: {
-          label: "Choose a day",
-          rows: days.slice(0, SLOT_ROWS).map((day) => ({
-            id: `d.${day.date}`,
-            title: day.label,
-            description: `${day.slots.length} time${day.slots.length === 1 ? "" : "s"} available`,
-          })),
-        },
-      });
-      return "park";
-    };
-    const notOpen = (day: ClinicDay, lead = "") => showDays(`${lead}${day.message || ""}`.trim());
-    const getDay = (date: string) => clinic(apiGetAvailabilityDay(date));
-
-    const showTimes = (day: ClinicDay, lead?: string, part?: string): SlotResult => {
-      st.phase = "time";
-      st.date = day.date;
-      const parts = DAY_PARTS.filter((p) => day.slots.some(p.has));
-      const inPart = part ? day.slots.filter(DAY_PARTS.find((p) => p.id === part)?.has ?? (() => true)) : day.slots;
-      // Too many for one list: the part of the day first.
-      if (inPart.length > SLOT_ROWS - 1 && !part && parts.length > 1) {
-        const body = `${lead ? `${lead} ` : ""}🕒 ${day.label} has plenty of free times. Which part of the day suits you?`;
-        const options = parts.map((p) => {
-          const times = day.slots.filter(p.has);
-          return { id: `p.${day.date}.${p.id}`, title: p.title, description: `${times.length} times · ${fmtSlotTime(times[0])} – ${fmtSlotTime(times[times.length - 1])}` };
-        });
-        // Buttons while "Another day" still fits beside them, else a list.
-        if (parts.length < 3) bot({ text: body, buttons: [...options.map(({ id, title }) => ({ id, title })), ANOTHER_DAY] });
-        else bot({ text: body, list: { label: "Choose", rows: [...options, ANOTHER_DAY] } });
-        return "park";
-      }
-      bot({
-        text: lead ? `${lead}\n\nHere are the free times on ${day.label} — pick one below, or type a time.` : text("timeText", { day: day.label }),
-        list: { label: "Choose a time", rows: [...spread(inPart, SLOT_ROWS - 1).map((t) => ({ id: `t.${day.date}.${t}`, title: fmtSlotTime(t) })), ANOTHER_DAY] },
-      });
-      return "park";
-    };
-
-    // The final check, right when the time is chosen.
-    const pickTime = async (date: string, time: string, known?: ClinicDay): Promise<SlotResult> => {
-      const day = known ?? (await getDay(date));
-      const listed = day.status === "OPEN" && day.slots.includes(time);
-      if (!listed || !(await clinic(apiCheckSlot(date, time))).free) {
-        const now = listed ? await getDay(date) : day;
-        if (now.status === "PAST") return notOpen(now);
-        const left = now.status === "OPEN" ? now.slots.filter((t) => t !== time) : [];
-        if (!left.length) return now.status === "OPEN" ? showDays("That time was just taken 😕") : notOpen(now, "That time was just taken 😕 ");
-        return showTimes({ ...now, slots: left }, "That time was just taken 😕");
-      }
-      return done({ preferred_date: date, preferred_time: time, slot_checked: "true", slot_label: `${day.label}, ${fmtSlotTime(time)}` });
-    };
-
-    // An answer it can't use. After MAX_SLOT_MISSES, their words as they are.
-    const miss = async (raw: string, retry: () => Promise<SlotResult> | SlotResult): Promise<SlotResult> => {
-      st.misses += 1;
-      if (st.misses < MAX_SLOT_MISSES) return retry();
-      out.push({ kind: "event", text: `${MAX_SLOT_MISSES} answers it couldn't use — taking what they typed as it is.`, tone: "warn" });
-      if (st.phase === "time" && st.date) return done({ preferred_date: st.date, preferred_time: raw, slot_checked: "false" });
-      ans.preferred_date = raw;
-      ans.slot_checked = "false";
-      return askFallbackTime();
-    };
-
-    const move = async (): Promise<SlotResult> => {
-      if (action.kind === "enter") return showDays();
-      if (action.kind === "tap") {
-        const id = action.option.id;
-        st.misses = 0;
-        if (id === "days") return showDays();
-        const [kind, date, rest] = id.split(".");
-        chosenDate = date;
-        if (kind === "d" || kind === "p") {
-          const day = await getDay(date);
-          if (day.status !== "OPEN") return notOpen(day);
-          return showTimes(day, undefined, kind === "p" ? rest : undefined);
-        }
-        return pickTime(date, rest);
-      }
-      const raw = action.text.trim().slice(0, 500);
-      if (st.phase === "fallback_date") {
-        ans.preferred_date = raw;
-        ans.slot_checked = "false";
-        return askFallbackTime();
-      }
-      if (st.phase === "fallback_time") return done({ preferred_time: raw, slot_checked: "false" });
-      const parsed = await clinic(apiParsePatientWhen(raw));
-      if (st.phase === "time" && st.date) {
-        // A date instead: they'd rather another day ("20 Oct" also reads as 20:00).
-        const otherDate = PLAIN_TIME_RE.test(raw) ? null : parsed.date;
-        if (otherDate) {
-          chosenDate = otherDate;
-          const day = await getDay(otherDate);
-          if (day.status !== "OPEN") return miss(raw, () => notOpen(day));
-          st.misses = 0;
-          return showTimes(day);
-        }
-        const day = await getDay(st.date);
-        if (day.status !== "OPEN") return notOpen(day);
-        const time = parsed.time;
-        if (!time) return miss(raw, () => showTimes(day, "Sorry, I didn't catch that time."));
-        if (!day.slots.includes(time)) return miss(raw, () => showTimes(day, `Sorry, ${fmtSlotTime(time)} isn't available on ${day.label}.`));
-        return pickTime(day.date, time, day);
-      }
-      if (!parsed.date) return miss(raw, () => showDays("Sorry, I didn't catch that date."));
-      chosenDate = parsed.date;
-      const day = await getDay(parsed.date);
-      if (day.status !== "OPEN") return miss(raw, () => notOpen(day));
-      st.misses = 0;
-      return showTimes(day);
-    };
-
-    let result: SlotResult;
-    try {
-      result = await move();
-    } catch (err) {
-      if (!(err instanceof ClinicDown)) throw err;
-      out.push({ kind: "event", text: `The clinic system didn't answer (${err.message}) — a real patient gets plain questions instead, saved as typed.`, tone: "warn" });
-      if (chosenDate) {
-        ans.preferred_date = chosenDate;
-        ans.slot_checked = "false";
-        result = askFallbackTime();
-      } else {
-        result = askFallbackDay();
-      }
-    }
-
-    if (gen !== genRef.current) return; // restarted meanwhile
-    if (result === "done") settle(out, walk(next(n.id, "next"), ans, out), ans);
-    else settle(out, { kind: "slot", nodeId: n.id, phase: st.phase, date: st.date, misses: st.misses }, ans);
   }
 
   function tapStart(option: FlowOption | null, typed?: string) {
@@ -507,13 +276,6 @@ export function FlowSimulator({
     if (handedOff) return;
     const n = node(nodeId);
     if (!n) return;
-    if (n.type === "slot_picker") {
-      if (waiting?.kind === "slot" && waiting.phase === "loading") return;
-      // A tap says what it means (a day, a time…), so an older list works too.
-      const w: SlotWaiting = waiting?.kind === "slot" && waiting.nodeId === n.id ? waiting : { kind: "slot", nodeId: n.id, phase: "day", misses: 0 };
-      void slotMove(w, answers, { kind: "tap", option });
-      return;
-    }
     const ans = { ...answers };
     if (n.data.variable) ans[n.data.variable] = option.title;
     const out: Item[] = [{ kind: "user", text: option.title }];
@@ -534,10 +296,6 @@ export function FlowSimulator({
       }
       return tapStart(null, text);
     }
-    if (waiting.kind === "slot") {
-      if (waiting.phase !== "loading") void slotMove(waiting, answers, { kind: "text", text });
-      return;
-    }
     if (waiting.kind !== "question") {
       setItems((p) => [...p, { kind: "user", text }, { kind: "event", text: "The flow is waiting for a button tap — typed text goes to the agents in the inbox and the flow keeps waiting.", tone: "warn" }]);
       return;
@@ -555,7 +313,6 @@ export function FlowSimulator({
   }
 
   function restart() {
-    genRef.current += 1; // drops a Pick appointment answer still on its way
     setItems([]);
     setAnswers({});
     setInput("");
@@ -564,12 +321,9 @@ export function FlowSimulator({
     onActiveNode?.(null);
   }
 
-  const slotLoading = waiting?.kind === "slot" && waiting.phase === "loading";
-  const canType = waiting?.kind === "question" || waiting?.kind === "start" || (waiting?.kind === "slot" && !slotLoading);
+  const canType = waiting?.kind === "question" || waiting?.kind === "start";
   const placeholder =
     waiting?.kind === "question" ? "Type the customer's answer…"
-    : slotLoading ? "Checking the clinic system…"
-    : waiting?.kind === "slot" ? "Tap a day or time, or type one (e.g. tomorrow, 4:30 pm)…"
     : waiting?.kind === "start" ? "Or type a reply to the campaign…" : waiting ? "Waiting for a tap (typing goes to the inbox)" : "Flow finished — restart to try another path";
 
   return (
@@ -710,13 +464,6 @@ export function FlowSimulator({
             </div>
           );
         })}
-        {slotLoading && (
-          <div className="flex justify-center">
-            <span className="inline-flex items-center gap-1.5 text-[11px] rounded-lg border border-white bg-white/70 text-gray-600 px-2.5 py-1">
-              <Loader2 className="w-3 h-3 animate-spin" /> Checking free times in the clinic system…
-            </span>
-          </div>
-        )}
       </div>
 
       {Object.keys(answers).length > 0 && (
@@ -737,11 +484,11 @@ export function FlowSimulator({
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          disabled={!waiting || slotLoading}
+          disabled={!waiting}
           placeholder={placeholder}
           className={`flex-1 text-[13px] border rounded-full px-3.5 py-2 focus:outline-none focus:border-brand disabled:bg-gray-50 ${canType ? "border-gray-200" : "border-gray-100"}`}
         />
-        <button type="submit" disabled={!waiting || slotLoading || !input.trim()} className="w-9 h-9 rounded-full bg-brand text-white flex items-center justify-center disabled:opacity-40">
+        <button type="submit" disabled={!waiting || !input.trim()} className="w-9 h-9 rounded-full bg-brand text-white flex items-center justify-center disabled:opacity-40">
           <Send className="w-4 h-4" />
         </button>
       </form>

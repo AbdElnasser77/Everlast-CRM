@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CalendarPlus, Check, ChevronDown, Hourglass, MessageCircle } from "lucide-react";
+import { Check, ChevronDown, Hourglass, MessageCircle } from "lucide-react";
 import { useActiveNumber } from "./WhatsAppNumberProvider";
 import { useCurrentUser } from "./CurrentUserProvider";
 import { Spinner } from "./ui/spinner";
@@ -11,22 +11,18 @@ import type { ConfiguredWhatsAppNumber } from "@/types";
 
 // ── What's waiting on each line ──────────────────────────────────────────────
 //
-// So another line is never invisible: unread chats, patients waiting (< 24h)
-// and new booking requests per line, from /conversations/line-counts (not
-// number-scoped). One shared poller however many switchers are mounted (the
-// layout renders a mobile and a desktop one): every 30s, and soon after any
-// event that can change a count. Message / conversation events only arrive
-// for the active line; hand-offs and booking alerts arrive for every line,
-// and the 30s poll covers the rest.
+// So another line is never invisible: unread chats and patients waiting
+// (< 24h) per line, from /conversations/line-counts (not number-scoped). One
+// shared poller however many switchers are mounted (the layout renders a
+// mobile and a desktop one): every 30s, and soon after any event that can
+// change a count. Message / conversation events only arrive for the active
+// line; hand-offs arrive for every line, and the 30s poll covers the rest.
 
-type LineCount = { id: number; label: string; unreadChats: number; waiting: number; newBookingRequests: number };
+type LineCount = { id: number; label: string; unreadChats: number; waiting: number };
 
 const POLL_MS = 30_000;
 const DEBOUNCE_MS = 1_500;
-const COUNT_EVENTS = [
-  "message.new", "message.created", "conversation.updated",
-  "booking_request.created", "booking_request.updated", "booking_request.alert", "flow.handoff",
-];
+const COUNT_EVENTS = ["message.new", "message.created", "conversation.updated", "flow.handoff"];
 
 const lineCountStore = {
   data: null as LineCount[] | null,
@@ -90,17 +86,16 @@ function useLineCounts(enabled: boolean, activeNumberId: string | null): Map<num
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-function countsSummary(c: Pick<LineCount, "unreadChats" | "waiting" | "newBookingRequests">): string {
+function countsSummary(c: Pick<LineCount, "unreadChats" | "waiting">): string {
   const parts: string[] = [];
   if (c.unreadChats) parts.push(plural(c.unreadChats, "unread chat", "unread chats"));
   if (c.waiting) parts.push(`${c.waiting} waiting`);
-  if (c.newBookingRequests) parts.push(plural(c.newBookingRequests, "new booking request", "new booking requests"));
   return parts.join(" · ");
 }
 
-/** The small chips on a menu row: unread chats, waiting, new booking requests. */
+/** The small chips on a menu row: unread chats, waiting. */
 function LineCountChips({ c }: { c: LineCount | undefined }) {
-  if (!c || (!c.unreadChats && !c.waiting && !c.newBookingRequests)) return null;
+  if (!c || (!c.unreadChats && !c.waiting)) return null;
   const chip = "inline-flex items-center gap-0.5 rounded-full border px-1.5 py-px text-[10.5px] font-semibold tabular-nums";
   return (
     <span className="mt-1 flex flex-wrap items-center gap-1" title={countsSummary(c)}>
@@ -114,12 +109,6 @@ function LineCountChips({ c }: { c: LineCount | undefined }) {
         <span className={`${chip} bg-amber-50 text-amber-700 border-amber-200`}>
           <Hourglass className="w-3 h-3" aria-hidden /> {c.waiting}
           <span className="sr-only"> waiting</span>
-        </span>
-      )}
-      {c.newBookingRequests > 0 && (
-        <span className={`${chip} bg-sky-50 text-sky-700 border-sky-200`}>
-          <CalendarPlus className="w-3 h-3" aria-hidden /> {c.newBookingRequests}
-          <span className="sr-only"> new booking requests</span>
         </span>
       )}
     </span>
@@ -169,20 +158,19 @@ export function NumberSwitcher() {
   const counts = useLineCounts(numbers.length > 1 && can("conversation:read"), activeNumberId);
   // Everything waiting on the lines you are NOT on (and can switch to).
   const others = useMemo(() => {
-    const sum = { unreadChats: 0, waiting: 0, newBookingRequests: 0 };
+    const sum = { unreadChats: 0, waiting: 0 };
     for (const n of numbers) {
       if (String(n.id) === activeNumberId) continue;
       const c = counts.get(n.id);
       if (!c) continue;
       sum.unreadChats += c.unreadChats;
       sum.waiting += c.waiting;
-      sum.newBookingRequests += c.newBookingRequests;
     }
     return sum;
   }, [counts, numbers, activeNumberId]);
-  // The badge number: unread chats + new requests. Waiting patients usually
-  // overlap unread chats, so they only light the dot when nothing else does.
-  const othersCount = others.unreadChats + others.newBookingRequests;
+  // The badge number: unread chats. Waiting patients usually overlap unread
+  // chats, so they only light the dot when nothing else does.
+  const othersCount = others.unreadChats;
   const othersAttention = othersCount > 0 || others.waiting > 0;
 
   // Grouped in first-seen order. The server returns the default number first,

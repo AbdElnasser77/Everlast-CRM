@@ -22,7 +22,7 @@ function TranscriptsScreen() {
   const { from, to, key: reportKey } = period;
 
   const [filter, setFilter] = useState<ChatFilter>(EMPTY_FILTER);
-  // Ticked chats; until the user ticks, the ones worth reading (late, unanswered, booked, couldn't book).
+  // Ticked chats; until the user ticks, the ones worth reading (late or unanswered).
   const [selection, setSelection] = useState<{ key: string; ids: Set<number> } | null>(null);
   const selected = useMemo(() => {
     if (!data) return new Set<number>();

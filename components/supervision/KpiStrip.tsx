@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { CalendarCheck, CalendarClock, Clock, Inbox, Timer, Workflow } from "lucide-react";
+import { Clock, Inbox, Timer, Workflow } from "lucide-react";
 import type { SupervisionFilter, SupervisionOverview } from "@/types";
 import { formatMinutes } from "./format";
 
@@ -65,8 +65,8 @@ export function KpiStrip({
 }) {
   if (!overview) {
     return (
-      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
-        {Array.from({ length: 6 }).map((_, i) => (
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+        {Array.from({ length: 4 }).map((_, i) => (
           <div key={i} className={`h-[104px] bg-white rounded-xl border border-gray-100 p-4 ${loading ? "animate-pulse" : ""}`}>
             <div className="h-2.5 w-24 bg-gray-100 rounded" />
             <div className="h-6 w-12 bg-gray-100 rounded mt-3" />
@@ -81,7 +81,7 @@ export function KpiStrip({
   const sla = overview.slaMinutes;
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
+    <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
       <KpiCard
         title="Waiting for reply"
         icon={<Clock className="w-4 h-4" />}
@@ -105,31 +105,6 @@ export function KpiStrip({
         }
       />
       <KpiCard
-        title="Booking requests"
-        icon={<CalendarClock className="w-4 h-4" />}
-        value={k.bookingRequestsOpen}
-        alert={(k.bookingRequestsOverSla ?? 0) > 0}
-        active={filter === "booking"}
-        onClick={() => onFilter("booking")}
-        sub={
-          k.bookingRequestsOpen === 0 ? (
-            "None open"
-          ) : (
-            <>
-              {(k.bookingRequestsOverSla ?? 0) > 0 && (
-                <span className="text-red-600 font-semibold">{k.bookingRequestsOverSla} waiting over {sla} min</span>
-              )}
-              {(k.bookingRequestsOverSla ?? 0) > 0 && (k.bookingRequestsNew ?? 0) > 0 && <span> · </span>}
-              {(k.bookingRequestsNew ?? 0) > 0 ? (
-                <span className="text-amber-600">{k.bookingRequestsNew} not picked up</span>
-              ) : (k.bookingRequestsOverSla ?? 0) === 0 ? (
-                <span className="text-brand-fg">All picked up</span>
-              ) : null}
-            </>
-          )
-        }
-      />
-      <KpiCard
         title="Dropped halfway"
         icon={<Workflow className="w-4 h-4" />}
         value={k.droppedHalfwayToday}
@@ -145,14 +120,6 @@ export function KpiStrip({
         active={filter === "follow_up"}
         onClick={() => onFilter("follow_up")}
         sub={k.followUpsDue > 0 ? <span className="text-red-600 font-semibold">Due now or overdue</span> : "Nothing due"}
-      />
-      <KpiCard
-        title="Booked today"
-        icon={<CalendarCheck className="w-4 h-4" />}
-        value={k.bookedToday}
-        active={filter === "booked"}
-        onClick={() => onFilter("booked")}
-        sub={<span className={k.bookedToday > 0 ? "text-brand-fg" : ""}>Appointments set by the team</span>}
       />
       <KpiCard
         title="Avg first response"
