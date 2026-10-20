@@ -49,7 +49,7 @@ export function campaignsCsv(report: CampaignsReport, fileName: string) {
     "Campaign ID", "Campaign", "Line", "Template", "Category", "Status", "Created by", "Approved by", "Started", "Completed",
     "Recipients", "Sent", "Failed", "Skipped", "Delivered", "Read", "Replied",
     "Delivered %", "Read %", "Replied %",
-    "Booking requests", "Suggested requests (not confirmed)", "Requests booked", "Requests couldn't book", "Requests open",
+    "Booking requests", "Requests (not confirmed)", "Requests booked", "Requests couldn't book", "Requests open",
     ...REASON_ORDER.map((k) => `Couldn't book: ${notBookedReasonLabel(k)}`),
     "Patients booked", "Appointments booked", "Booked % of sent", "Booked % of replied", "Services booked",
     "Opt-outs", "Opt-out %",

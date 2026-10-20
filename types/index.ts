@@ -68,6 +68,8 @@ export interface Message {
   /** Set on an inbound message that answers a campaign — drives the "Reply to" tag. */
   campaignRecipientId?: number | null;
   campaignRecipient?: { campaign: { id: number; name: string } } | null;
+  /** Written by the AI assistant (a BOT message) — drives the "AI" badge. */
+  aiGenerated?: boolean;
   deletedAt?: string | null;
   createdAt: string;
   updatedAt?: string;
@@ -862,10 +864,179 @@ export interface TestPhonesSetting {
   phones: string[];
 }
 
+// Settings → AI assistant. The *Ar texts go to patients who write in Arabic
+// (empty = the English text for everyone).
+export interface AiAssistantSetting {
+  enabled: boolean;
+  /** Lines it answers on; empty = none. */
+  numberIds: number[];
+  assistantName: string;
+  handoffMessage: string;
+  urgentMessage: string;
+  handoffMessageAr: string;
+  urgentMessageAr: string;
+  outOfHoursNote: string;
+  quietAfterAgentReplyHours: number;
+}
+
+/** Progress of the current (or last) full knowledge re-index. */
+export interface AiReindexStatus {
+  running: boolean;
+  /** "manual" | "embed_model_changed" */
+  trigger: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  total: number;
+  done: number;
+  indexed: number;
+  skipped: number;
+  failed: number;
+  errors: { id: number; error: string }[];
+  error: string | null;
+}
+
+/** Whether the assistant can work at all (read-only, from the server). */
+export interface AiStatus {
+  configured: boolean;
+  chatModel: string;
+  embedModel: string;
+  /** null when the server couldn't count them. */
+  approved: number | null;
+  indexed: number | null;
+  reindex?: AiReindexStatus;
+}
+
+// Settings → AI assistant → AI model & Cloudflare. The numbers that shape the
+// assistant's answers.
+export interface AiProviderBehaviour {
+  temperature: number;
+  maxOutputTokens: number;
+  /** null = the model's own default. */
+  topP: number | null;
+  debounceSeconds: number;
+  historyMessages: number;
+  retrievalTopK: number;
+  similarityThreshold: number;
+  maxToolRounds: number;
+  maxExtraSearches: number;
+  maxReplyChars: number;
+  requestTimeoutSeconds: number;
+}
+
+/** "settings" = saved here, "env" = config.env, "default" = built in. */
+export type AiValueSource = "settings" | "env" | "default" | null;
+
+/** What the server sends — never the API token itself. */
+export interface AiProviderSetting extends AiProviderBehaviour {
+  /** Saved here; "" = not set here (config.env / default apply). */
+  accountId: string;
+  chatModel: string;
+  embedModel: string;
+  hasToken: boolean;
+  tokenLast4: string | null;
+  tokenSource: "settings" | "env" | null;
+  /** A token is stored in Settings (even if it can't be decrypted). */
+  savedToken: boolean;
+  /** Set when the saved token can't be decrypted. */
+  tokenError: string | null;
+  /** SETTINGS_ENCRYPTION_KEY is set, so a token can be saved here. */
+  encryptionAvailable: boolean;
+  configured: boolean;
+  effective: { accountId: string; chatModel: string; embedModel: string };
+  sources: { accountId: "settings" | "env" | null; chatModel: AiValueSource; embedModel: AiValueSource };
+  defaults: AiProviderBehaviour & { chatModel: string; embedModel: string };
+  limits: Record<keyof AiProviderBehaviour, { min: number; max: number }>;
+}
+
+/** PUT /api/settings/aiProvider. Numbers may be "" (the server says what's wrong). */
+export type AiProviderSave = {
+  accountId: string;
+  chatModel: string;
+  embedModel: string;
+  /** Replace the saved token; leave out to keep it. */
+  apiToken?: string;
+  removeToken?: boolean;
+} & { [K in keyof AiProviderBehaviour]: number | string | null };
+
+/** One model from the Workers AI catalog. */
+export interface AiCatalogModel {
+  id: string;
+  /** "Text Generation" | "Text Embeddings" */
+  task: string;
+  description: string;
+  contextWindow: number | null;
+  /** null when Cloudflare doesn't say. */
+  functionCalling: boolean | null;
+  beta: boolean | null;
+  deprecated: boolean;
+  properties: Record<string, unknown>;
+}
+
+/** POST /api/settings/ai/test */
+export interface AiTestResult {
+  ok: boolean;
+  chat: { ok: boolean; model: string; latencyMs: number; sample: string | null; finishReason?: string | null; note?: string; error?: string };
+  embed: { ok: boolean; model: string; dims: number | null; latencyMs: number; error?: string };
+}
+
 export interface WorkspaceSettings {
   quietHours: QuietHoursSetting;
   campaignSafety: CampaignSafetySetting;
   testPhones: TestPhonesSetting;
+  aiAssistant: AiAssistantSetting;
+  aiProvider: AiProviderSetting;
+  aiStatus: AiStatus;
+}
+
+// ── Knowledge base (the AI assistant's approved answers) ──
+
+export type KnowledgeStatus = "DRAFT" | "APPROVED" | "ARCHIVED";
+
+export type KnowledgeSectionKey = "summary" | "before" | "after" | "downtime" | "notSuitableFor" | "faq" | "other";
+
+export type KnowledgeSections = Record<KnowledgeSectionKey, string>;
+
+export interface KnowledgeArticle {
+  id: number;
+  title: string;
+  category: string | null;
+  sections: KnowledgeSections;
+  status: KnowledgeStatus;
+  approvedById: number | null;
+  approvedAt: string | null;
+  createdById: number | null;
+  updatedById: number | null;
+  embeddedAt: string | null;
+  /** Approved and embedded: the assistant can find it right now. */
+  searchable: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** What re-indexing an article did, after approve / an edit of an approved one. */
+export interface KnowledgeIndexing {
+  indexed: boolean;
+  reason: "missing" | "not_approved" | "not_configured" | "error" | null;
+  error: string | null;
+}
+
+export type AiOutcome = "ANSWERED" | "HANDED_OFF" | "URGENT" | "ERROR";
+
+/** POST /api/knowledge/ask — the assistant run on a typed question; nothing sent. */
+export interface AiAskResult {
+  /** What the patient would receive (the answer, or the hand-over / urgent message). */
+  reply: string | null;
+  outcome: AiOutcome;
+  reason: string | null;
+  summary: string | null;
+  /** An answer the safety check held back. */
+  draft: string | null;
+  error: string | null;
+  toolCalls: { name: string; args: Record<string, unknown> | null }[];
+  sources: { title: string; section: string; score: number }[];
+  usage: { inputTokens: number; outputTokens: number };
+  model: string;
+  latencyMs: number;
 }
 
 export interface AdminWhatsAppNumber {

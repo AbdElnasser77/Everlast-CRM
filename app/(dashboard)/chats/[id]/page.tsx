@@ -1705,7 +1705,11 @@ export default function ConversationPage() {
               (() => {
                 // A flow's message has no human sender: show it as the automation,
                 // never as whoever happens to be looking at the chat.
-                const agent = msg.senderType === "BOT"
+                // The AI assistant's messages are BOT messages too, flagged aiGenerated.
+                const isAi = msg.senderType === "BOT" && Boolean(msg.aiGenerated);
+                const agent = isAi
+                  ? { initials: "AI", color: "#64748B", name: "AI assistant" }
+                  : msg.senderType === "BOT"
                   ? { initials: "⚡", color: "#64748B", name: "Automation" }
                   : getAgentAvatar(
                       msg.senderId,
@@ -1720,7 +1724,16 @@ export default function ConversationPage() {
                 const bubbleTone = isBot ? "bg-[#E1E8F0] border-[#C9D3DF]" : "bg-[#D3EBDC] border-[#B5D8C2]";
                 const nameLabel = (
                   <p className="text-[11px] font-medium text-gray-500 text-right mb-1 flex items-center justify-end gap-1">
-                    {isBot && <span className="text-[10px] font-semibold uppercase tracking-wide text-[#64748B] bg-[#EEF2F6] border border-[#DCE3EB] rounded px-1">Automation</span>}
+                    {isBot && (
+                      <span
+                        title={isAi ? "Written by the AI assistant" : undefined}
+                        className={`text-[10px] font-semibold uppercase tracking-wide rounded px-1 border ${
+                          isAi ? "text-violet-700 bg-violet-50 border-violet-200" : "text-[#64748B] bg-[#EEF2F6] border-[#DCE3EB]"
+                        }`}
+                      >
+                        {isAi ? "AI" : "Automation"}
+                      </span>
+                    )}
                     {!isBot && agent.name}
                   </p>
                 );

@@ -285,9 +285,10 @@ export const SOURCE_STATUS_LABEL: Record<string, string> = {
 export const LEAD_SOURCE_REPORT_ORDER: string[] = [...LEAD_SOURCE_ORDER];
 export const LEAD_SOURCE_REPORT_LAST = ["SUGGESTED", "UNKNOWN"] as const;
 
-/** "Campaign", "Instagram", "Suggested campaign (not confirmed)", "Not recorded". */
+/** "Campaign", "Instagram", "Campaign (not confirmed)", "Unknown". */
 export function leadSourceReportLabel(key: string | null | undefined): string {
-  if (key === "SUGGESTED") return "Suggested campaign (not confirmed)";
+  if (key === "SUGGESTED") return "Campaign (not confirmed)";
+  if (!key || key === "UNKNOWN") return "Unknown";
   return leadSourceName(key);
 }
 

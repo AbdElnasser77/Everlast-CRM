@@ -263,7 +263,7 @@ function CampaignBlock({ c, tf }: { c: CampaignsReportCampaign; tf: TimeFormat }
           </table>
           {c.suggestedRequests > 0 && (
             <p className="sr-note">
-              + {n(c.suggestedRequests)} request{c.suggestedRequests === 1 ? "" : "s"} where this campaign is only suggested (not confirmed).
+              + {n(c.suggestedRequests)} request{c.suggestedRequests === 1 ? "" : "s"} from people who got this campaign (not confirmed it brought them).
             </p>
           )}
           <p className="sr-note">

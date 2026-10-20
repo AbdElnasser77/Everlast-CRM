@@ -2,7 +2,8 @@
 
 // Alerts the team, whichever line they're viewing, when:
 //   - a flow hands a customer to a person ("Connect me" / an Assign step) —
-//     "flow.handoff";
+//     "flow.handoff"; the AI assistant raises the same event (source "ai")
+//     with its reason and summary, and `urgent` for red-flag words — shown red;
 //   - a new booking request comes in — "booking_request.alert";
 //   - a follow-up a chat was set to has fallen due — "follow_up.due", sent only
 //     to the agent responsible for it (every tab, any line).
@@ -16,13 +17,14 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { BellRing, CalendarClock, CalendarPlus, X } from "lucide-react";
+import { AlertTriangle, Bot, BellRing, CalendarClock, CalendarPlus, X } from "lucide-react";
 import { getActiveNumber } from "@/lib/api";
 import { getSocket } from "@/lib/socket";
 import { requestPreferred, requestService } from "@/lib/bookingRequests";
 import { useCurrentUser } from "@/components/CurrentUserProvider";
 import { useActiveNumber } from "@/components/WhatsAppNumberProvider";
 import { fmtWhen } from "@/lib/chatOutcome";
+import { aiReasonLabel } from "@/lib/knowledge";
 import type { FollowUpDueEvent } from "@/types";
 
 interface Handoff {
@@ -35,6 +37,19 @@ interface Handoff {
   agentId: number | null;
   agentUsername: string | null;
   at: string;
+  /** Set by the AI assistant: why it handed over, and its note for the team. */
+  source?: "ai";
+  reason?: string | null;
+  summary?: string | null;
+  /** Red-flag words (pain, bleeding, swelling…): the medical team should look now. */
+  urgent?: boolean;
+}
+
+/** The alert's headline. */
+function handoffTitle(h: Handoff): string {
+  if (h.urgent) return `Urgent · ${who(h)} may need medical attention`;
+  if (h.source === "ai") return `${who(h)} needs the team`;
+  return `${who(h)} wants to talk to an agent`;
 }
 
 interface BookingAlert {
@@ -144,8 +159,12 @@ export default function HandoffNotifier() {
       push({ kind: "handoff", key: `handoff-${h.conversationId}`, at: h.at, h });
       chime();
       if (canNotify()) {
-        const n = new Notification(`${who(h)} wants to talk to an agent`, {
-          body: h.interest ? `Interested in: ${h.interest}` : `From the "${h.flowName}" flow`,
+        const n = new Notification(handoffTitle(h), {
+          body:
+            h.source === "ai"
+              ? [aiReasonLabel(h.reason), h.summary].filter(Boolean).join(" — ") || "Handed over by the AI assistant"
+              : h.interest ? `Interested in: ${h.interest}` : `From the "${h.flowName}" flow`,
+          requireInteraction: Boolean(h.urgent),
           tag: `handoff-${h.conversationId}`,
         });
         n.onclick = () => { window.focus(); openHandoff(h); n.close(); };
@@ -209,16 +228,24 @@ export default function HandoffNotifier() {
         if (a.kind === "handoff") {
           const h = a.h;
           const otherLine = multiLine && String(h.whatsappNumberId) !== activeNumberId;
+          const Icon = h.urgent ? AlertTriangle : h.source === "ai" ? Bot : BellRing;
           return (
-            <div key={a.key} className="bg-white rounded-2xl shadow-xl border border-amber-200 overflow-hidden animate-in slide-in-from-bottom-2">
+            <div
+              key={a.key}
+              className={`bg-white rounded-2xl shadow-xl border overflow-hidden animate-in slide-in-from-bottom-2 ${h.urgent ? "border-red-300 ring-2 ring-red-200" : "border-amber-200"}`}
+            >
               <div className="flex items-start gap-3 p-4">
-                <span className="w-9 h-9 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
-                  <BellRing className="w-4.5 h-4.5" />
+                <span className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${h.urgent ? "bg-red-100 text-red-600" : "bg-amber-100 text-amber-600"}`}>
+                  <Icon className="w-4.5 h-4.5" />
                 </span>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[13px] font-bold text-gray-900 leading-snug">
-                    {who(h)} wants to talk to an agent
+                  <p className={`text-[13px] font-bold leading-snug ${h.urgent ? "text-red-700" : "text-gray-900"}`}>
+                    {handoffTitle(h)}
                   </p>
+                  {h.source === "ai" && aiReasonLabel(h.reason) && (
+                    <p className={`text-[12px] font-semibold mt-0.5 ${h.urgent ? "text-red-600" : "text-gray-700"}`}>{aiReasonLabel(h.reason)}</p>
+                  )}
+                  {h.summary && <p dir="auto" className="text-[12px] text-gray-600 mt-0.5 break-words">{h.summary}</p>}
                   {h.interest && <p className="text-[12px] text-gray-600 mt-0.5">Interested in: <span className="font-semibold">{h.interest}</span></p>}
                   <p className="text-[11px] text-gray-400 mt-0.5">
                     {h.agentUsername ? `Assigned to you · ` : "Waiting in Unassigned · "}
@@ -231,7 +258,11 @@ export default function HandoffNotifier() {
                 </button>
               </div>
               <div className="flex items-center gap-2 px-4 pb-3">
-                <button type="button" onClick={() => openHandoff(h)} className="flex-1 text-[13px] font-semibold text-white bg-brand hover:opacity-90 rounded-xl py-2">
+                <button
+                  type="button"
+                  onClick={() => openHandoff(h)}
+                  className={`flex-1 text-[13px] font-semibold text-white hover:opacity-90 rounded-xl py-2 ${h.urgent ? "bg-red-600" : "bg-brand"}`}
+                >
                   {otherLine ? "Switch line & open chat" : "Open chat"}
                 </button>
                 {enableDesktop}

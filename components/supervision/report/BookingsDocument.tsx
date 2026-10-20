@@ -11,7 +11,6 @@ import {
   OPENED_VIA_LABEL,
   REASON_ORDER,
   REQUEST_STATUS_ORDER,
-  SOURCE_STATUS_LABEL,
   type TimeFormat,
   leadSourceReportLabel,
   orderedEntries,
@@ -21,22 +20,41 @@ import {
 } from "./reportFormat";
 import { CountTable, Empty, Kpi, ReportCover, ReportEnd, Section, docContext, n, standardFacts } from "./parts";
 
-/** Where the patient came from, as one line + detail. */
-export function requestSourceText(r: Pick<BookingsReportRequest, "leadSource" | "sourceStatus" | "campaign" | "suggestedCampaign">): {
-  main: string;
-  detail: string | null;
-  muted: boolean;
+/**
+ * Where the patient came from, in two plain fields:
+ *   cameFrom — "Campaign", "Campaign (not confirmed)", "Instagram", … or "Unknown"
+ *   campaign — the campaign's name when one is involved (credited or only likely)
+ * "Not confirmed" = they received that campaign lately, but neither the system
+ * nor an agent has confirmed it is what brought them.
+ */
+export function requestSource(r: Pick<BookingsReportRequest, "leadSource" | "sourceStatus" | "campaign" | "suggestedCampaign">): {
+  cameFrom: string;
+  campaign: string | null;
+  confirmed: boolean;
 } {
-  if (r.leadSource && r.sourceStatus !== "SUGGESTED") {
-    const how = r.sourceStatus ? SOURCE_STATUS_LABEL[r.sourceStatus] ?? null : null;
-    const camp = r.leadSource === "CAMPAIGN" && r.campaign ? r.campaign : null;
-    return { main: leadSourceReportLabel(r.leadSource), detail: [camp, how].filter(Boolean).join(" · ") || null, muted: false };
+  if (r.sourceStatus !== "SUGGESTED" && (r.campaign || r.leadSource === "CAMPAIGN")) {
+    return { cameFrom: "Campaign", campaign: r.campaign, confirmed: true };
   }
-  if (r.campaign && r.sourceStatus !== "SUGGESTED") {
-    return { main: "Campaign", detail: r.campaign, muted: false };
+  if (r.leadSource && r.leadSource !== "UNKNOWN" && r.sourceStatus !== "SUGGESTED") {
+    return { cameFrom: leadSourceReportLabel(r.leadSource), campaign: null, confirmed: true };
   }
-  if (r.suggestedCampaign) return { main: "Suggested campaign", detail: `${r.suggestedCampaign} (not confirmed)`, muted: true };
-  return { main: "Not recorded", detail: null, muted: true };
+  if (r.suggestedCampaign) return { cameFrom: "Campaign (not confirmed)", campaign: r.suggestedCampaign, confirmed: false };
+  return { cameFrom: "Unknown", campaign: null, confirmed: false };
+}
+
+/** Requests and bookings per campaign (credited and not confirmed kept apart). */
+function campaignRows(report: BookingsReport) {
+  const by = new Map<string, { name: string; confirmed: boolean; requests: number; booked: number }>();
+  for (const r of report.requests) {
+    const src = requestSource(r);
+    if (!src.campaign) continue;
+    const key = `${src.confirmed ? "c" : "s"}|${src.campaign}`;
+    const row = by.get(key) ?? { name: src.campaign, confirmed: src.confirmed, requests: 0, booked: 0 };
+    row.requests++;
+    if (r.status === "BOOKED") row.booked++;
+    by.set(key, row);
+  }
+  return [...by.values()].sort((a, b) => Number(b.confirmed) - Number(a.confirmed) || b.requests - a.requests);
 }
 
 function Summary({ report }: { report: BookingsReport }) {
@@ -69,6 +87,7 @@ function Breakdown({ report }: { report: BookingsReport }) {
   const notBooked = s.byStatus.NOT_BOOKED ?? 0;
   const statusRows = orderedEntries(s.byStatus, REQUEST_STATUS_ORDER, { keepZeros: true }).map(([k, v]) => ({ key: k, label: requestStatusLabel(k), count: v }));
   const reasonRows = orderedEntries(s.notBookedReasons, REASON_ORDER).map(([k, v]) => ({ key: k, label: notBookedReasonLabel(k), count: v }));
+  const campaigns = campaignRows(report);
   const sourceRows = orderedEntries(s.byLeadSource, LEAD_SOURCE_REPORT_ORDER, { last: LEAD_SOURCE_REPORT_LAST }).map(([k, v]) => ({
     key: k,
     label: leadSourceReportLabel(k),
@@ -94,14 +113,44 @@ function Breakdown({ report }: { report: BookingsReport }) {
           <div className="sr-h3">Where patients came from</div>
           <CountTable head={["Source", "Requests"]} rows={sourceRows} shareOf={s.requests} empty="No booking requests in this period." />
           <p className="sr-note">
-            Campaign = proven (came through its booking flow or replied to it) or confirmed by an agent. “Suggested” = they received a campaign
-            lately but nobody has confirmed it brought them.
+            “Campaign (not confirmed)” = they received a campaign in the days before, but it isn’t confirmed that the campaign brought them.
           </p>
         </div>
+        <div>
+          <div className="sr-h3">By campaign</div>
+          {campaigns.length === 0 ? (
+            <Empty>No request came from a campaign.</Empty>
+          ) : (
+            <table className="sr-table">
+              <thead>
+                <tr>
+                  <th>Campaign</th>
+                  <th className="sr-num">Requests</th>
+                  <th className="sr-num">Booked</th>
+                </tr>
+              </thead>
+              <tbody>
+                {campaigns.map((c) => (
+                  <tr key={`${c.confirmed}|${c.name}`}>
+                    <td>
+                      {c.name}
+                      {!c.confirmed ? <span className="sr-sub">not confirmed</span> : null}
+                    </td>
+                    <td className="sr-num">{n(c.requests)}</td>
+                    <td className="sr-num">{n(c.booked)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+      <div className="sr-twocol">
         <div>
           <div className="sr-h3">How requests were opened</div>
           <CountTable head={["Opened by", "Requests"]} rows={viaRows} shareOf={s.requests} empty="No booking requests in this period." />
         </div>
+        <div />
       </div>
     </Section>
   );
@@ -156,7 +205,7 @@ function PerAgent({ report }: { report: BookingsReport }) {
 
 function RequestRow({ r, tf }: { r: BookingsReportRequest; tf: TimeFormat }) {
   const asked = requestedPairs(r.requested);
-  const src = requestSourceText(r);
+  const src = requestSource(r);
   return (
     <tr>
       <td className="sr-nowrap">
@@ -187,8 +236,8 @@ function RequestRow({ r, tf }: { r: BookingsReportRequest; tf: TimeFormat }) {
         ) : null}
       </td>
       <td>
-        <span className={src.muted ? "sr-muted" : undefined}>{src.main}</span>
-        {src.detail ? <span className="sr-sub">{src.detail}</span> : null}
+        <span className={src.confirmed ? undefined : "sr-muted"}>{src.cameFrom}</span>
+        {src.campaign ? <span className="sr-sub">{src.campaign}</span> : null}
         <span className="sr-sub">via {OPENED_VIA_LABEL[r.openedVia]?.toLowerCase() ?? r.openedVia}</span>
       </td>
       <td className={r.status === "BOOKED" ? "sr-good" : r.status === "NEW" ? "sr-bad" : undefined}>{requestStatusLabel(r.status)}</td>
@@ -256,7 +305,7 @@ function Requests({ report, tf }: { report: BookingsReport; tf: TimeFormat }) {
                 <th>Patient</th>
                 <th>Line</th>
                 <th>Asked for</th>
-                <th>Source</th>
+                <th>Came from</th>
                 <th>Status</th>
                 <th>Taken by</th>
                 <th>Handled by</th>

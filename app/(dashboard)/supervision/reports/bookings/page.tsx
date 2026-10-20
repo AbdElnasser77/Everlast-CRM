@@ -5,13 +5,12 @@ import { apiGetBookingsReport } from "@/lib/api";
 import type { BookingsReport } from "@/types";
 import { requestPreferred, requestService, requestedPairs } from "@/lib/bookingRequests";
 import { formatPhone, notBookedReasonLabel } from "@/components/supervision/format";
-import { BookingsDocument, requestSourceText } from "@/components/supervision/report/BookingsDocument";
+import { BookingsDocument, requestSource } from "@/components/supervision/report/BookingsDocument";
 import { ReportGate, ReportShell, useGeneratedBy, useLineLabel, useReportData, useReportPeriod } from "@/components/supervision/report/ReportShell";
 import { downloadCsv } from "@/components/supervision/report/exportFiles";
 import {
   CLINIC_TZ,
   OPENED_VIA_LABEL,
-  SOURCE_STATUS_LABEL,
   isoLocal,
   periodLabel,
   reportFileName,
@@ -25,11 +24,12 @@ function requestsCsv(report: BookingsReport, from: string, to: string) {
   const tz = report.period.timezone || CLINIC_TZ;
   const header = [
     "Request ID", "Opened", "Patient", "Phone", "Line", "Opened via", "Service asked for", "Preferred date / time", "All answers", "Request note",
-    "Lead source", "Source certainty", "Campaign", "Suggested campaign", "Status", "Taken by", "Taken at", "Handled by", "Handled at",
+    "Came from", "Campaign", "Status", "Taken by", "Taken at", "Handled by", "Handled at",
     "Minutes to pick up", "Minutes to close", "Couldn't-book reason", "Couldn't-book note", "Appointments booked", "Appointments cancelled", "Appointments",
   ];
   const rows = report.requests.map((r) => {
     const req = { requested: r.requested ?? {} };
+    const src = requestSource(r);
     return [
       r.id,
       isoLocal(r.createdAt, tz),
@@ -41,10 +41,8 @@ function requestsCsv(report: BookingsReport, from: string, to: string) {
       requestPreferred(req) ?? "",
       requestedPairs(r.requested).map((p) => `${p.label}: ${p.value}`).join("; "),
       r.note ?? "",
-      requestSourceText(r).main,
-      r.sourceStatus ? SOURCE_STATUS_LABEL[r.sourceStatus] ?? r.sourceStatus : "",
-      r.campaign ?? "",
-      r.suggestedCampaign ?? "",
+      src.cameFrom,
+      src.campaign ?? "",
       requestStatusLabel(r.status),
       r.claimedBy ?? "",
       isoLocal(r.claimedAt, tz),

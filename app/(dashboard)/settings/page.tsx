@@ -9,6 +9,7 @@ import { WhatsAppNumbersPanel } from "@/components/settings/WhatsAppNumbersPanel
 import { QuietHoursPanel } from "@/components/settings/QuietHoursPanel";
 import { CampaignSafetyPanel } from "@/components/settings/CampaignSafetyPanel";
 import { MyAccountPanel } from "@/components/settings/MyAccountPanel";
+import { AiAssistantPanel } from "@/components/settings/AiAssistantPanel";
 
 // The tab lives in the URL (?tab=) so a link — or the old /team page — can
 // open a specific one, and a reload stays where you were.
@@ -17,6 +18,7 @@ const TABS = [
   { key: "numbers", label: "WhatsApp numbers" },
   { key: "quiet-hours", label: "Quiet hours" },
   { key: "campaign-safety", label: "Campaign safety" },
+  { key: "ai-assistant", label: "AI assistant" },
   { key: "account", label: "My account" },
 ] as const;
 
@@ -79,6 +81,7 @@ function SettingsContent() {
         {tab === "numbers" && <WhatsAppNumbersPanel key="numbers" />}
         {tab === "quiet-hours" && <QuietHoursPanel key="quiet-hours" />}
         {tab === "campaign-safety" && <CampaignSafetyPanel key="campaign-safety" />}
+        {tab === "ai-assistant" && <AiAssistantPanel key="ai-assistant" />}
         {tab === "account" && <MyAccountPanel key="account" />}
       </div>
     </div>
