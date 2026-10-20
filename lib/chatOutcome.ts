@@ -1,13 +1,13 @@
 /**
- * How a chat ended up — Booked / Follow up / Not interested / No answer — and
- * the waiting timer, shared by the inbox list, the chat header and the contact
+ * A chat's follow-up (the one outcome the CRM still sets — see activeOutcome)
+ * and the waiting timer, shared by the inbox list, the chat header and the contact
  * panel so all three say it the same way.
  *
  * Times are shown in the browser's zone: the team works in Dubai, and so do the
  * browsers they work from.
  */
 
-import type { Booking, BookingRequest, Conversation, ConversationNote, ConversationOutcome, ConversationProfile, PersonRef } from "@/types";
+import type { Conversation, ConversationNote, ConversationOutcome, ConversationProfile, PersonRef } from "@/types";
 
 // The server returns every scalar column on a conversation row; the shared
 // Conversation type only lists what the inbox used before outcomes existed.
@@ -20,8 +20,7 @@ export type InboxConversation = Conversation & {
 };
 
 // What GET /conversations/:id/profile returns now (the shared type predates
-// outcomes): the chat's outcome, this patient's bookings on any line, and the
-// chat's staff notes, and this chat's booking requests.
+// outcomes): the chat's outcome and the chat's staff notes.
 export type ProfileWithOutcome = Omit<ConversationProfile, "conversation"> & {
   conversation: ConversationProfile["conversation"] & {
     outcome: ConversationOutcome | null;
@@ -31,26 +30,36 @@ export type ProfileWithOutcome = Omit<ConversationProfile, "conversation"> & {
     awaitingReplySince: string | null;
     lastAgentReplyAt: string | null;
   };
-  bookings: Booking[];
   notes: ConversationNote[];
-  bookingRequests?: BookingRequest[];
 };
 
-export const OUTCOME_LABEL: Record<ConversationOutcome, string> = {
-  BOOKED: "Booked",
+/**
+ * The outcomes a chat can be given: only a follow-up. The raw API union
+ * (ConversationOutcome) still has the legacy "BOOKED", "NOT_INTERESTED" and
+ * "NO_ANSWER" that old chats can carry — see activeOutcome.
+ */
+export type ActiveOutcome = Extract<ConversationOutcome, "FOLLOW_UP">;
+
+export const OUTCOME_LABEL: Record<ActiveOutcome, string> = {
   FOLLOW_UP: "Follow up",
-  NOT_INTERESTED: "Not interested",
-  NO_ANSWER: "No answer",
 };
 
 // Chip colours. Follow-up turns red once its time has passed (see isOverdue).
-export const OUTCOME_CHIP: Record<ConversationOutcome, string> = {
-  BOOKED: "bg-brand-100 text-brand-fg border-brand/30",
+export const OUTCOME_CHIP: Record<ActiveOutcome, string> = {
   FOLLOW_UP: "bg-amber-50 text-amber-700 border-amber-200",
-  NOT_INTERESTED: "bg-gray-100 text-gray-600 border-gray-200",
-  NO_ANSWER: "bg-slate-50 text-slate-500 border-slate-200",
 };
 export const OVERDUE_CHIP = "bg-red-50 text-red-600 border-red-200";
+
+/**
+ * The outcome to show for a chat, or null for none. Legacy data: old chats can
+ * still come back from the API with "BOOKED" (booking was removed) or
+ * "NOT_INTERESTED" / "NO_ANSWER" (reporting labels that were dropped). Anything
+ * but "FOLLOW_UP" reads as "no outcome", so the chat shows the neutral
+ * "Follow up" state and a follow-up can be set.
+ */
+export function activeOutcome(outcome: string | null | undefined): ActiveOutcome | null {
+  return outcome === "FOLLOW_UP" ? outcome : null;
+}
 
 export const personName = (p: { name?: string | null; username: string } | null | undefined) =>
   p ? p.name || p.username : "Someone";
@@ -91,25 +100,6 @@ export function waitTone(ms: number): string {
   return "text-gray-500 bg-gray-50 border-gray-200";
 }
 
-/**
- * The booking a chat's "Booked" chip describes: this chat's next live
- * appointment, or — when they've all passed — its latest one.
- */
-export function chipBooking(bookings: Booking[] | null | undefined, conversationId: number, now = Date.now()): Booking | null {
-  const live = (bookings ?? []).filter((b) => b.status === "BOOKED" && b.conversationId === conversationId);
-  if (live.length === 0) return null;
-  const t = (b: Booking) => new Date(b.appointmentAt).getTime();
-  const upcoming = live.filter((b) => t(b) >= now).sort((a, b) => t(a) - t(b));
-  return upcoming[0] ?? live.sort((a, b) => t(b) - t(a))[0];
-}
-
-/** Upcoming first (soonest on top), then past ones (latest first), cancelled last. */
-export function sortBookings(bookings: Booking[], now = Date.now()): Booking[] {
-  const t = (b: Booking) => new Date(b.appointmentAt).getTime();
-  const rank = (b: Booking) => (b.status === "CANCELLED" ? 2 : t(b) >= now ? 0 : 1);
-  return [...bookings].sort((a, b) => rank(a) - rank(b) || (rank(a) === 0 ? t(a) - t(b) : t(b) - t(a)));
-}
-
 // ── Date inputs (local time) ──────────────────────────────────────────────
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -135,17 +125,3 @@ export function followUpPicks(): { label: string; at: Date }[] {
   ];
 }
 
-/** The next :00 or :30 after now. */
-export function nextHalfHour(from = new Date()): Date {
-  const d = new Date(from);
-  d.setSeconds(0, 0);
-  d.setMinutes(d.getMinutes() < 30 ? 30 : 60);
-  return d;
-}
-
-/** "2026-10-14" + "16:30" (local) → ISO, or null when either is missing/invalid. */
-export function localToIso(date: string, time: string): string | null {
-  if (!date || !time) return null;
-  const d = new Date(`${date}T${time}`);
-  return Number.isNaN(d.getTime()) ? null : d.toISOString();
-}

@@ -201,7 +201,8 @@ export function useConversations(
       );
     };
 
-    // Booked / follow up / … set on a chat. Patched at once so the inbox chip
+    // A follow-up set or cancelled (by staff, or by the server when the patient
+    // writes again). Patched at once so the inbox chip
     // and the chat header change together; the quiet refresh then brings the
     // follow-up date, which the event doesn't carry.
     const handleConversationOutcome = (payload: {

@@ -1,55 +1,40 @@
 "use client";
 
 // The chat's contact panel — WhatsApp Web's "Contact info", for the CRM:
-// who this is, how the chat ended up (outcome, bookings), what they asked for
+// who this is, its follow-up, what they answered
 // through a flow, notes and tags the team can edit mid-conversation, the chat's
 // media/docs/links, and the campaigns they received. Opened from the chat header.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import {
-  X, Search, Pencil, Check, Copy, CalendarCheck2, StickyNote, Tag, Image as ImageIcon, FileText, Link2,
-  Megaphone, ShieldOff, Video, Music, ChevronRight, Loader2, ArrowLeft, ExternalLink,
-  Flag, Hourglass, MessageSquareText, Lock, Trash2, CalendarPlus, Workflow, Plus,
+  X, Search, Pencil, Check, Copy, StickyNote, Tag, Image as ImageIcon, FileText, Link2,
+  Megaphone, ShieldOff, Video, Music, Loader2, ArrowLeft, ExternalLink,
+  CalendarClock, Hourglass, MessageSquareText, Lock, Trash2,
 } from "lucide-react";
 import {
-  apiAddConversationNote, apiCancelBooking, apiCreateBookingRequest, apiDeleteConversationNote, apiGetConversationProfile,
+  apiAddConversationNote, apiDeleteConversationNote, apiGetConversationProfile,
   apiSearchMessages, apiUpdateCustomer,
 } from "@/lib/api";
-import type { Booking, BookingRequest, ConversationNote, Message } from "@/types";
-import { RUN_STATUS_META } from "@/lib/flows";
+import type { ConversationNote, Message } from "@/types";
 import { getSocket } from "@/lib/socket";
 import { useCurrentUser } from "@/components/CurrentUserProvider";
-import { useActiveNumber } from "@/components/WhatsAppNumberProvider";
 import { useToast } from "@/components/ui/toast";
-import { AppointmentCard, LeadSourceChip, RequestStatusChip, RequestedDetails } from "@/components/bookings/RequestParts";
-import { NewRequestDialog } from "@/components/bookings/NewRequestDialog";
-import { useRequestActions } from "@/components/bookings/useRequestActions";
 import { LiftOptOutDialog, RecordOptOutDialog, optOutSourceLabel, useOptOutChanged } from "@/components/OptOut";
 import {
-  isOpenRequest, notBookedLabel, notifyRequestChanged, onRequestChanged, requestAge, requestService,
-} from "@/lib/bookingRequests";
-import {
   OUTCOME_CHIP, OUTCOME_LABEL, OVERDUE_CHIP, WAIT_AMBER_MIN, WAIT_RED_MIN, type ProfileWithOutcome,
-  fmtElapsed, fmtWhen, isOverdue, personName, sortBookings,
+  activeOutcome, fmtElapsed, fmtWhen, isOverdue, personName,
 } from "@/lib/chatOutcome";
 
 const fmtDate = (iso: string | null | undefined) =>
   iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—";
 const fmtDateTime = (iso: string) =>
   new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-// A collected date is stored as 2026-10-15; show it as people write it.
-const fmtAnswer = (v: string) =>
-  /^\d{4}-\d{2}-\d{2}$/.test(v) ? new Date(`${v}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) : v;
-const pretty = (key: string) => key.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
 const initialsOf = (p: { name?: string | null; username: string } | null) =>
   personName(p).split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? "").join("") || "?";
 
 const NOTE_MAX = 2000;
-
-// The answers a booking is made of, in reading order; anything else follows.
-const BOOKING_KEYS = ["offer", "preferred_date", "preferred_time", "contact_number"];
 
 function Section({ icon: Icon, title, aside, children }: { icon: React.ComponentType<{ className?: string }>; title: string; aside?: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -73,7 +58,7 @@ export function ContactPanel({
   onJumpToMessage,
 }: {
   conversationId: string;
-  /** Changes when new messages arrive, so media/links/bookings stay current. */
+  /** Changes when new messages arrive, so media/links stay current. */
   refreshKey: number;
   onClose: () => void;
   /** Scrolls the chat to a message; false when it isn't loaded (older). */
@@ -81,13 +66,12 @@ export function ContactPanel({
 }) {
   const { can, me } = useCurrentUser();
   const canEdit = can("contact:write");
-  // Working the chat: cancelling its bookings, writing notes.
+  // Working the chat: writing notes, recording an opt-out.
   const canWork = can("conversation:write");
   // Supervisors may remove anyone's note; everyone else only their own (the server decides).
   const canSupervise = can("team:supervise");
   // Lifting a marketing opt-out is admins only; recording one is anyone working the chat.
   const canLiftOptOut = can("optout:lift");
-  const { numbers } = useActiveNumber();
   const toast = useToast();
   const chatId = Number(conversationId);
   const [profile, setProfile] = useState<ProfileWithOutcome | null>(null);
@@ -105,14 +89,12 @@ export function ContactPanel({
   const [newTag, setNewTag] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // Chat notes (staff-only), and the booking / note waiting on a "really?".
+  // Chat notes (staff-only), and the note waiting on a "really?".
   const [noteDraft, setNoteDraft] = useState("");
   const [addingNote, setAddingNote] = useState(false);
-  const [confirm, setConfirm] = useState<{ kind: "booking"; booking: Booking } | { kind: "note"; note: ConversationNote } | null>(null);
+  const [confirm, setConfirm] = useState<ConversationNote | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
-  const [newRequest, setNewRequest] = useState(false);
   const [optOutDialog, setOptOutDialog] = useState<"record" | "lift" | null>(null);
-  const requestActions = useRequestActions(() => setReload((n) => n + 1), profile?.customer.name || null);
 
   // For "waiting 12m" and overdue follow-ups.
   const [now, setNow] = useState(() => Date.now());
@@ -133,7 +115,7 @@ export function ContactPanel({
     apiGetConversationProfile(conversationId)
       .then((res) => {
         if (cancelled) return;
-        // The shared type predates outcomes, bookings and notes; see ProfileWithOutcome.
+        // The shared type predates outcomes and notes; see ProfileWithOutcome.
         setProfile(res.data as unknown as ProfileWithOutcome);
         setError(null);
         const c = res.data.customer;
@@ -144,19 +126,16 @@ export function ContactPanel({
     return () => { cancelled = true; };
   }, [conversationId, refreshKey, reload]);
 
-  // Outcome / booking / note changes — ours or a colleague's — reload the panel.
+  // Follow-up / note changes — ours or a colleague's — reload the panel.
   useEffect(() => {
     const socket = getSocket();
     const onChange = (p: { conversationId?: number | string }) => {
       if (String(p?.conversationId) === conversationId) setReload((n) => n + 1);
     };
-    const events = ["conversation.outcome", "conversation.note", "booking_request.created", "booking_request.updated"];
+    const events = ["conversation.outcome", "conversation.note"];
     events.forEach((e) => socket.on(e, onChange));
-    // Our own change from the chat banner or the outcome menu.
-    const off = onRequestChanged((id) => { if (id === conversationId) setReload((n) => n + 1); });
     return () => {
       events.forEach((e) => socket.off(e, onChange));
-      off();
     };
   }, [conversationId]);
 
@@ -213,16 +192,10 @@ export function ContactPanel({
     if (!confirm) return;
     setConfirmBusy(true);
     try {
-      if (confirm.kind === "booking") {
-        await apiCancelBooking(chatId, confirm.booking.id);
-        toast.success("Booking cancelled");
-        notifyRequestChanged(chatId);
-      } else {
-        const id = confirm.note.id;
-        await apiDeleteConversationNote(chatId, id);
-        setProfile((p) => (p ? { ...p, notes: p.notes.filter((n) => n.id !== id) } : p));
-        toast.success("Note deleted");
-      }
+      const id = confirm.id;
+      await apiDeleteConversationNote(chatId, id);
+      setProfile((p) => (p ? { ...p, notes: p.notes.filter((n) => n.id !== id) } : p));
+      toast.success("Note deleted");
       setConfirm(null);
       setReload((n) => n + 1);
     } catch (err) {
@@ -236,21 +209,6 @@ export function ContactPanel({
   const jump = (messageId: number) => {
     if (!onJumpToMessage(messageId)) toast.info("That message is further up — scroll up in the chat to load it.");
   };
-
-  // Flow runs that became a booking request show under Booking requests; the rest
-  // (booking answers that didn't, or just browsing) under Flow answers.
-  const requestRunIds = useMemo(() => new Set((profile?.bookingRequests || []).map((r) => r.flowRunId).filter((x): x is number => x != null)), [profile]);
-  const bookings = useMemo(() => (profile?.responses || []).filter((r) => !requestRunIds.has(r.id) && (r.answers.preferred_date || r.answers.contact_number)), [profile, requestRunIds]);
-  // Open ones first (oldest on top: they've waited longest), then the rest newest first.
-  const chatRequests = useMemo(() => {
-    const t = (r: BookingRequest) => new Date(r.createdAt).getTime();
-    return [...(profile?.bookingRequests || [])].sort((a, b) => {
-      const ao = isOpenRequest(a) ? 0 : 1;
-      const bo = isOpenRequest(b) ? 0 : 1;
-      return ao - bo || (ao === 0 ? t(a) - t(b) : t(b) - t(a));
-    });
-  }, [profile]);
-  const otherResponses = useMemo(() => (profile?.responses || []).filter((r) => !(r.answers.preferred_date || r.answers.contact_number)), [profile]);
 
   if (error) {
     return (
@@ -306,11 +264,10 @@ export function ContactPanel({
   const imagesAndVideos = profile.media.filter((m) => m.messageType === "IMAGE" || m.messageType === "VIDEO");
   const docs = profile.media.filter((m) => m.messageType === "DOCUMENT" || m.messageType === "AUDIO");
   const conv = profile.conversation;
-  const outcomeOverdue = conv.outcome === "FOLLOW_UP" && isOverdue(conv.followUpAt, now);
+  // Only a follow-up shows; a legacy outcome (Booked / Not interested / No answer) reads as none.
+  const outcome = activeOutcome(conv.outcome);
+  const outcomeOverdue = outcome === "FOLLOW_UP" && isOverdue(conv.followUpAt, now);
   const waitingMin = conv.awaitingReplySince && conv.status !== "RESOLVED" ? (now - new Date(conv.awaitingReplySince).getTime()) / 60_000 : null;
-  const allBookings = sortBookings(profile.bookings || [], now);
-  const liveCount = allBookings.filter((b) => b.status === "BOOKED").length;
-  const lineLabel = (id: number) => numbers.find((n) => n.id === id)?.label ?? `Line #${id}`;
   // Newest first — the latest word on this chat is what a colleague needs.
   const chatNotes = [...(profile.notes || [])].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
@@ -421,15 +378,15 @@ export function ContactPanel({
           )}
         </div>
 
-        {/* Outcome — how this chat ended up, and who said so */}
-        <Section icon={Flag} title="Outcome">
-          {conv.outcome ? (
+        {/* Follow-up — when to get back to this patient, and who set it */}
+        <Section icon={CalendarClock} title="Follow-up">
+          {outcome ? (
             <>
               <div className="flex items-center gap-2 flex-wrap">
-                <span className={`text-[12px] font-semibold px-2 py-0.5 rounded-full border ${outcomeOverdue ? OVERDUE_CHIP : OUTCOME_CHIP[conv.outcome]}`}>
-                  {outcomeOverdue ? "Follow up overdue" : OUTCOME_LABEL[conv.outcome]}
+                <span className={`text-[12px] font-semibold px-2 py-0.5 rounded-full border ${outcomeOverdue ? OVERDUE_CHIP : OUTCOME_CHIP[outcome]}`}>
+                  {outcomeOverdue ? "Follow up overdue" : OUTCOME_LABEL[outcome]}
                 </span>
-                {conv.outcome === "FOLLOW_UP" && conv.followUpAt && (
+                {outcome === "FOLLOW_UP" && conv.followUpAt && (
                   <span className={`text-[12px] ${outcomeOverdue ? "text-red-600 font-semibold" : "text-gray-700"}`}>
                     {outcomeOverdue ? "was due" : "due"} {fmtWhen(conv.followUpAt)}
                   </span>
@@ -440,7 +397,7 @@ export function ContactPanel({
               </p>
             </>
           ) : (
-            <Empty text={canWork ? "No outcome yet. Set it from the chat header once you know how it went." : "No outcome yet."} />
+            <Empty text={canWork ? "No follow-up set. Set one from the Follow up chip in the chat header." : "No follow-up set."} />
           )}
           {waitingMin !== null && (
             <p className={`mt-2 inline-flex items-center gap-1 text-[11px] font-semibold ${waitingMin >= WAIT_RED_MIN ? "text-red-600" : waitingMin >= WAIT_AMBER_MIN ? "text-amber-700" : "text-gray-500"}`}>
@@ -448,107 +405,6 @@ export function ContactPanel({
             </p>
           )}
         </Section>
-
-        {/* Bookings — appointments the team recorded, on any line */}
-        <Section icon={CalendarCheck2} title="Bookings" aside={liveCount ? <span className="text-[11px] text-gray-400">{liveCount}</span> : undefined}>
-          {allBookings.length === 0 ? (
-            <Empty text={canWork ? "No bookings yet. Use Outcome → Booked… in the chat header to record one." : "No bookings yet."} />
-          ) : (
-            <div className="space-y-2">
-              {allBookings.map((b) => {
-                const cancelled = b.status === "CANCELLED";
-                const thisChat = b.conversationId === chatId;
-                return (
-                  <AppointmentCard
-                    key={b.id}
-                    booking={b}
-                    now={now}
-                    footer={
-                      <>
-                        Booked by {personName(b.createdBy)} · {lineLabel(b.whatsappNumberId)}{thisChat ? "" : " · another chat"}
-                        {cancelled && b.cancelledAt ? ` · cancelled ${fmtDateTime(b.cancelledAt)}` : ""}
-                      </>
-                    }
-                    action={!cancelled && thisChat && canWork ? (
-                      <button
-                        type="button"
-                        onClick={() => setConfirm({ kind: "booking", booking: b })}
-                        className="mt-2 text-[11px] font-semibold text-red-600 hover:text-red-700 hover:underline cursor-pointer"
-                      >
-                        Cancel booking
-                      </button>
-                    ) : undefined}
-                  />
-                );
-              })}
-            </div>
-          )}
-        </Section>
-
-        {/* Booking requests: this chat's "wants to book", from the flow or an agent */}
-        <Section
-          icon={CalendarPlus}
-          title="Booking requests"
-          aside={
-            <span className="flex items-center gap-2">
-              {chatRequests.length > 0 && <span className="text-[11px] text-gray-400">{chatRequests.length}</span>}
-              {canWork && (
-                <button type="button" onClick={() => setNewRequest(true)} title="New booking request" className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-brand-fg hover:underline cursor-pointer">
-                  <Plus className="w-3 h-3" /> New
-                </button>
-              )}
-            </span>
-          }
-        >
-          {chatRequests.length === 0 ? (
-            <Empty text={canWork ? "No booking requests. The booking flow opens one, or use New when the patient asks in chat." : "No booking requests."} />
-          ) : (
-            <div className="space-y-2">
-              {chatRequests.map((r) => (
-                <ChatRequestCard key={r.id} req={r} now={now} meId={me?.id ?? null} canWork={canWork} actions={requestActions} />
-              ))}
-            </div>
-          )}
-        </Section>
-
-        {/* Flow answers that didn't become a booking request */}
-        {(bookings.length > 0 || otherResponses.length > 0) && (
-        <Section icon={Workflow} title="Flow answers" aside={bookings.length ? <span className="text-[11px] text-gray-400">{bookings.length}</span> : undefined}>
-          {bookings.length === 0 ? (
-            <p className="text-[12px] text-gray-400">No booking answers outside the requests above.</p>
-          ) : (
-            <div className="space-y-2">
-              {bookings.map((r) => {
-                const keys = [...BOOKING_KEYS.filter((k) => r.answers[k]), ...Object.keys(r.answers).filter((k) => !BOOKING_KEYS.includes(k) && !["category", "slot_checked", "slot_label"].includes(k))];
-                return (
-                  <div key={r.id} className="rounded-xl border border-brand/20 bg-brand-50 p-3">
-                    <div className="flex items-start gap-2">
-                      <p className="flex-1 text-[13px] font-bold text-gray-900">{r.answers.offer || "Booking request"}</p>
-                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${RUN_STATUS_META[r.status].cls}`}>{RUN_STATUS_META[r.status].label}</span>
-                    </div>
-                    <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[12px]">
-                      {keys.filter((k) => k !== "offer").map((k) => (
-                        <div key={k} className="contents">
-                          <dt className="text-gray-400">{k === "preferred_date" ? "Date" : k === "preferred_time" ? "Time" : k === "contact_number" ? "Contact" : pretty(k)}</dt>
-                          <dd className="text-gray-800 font-medium">{fmtAnswer(r.answers[k])}</dd>
-                        </div>
-                      ))}
-                    </dl>
-                    <Link href={`/campaigns/flows/${r.flow.id}`} className="mt-2 inline-flex items-center gap-0.5 text-[11px] text-brand-fg hover:underline">
-                      {r.flow.name} · {fmtDateTime(r.startedAt)} <ChevronRight className="w-3 h-3" />
-                    </Link>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-          {otherResponses.length > 0 && (
-            <p className="mt-2 text-[11px] text-gray-400">
-              Also browsed: {[...new Set(otherResponses.map((r) => r.answers.offer || r.answers.category).filter(Boolean))].slice(0, 4).join(", ") || "—"}
-            </p>
-          )}
-        </Section>
-        )}
 
         {/* Patient notes — on the contact record, so every chat with them shows them */}
         <Section icon={StickyNote} title="Patient notes">
@@ -626,7 +482,7 @@ export function ContactPanel({
                       <button
                         type="button"
                         title="Delete note"
-                        onClick={() => setConfirm({ kind: "note", note: n })}
+                        onClick={() => setConfirm(n)}
                         className="w-6 h-6 rounded-full flex items-center justify-center text-gray-300 hover:bg-red-50 hover:text-red-500 shrink-0 md:opacity-0 md:group-hover:opacity-100 focus:opacity-100 transition-opacity"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -737,7 +593,6 @@ export function ContactPanel({
         </Section>
       </div>
 
-      {requestActions.dialogs}
       {optOutDialog === "record" && (
         <RecordOptOutDialog
           conversationId={conversationId}
@@ -752,141 +607,17 @@ export function ContactPanel({
           onClose={() => setOptOutDialog(null)}
         />
       )}
-      {newRequest && (
-        <NewRequestDialog
-          onCancel={() => setNewRequest(false)}
-          onSave={async (body) => {
-            try {
-              await apiCreateBookingRequest(chatId, body);
-              setNewRequest(false);
-              toast.success("Booking request opened. It's yours.");
-              notifyRequestChanged(chatId);
-              return null;
-            } catch (err) {
-              return err instanceof Error ? err.message : "Couldn't open the request";
-            }
-          }}
-        />
-      )}
       {confirm && (
         <ConfirmDialog
-          title={confirm.kind === "booking" ? "Cancel this booking?" : "Delete this note?"}
-          body={
-            confirm.kind === "booking"
-              ? `${fmtWhen(confirm.booking.appointmentAt)}${confirm.booking.service ? ` · ${confirm.booking.service}` : ""}. It stays in the history as cancelled. If it's this chat's only booking, the chat's outcome is cleared.`
-              : "It's removed for the whole team. This can't be undone."
-          }
-          confirmLabel={confirm.kind === "booking" ? "Cancel booking" : "Delete"}
+          title="Delete this note?"
+          body="It's removed for the whole team. This can't be undone."
+          confirmLabel="Delete"
           busy={confirmBusy}
           onCancel={() => setConfirm(null)}
           onConfirm={confirmAction}
         />
       )}
     </PanelShell>
-  );
-}
-
-/** One of this chat's booking requests: what they asked, who has it, its appointments, and what to do next. */
-function ChatRequestCard({ req: r, now, meId, canWork, actions }: {
-  req: BookingRequest;
-  now: number;
-  meId: number | null;
-  canWork: boolean;
-  actions: ReturnType<typeof useRequestActions>;
-}) {
-  const open = isOpenRequest(r);
-  const age = requestAge(r);
-  const mine = meId != null && r.claimedById === meId;
-  const someoneElse = r.claimedById != null && !mine;
-  const claiming = actions.busy?.id === r.id && actions.busy.action === "claim";
-  const reopening = actions.busy?.id === r.id && actions.busy.action === "reopen";
-  const appts = sortBookings(r.bookings || [], now);
-  const btn = "inline-flex items-center gap-1 text-[11.5px] font-semibold px-2.5 py-1 rounded-lg transition-colors cursor-pointer disabled:opacity-60";
-  return (
-    <div className={`rounded-xl border p-3 ${open ? "border-brand/25 bg-brand-50" : "border-gray-200 bg-white"}`}>
-      <div className="flex items-start gap-2">
-        <p className="flex-1 text-[13px] font-bold text-gray-900">{requestService(r) || "Booking request"}</p>
-        <RequestStatusChip status={r.status} />
-      </div>
-      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-gray-400 min-w-0">
-        <LeadSourceChip req={r} />
-        {canWork && (
-          <button
-            type="button"
-            onClick={() => actions.changeSource(r)}
-            className="font-semibold text-brand-fg hover:underline underline-offset-2 cursor-pointer"
-          >
-            {r.sourceStatus === "SUGGESTED" ? "Confirm or change" : "Change source"}
-          </button>
-        )}
-        <span>{fmtDateTime(r.createdAt)}</span>
-      </div>
-      <div className="mt-2">
-        <RequestedDetails requested={r.requested} liveCheck={open} empty="Nothing collected yet. Ask the patient what they'd like." />
-      </div>
-      {r.note && <p className="mt-1.5 text-[12px] text-gray-600 whitespace-pre-wrap break-words">{r.note}</p>}
-
-      <p className="mt-2 text-[11px] text-gray-500 flex flex-wrap items-center gap-x-2 gap-y-1">
-        {open ? (
-          <>
-            {age && (
-              <span className={`inline-flex items-center gap-1 font-semibold border rounded px-1.5 py-px tabular-nums ${age.tone}`}>
-                <Hourglass className="w-3 h-3" /> waiting {age.label}
-              </span>
-            )}
-            <span>{mine ? "You're handling it" : r.claimedBy ? `${personName(r.claimedBy)} is handling it` : "Nobody has taken it yet"}</span>
-          </>
-        ) : r.status === "BOOKED" ? (
-          <span>Booked by {personName(r.handledBy)}{r.handledAt ? ` · ${fmtDateTime(r.handledAt)}` : ""}</span>
-        ) : (
-          <span>
-            <span className="font-semibold text-gray-600">{notBookedLabel(r.notBookedReason)}</span> · by {personName(r.handledBy)}
-            {r.handledAt ? ` · ${fmtDateTime(r.handledAt)}` : ""}
-          </span>
-        )}
-      </p>
-      {r.status === "NOT_BOOKED" && r.notBookedNote && (
-        <p className="mt-1 text-[12px] text-gray-500 whitespace-pre-wrap break-words">{r.notBookedNote}</p>
-      )}
-
-      {appts.length > 0 && (
-        <ul className="mt-2 space-y-1 border-t border-gray-100 pt-2">
-          {appts.map((b) => (
-            <li key={b.id} className={`text-[12px] ${b.status === "CANCELLED" ? "text-gray-400 line-through" : "text-gray-700"}`}>
-              <span className="font-semibold">{fmtWhen(b.appointmentAt)}</span>
-              {b.service ? ` · ${b.service}` : ""}
-              {b.doctor ? ` · ${b.doctor}` : ""}
-              {b.dok32Ref ? <span className="text-gray-400"> · Dok32 {b.dok32Ref}</span> : null}
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {canWork && (
-        <div className="mt-2.5 flex flex-wrap gap-1.5">
-          {open && (r.status === "NEW" || someoneElse) && (
-            <button type="button" onClick={() => actions.claim(r)} disabled={claiming} className={`${btn} text-brand-fg border border-brand/30 bg-white hover:bg-brand-100`}>
-              {claiming && <Loader2 className="w-3 h-3 animate-spin" />} {someoneElse ? "Take over" : "Take it"}
-            </button>
-          )}
-          {(open || r.status === "BOOKED") && (
-            <button type="button" onClick={() => actions.book(r)} className={`${btn} text-white bg-brand hover:bg-[#2f5840]`}>
-              {r.status === "BOOKED" ? "Add appointment" : "Book"}
-            </button>
-          )}
-          {open && (
-            <button type="button" onClick={() => actions.notBooked(r)} className={`${btn} text-gray-600 border border-gray-200 bg-white hover:bg-gray-50`}>
-              Couldn&apos;t book
-            </button>
-          )}
-          {r.status === "NOT_BOOKED" && (
-            <button type="button" onClick={() => actions.reopen(r)} disabled={reopening} className={`${btn} text-brand-fg border border-brand/30 bg-white hover:bg-brand-100`}>
-              {reopening && <Loader2 className="w-3 h-3 animate-spin" />} Reopen
-            </button>
-          )}
-        </div>
-      )}
-    </div>
   );
 }
 

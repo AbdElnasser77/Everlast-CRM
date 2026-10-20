@@ -16,7 +16,7 @@ import { ConversationsContext } from "@/components/ConversationsContext";
 import { MyStatusMenu } from "@/components/MyStatusMenu";
 import type { ConversationCounts, ConversationView, User } from "@/types";
 import { isWindowClosed } from "@/lib/messagingWindow";
-import { OUTCOME_CHIP, OUTCOME_LABEL, OVERDUE_CHIP, fmtElapsed, fmtWhen, isOverdue, waitTone, type InboxConversation } from "@/lib/chatOutcome";
+import { OUTCOME_CHIP, OUTCOME_LABEL, OVERDUE_CHIP, activeOutcome, fmtElapsed, fmtWhen, isOverdue, waitTone, type InboxConversation } from "@/lib/chatOutcome";
 
 function getId(c: import("@/types").Conversation): string {
   const raw = c.id ?? c._id;
@@ -449,7 +449,7 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
               ))
             ) : searched.length === 0 ? (
               <div className="flex items-center justify-center h-32 text-[13px] text-gray-400">
-                {view === "mine" ? "Nothing assigned to you" : view === "unassigned" ? "Every open chat has an owner" : view === "campaign_replies" ? "No open campaign replies" : view === "follow_ups" ? "No follow-ups — set one from a chat's outcome menu" : "No conversations found"}
+                {view === "mine" ? "Nothing assigned to you" : view === "unassigned" ? "Every open chat has an owner" : view === "campaign_replies" ? "No open campaign replies" : view === "follow_ups" ? "No follow-ups — set one from the Follow up chip in a chat" : "No conversations found"}
               </div>
             ) : (
               searched.map((c, i) => {
@@ -467,7 +467,8 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
                 const waitingMs = row.awaitingReplySince && c.status !== "RESOLVED"
                   ? now - new Date(row.awaitingReplySince).getTime()
                   : null;
-                const outcome = row.outcome ?? null;
+                // Only a follow-up shows; legacy Booked / Not interested / No answer rows read as none.
+                const outcome = activeOutcome(row.outcome);
                 const followUpOverdue = outcome === "FOLLOW_UP" && isOverdue(row.followUpAt, now);
                 // In Follow-ups the date is the point of the row.
                 const showFollowUp = view === "follow_ups" && outcome === "FOLLOW_UP" && !!row.followUpAt;
@@ -535,7 +536,7 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
                         )}
                       </div>
 
-                      {/* State line: window, status, outcome, owner — and how long the patient has waited */}
+                      {/* State line: window, status, follow-up, owner — and how long the patient has waited */}
                       <div className="flex items-center gap-1.5 mt-1.5 min-h-[20px]">
                         {windowClosed && (
                           <span
@@ -555,7 +556,7 @@ export default function ChatsLayout({ children }: { children: ReactNode }) {
                             title={
                               outcome === "FOLLOW_UP" && row.followUpAt
                                 ? `Follow up ${followUpOverdue ? "was due" : "due"} ${fmtWhen(row.followUpAt)}`
-                                : `Outcome: ${OUTCOME_LABEL[outcome]}`
+                                : OUTCOME_LABEL[outcome]
                             }
                             className={`min-w-0 truncate text-[10.5px] font-semibold px-1.5 py-px rounded border ${followUpOverdue ? OVERDUE_CHIP : OUTCOME_CHIP[outcome]}`}
                           >
