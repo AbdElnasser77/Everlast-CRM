@@ -46,9 +46,9 @@ const architecture: DocPage = {
             <Box tone="brand" title="API — everlast-whatsapp-crm-api" lines={["Express 5 · Socket.IO 4", "Prisma 5 · node-cron jobs"]} />
           </div>
           <div>
-            <Box tone="sky" title="PostgreSQL (Neon)" lines={["All CRM data", "pgvector for the knowledge base"]} />
+            <Box tone="sky" title="PostgreSQL (Neon)" lines={["All CRM data"]} />
             <Arrow label="also uses" />
-            <Box title="Integrations" lines={["Cloudinary or R2 (media)", "Cloudflare Workers AI"]} />
+            <Box title="Integrations" lines={["Cloudinary or R2 (media)"]} />
           </div>
         </div>
       </div>
@@ -87,7 +87,7 @@ const integrations: DocPage = {
   label: "Webhooks, jobs & integrations",
   group: GROUP,
   icon: Webhook,
-  description: "Meta webhooks, background jobs, sockets, media, AI",
+  description: "Meta webhooks, background jobs, sockets, media",
   keywords: "webhook meta signature recovery jobs cron scheduler socket events cloudinary r2 cloudflare",
   visible: admin,
   body: () => (
@@ -101,7 +101,7 @@ const integrations: DocPage = {
           <>Each POST must carry a valid <Code>X-Hub-Signature-256</Code> (HMAC-SHA256 with <Code>WHATSAPP_APP_SECRET</Code>); otherwise 401.</>,
           <>The payload is <b>saved before Meta gets its 200</b>. If saving fails, Meta gets a 500 and sends it again.</>,
           <>Processing: route by phone-number id, skip duplicates, update the contact and opt-outs, credit campaign replies, upload
-            media in the background, emit socket events, then run the flow engine and the AI assistant.</>,
+            media in the background, emit socket events, then run the flow engine.</>,
           <>A recovery job re-runs anything unfinished every minute (up to 5 attempts) and prunes handled events after 7 days.</>,
         ]}
       />
@@ -125,7 +125,6 @@ const integrations: DocPage = {
         head={["Service", "Used for", "Configured by"]}
         rows={[
           ["Cloudinary or Cloudflare R2", "Storing media sent and received", <Code key="c">STORAGE_PROVIDER</Code>],
-          ["Cloudflare Workers AI", "The assistant's chat model and embeddings", "Settings → AI model, or CLOUDFLARE_* env"],
         ]}
       />
       <H>Socket events (server → browser)</H>
@@ -176,7 +175,6 @@ const deployment: DocPage = {
           [<Code key="v">WHATSAPP_APP_ID</Code>, "Needed to submit templates with a media header"],
           [<Code key="v">STORAGE_PROVIDER</Code>, "cloudinary (with CLOUDINARY_*) or r2 (with R2_*)"],
           [<Code key="v">SETTINGS_ENCRYPTION_KEY</Code>, "32+ characters; encrypts secrets saved in Settings. Keep it stable."],
-          [<Code key="v">CLOUDFLARE_ACCOUNT_ID / CLOUDFLARE_AI_TOKEN</Code>, "AI fallback if not set in Settings"],
           [<Code key="v">QUIET_HOURS_START / END / TZ</Code>, "Default quiet hours until saved in Settings"],
         ]}
       />
@@ -264,7 +262,7 @@ const dataModel: DocPage = {
           ["Campaign / CampaignRecipient", "A send with approval, scheduling, lease and pause reason; one row per recipient."],
           ["Flow / FlowRun", "An automation graph; each patient's run through it, with answers."],
           ["BookingRequest / Booking", "Still in the database but unused this phase. Nothing reads or writes them."],
-          ["KnowledgeArticle / KnowledgeChunk / AiReply", "AI articles, their embedded chunks, and a log of assistant turns."],
+          ["KnowledgeArticle / KnowledgeChunk / AiReply", "Still in the database but unused this phase (the AI assistant comes later)."],
           ["AuditLog · AppSetting · WebhookEvent · MediaAsset", "History, workspace settings, saved Meta deliveries, the media library."],
         ]}
       />
@@ -306,7 +304,7 @@ const testing: DocPage = {
       <P>
         <Code>npm run seed:demo</Code> (API) creates a <b>Demo Clinic (docs)</b> line with made-up Meta ids, so nothing on it can reach a
         real phone. It also creates 16 patients on <Code>+999</Code> numbers, chats in every state, campaigns, lists,
-        segments, knowledge articles and these staff accounts (password <Code>DocsDemo@1234</Code>): <Code>docs_admin</Code>,{" "}
+        segments and these staff accounts (password <Code>DocsDemo@1234</Code>): <Code>docs_admin</Code>,{" "}
         <Code>docs_supervisor</Code>, <Code>docs_agent</Code>, <Code>docs_agent2</Code>, <Code>docs_marketing</Code>. Running it again
         replaces the data with a fresh copy. <Code>npm run seed:demo -- --remove</Code> deletes it all. It refuses to run with{" "}
         <Code>NODE_ENV=production</Code>.

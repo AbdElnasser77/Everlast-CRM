@@ -21,7 +21,6 @@ import {
   Menu,
   X,
   LogOut,
-  BookOpen,
   BookMarked,
 } from "lucide-react";
 import { getSocket, disconnectSocket } from "@/lib/socket";
@@ -183,8 +182,6 @@ function DashboardShell({ children }: { children: ReactNode }) {
   ].filter((i) => can(i.perm));
   const navAfterContacts = [
     { href: "/campaigns",        icon: Megaphone,       label: "Campaigns",    enabled: true, perm: "campaign:read" as const, badge: canApprove && pendingApprovals > 0 ? pendingApprovals : undefined },
-    // What the AI assistant may tell patients. Everyone reads it; admins edit and approve.
-    { href: "/knowledge",        icon: BookOpen,        label: "Knowledge base", enabled: true, perm: "knowledge:read" as const },
     // The in-app guide. Everyone gets it; its pages follow the reader's permissions.
     { href: "/docs",             icon: BookMarked,      label: "Documentation", enabled: true, perm: null },
   ].filter((i) => !i.perm || can(i.perm));

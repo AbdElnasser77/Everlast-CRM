@@ -26,7 +26,6 @@ const welcome: DocPage = {
       ctx.can("team:supervise") && { to: "supervision", title: "Watch the team", text: "Who's waiting, response times and every chat, live." },
       ctx.can("campaign:read") && { to: "campaigns", title: "Run campaigns", text: "Audiences, templates, approval and results." },
       ctx.can("contact:read") && { to: "contacts", title: "Manage contacts", text: "Patients, imports, lists and segments." },
-      ctx.can("knowledge:read") && { to: "ai-assistant", title: "The AI assistant", text: "How it answers patients and when it hands over." },
       ctx.can("settings:write") && { to: "users", title: "Administer the workspace", text: "Users, WhatsApp lines, quiet hours and safety limits." },
       ctx.can("settings:write") && { to: "architecture", title: "Technical reference", text: "Architecture, deployment, environment and security." },
     ].filter(Boolean) as { to: string; title: string; text: string }[];
@@ -53,8 +52,6 @@ const welcome: DocPage = {
               reminder when due, and is cancelled automatically if the patient writes first.</>,
             <><b>Campaigns.</b> Approved WhatsApp templates sent to an audience (a list or a segment), within safety limits: quiet hours,
               a frequency cap, opt-outs and the number&apos;s quality.</>,
-            <><b>The AI assistant.</b> When it&apos;s switched on, it answers simple questions from the approved knowledge base. Anything it
-              can&apos;t answer goes to the team.</>,
           ]} />
         <Shot name="inbox" alt="The inbox with demo conversations" caption="The inbox. Screenshots in this guide use demo data on a demo line." />
       </>
@@ -107,14 +104,13 @@ const NAV: NavRow[] = [
   { label: "Supervision", perm: "team:supervise", what: "Every agent's chats, waiting times, live wall and reports." },
   { label: "Contacts → Contacts / Lists / Segments", perm: "contact:read", what: "The patient database, saved lists and rule-based audiences." },
   { label: "Campaigns", perm: "campaign:read", what: "Campaigns and flows. For admins, the badge counts campaigns waiting for approval." },
-  { label: "Knowledge base", perm: "knowledge:read", what: "What the AI assistant may tell patients." },
   { label: "Documentation", perm: null, what: "This guide." },
   { label: "Dashboard", perm: "stats:read", what: "Activity at a glance: open chats, messages, agent performance." },
   { label: "Templates", perm: "template:write", what: "WhatsApp message templates and their Meta approval status." },
   { label: "Media Library", perm: "media:write", what: "Images, video and documents for template headers." },
   { label: "Number Health", perm: "stats:read", what: "The line's quality rating and messaging limit from Meta." },
   { label: "Audit Log", perm: "audit:read", what: "Who did what, and when." },
-  { label: "Settings", perm: "settings:write", what: "Users, WhatsApp lines, quiet hours, campaign safety, AI." },
+  { label: "Settings", perm: "settings:write", what: "Users, WhatsApp lines, quiet hours, campaign safety." },
 ];
 
 const navigation: DocPage = {
@@ -180,9 +176,8 @@ const PERM_GROUPS: { label: string; perms: Permission[]; text: string }[] = [
   { label: "Supervision", perms: ["team:supervise"], text: "Every agent's chats, live wall, reports" },
   { label: "Audit log", perms: ["audit:read"], text: "Who did what" },
   { label: "Manage users", perms: ["user:write"], text: "Create, edit, deactivate, reset passwords" },
-  { label: "Workspace settings", perms: ["settings:write", "number:write"], text: "Lines, quiet hours, safety, AI" },
+  { label: "Workspace settings", perms: ["settings:write", "number:write"], text: "Lines, quiet hours, safety" },
   { label: "Lift an opt-out", perms: ["optout:lift"], text: "Re-subscribe a patient to marketing" },
-  { label: "Edit the knowledge base", perms: ["knowledge:write"], text: "Write and approve AI articles" },
 ];
 
 const roles: DocPage = {

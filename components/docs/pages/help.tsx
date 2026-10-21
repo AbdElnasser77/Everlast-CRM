@@ -17,7 +17,6 @@ const FAQ: { section: string; items: QA[] }[] = [
       { perm: "conversation:write", q: "My message shows a red “!”.", a: <>WhatsApp refused it. Hover the mark for the reason: often the patient isn&apos;t on WhatsApp, or the window closed.</> },
       { perm: "conversation:write", q: "My follow-up disappeared.", a: <>The patient wrote again, which cancels the follow-up automatically. Set a new one from the <Ui>Follow up</Ui> chip if you still need it. See <DocLink to="outcomes">Follow-ups</DocLink>.</> },
       { perm: "conversation:write", q: "I can't find a chat someone sent me a link to.", a: <>It&apos;s probably on another line. Switch line in the top-right corner, then open it again.</> },
-      { perm: "conversation:write", q: "Why didn't the AI answer this patient?", a: <>It never answers assigned chats, opted-out patients, chats a flow is handling, or chats the team replied to recently. After a hand-over it waits until the chat is Resolved. See <DocLink to="ai-assistant">How the AI assistant works</DocLink>.</> },
     ],
   },
   {
@@ -44,7 +43,6 @@ const FAQ: { section: string; items: QA[] }[] = [
       { q: "A page I used to see has gone.", a: <>Your role probably changed. Pages follow your role&apos;s permissions. See <DocLink to="roles">Roles & permissions</DocLink>.</> },
       { q: "I was signed out suddenly.", a: <>Sessions last 8 hours, and a password reset or role change signs you out everywhere. Sign in again.</> },
       { q: "How do I change my password?", a: <>See <DocLink to="account">Your account</DocLink>.</> },
-      { perm: "settings:write", q: "The AI says it isn't configured.", a: <>Add the Cloudflare account ID and API token in Settings → AI model & Cloudflare (or the environment), then Test connection.</> },
       { perm: "settings:write", q: "Adding a WhatsApp number says no tokens are set.", a: <>A developer has to add <code>WHATSAPP_TOKEN_&lt;NAME&gt;</code> to the API&apos;s environment first. See <DocLink to="whatsapp-numbers">WhatsApp lines</DocLink>.</> },
     ],
   },
@@ -91,7 +89,7 @@ const TERMS: [string, string, Permission?][] = [
   ["Template", "A message Meta has approved in advance, needed outside the window and for campaigns."],
   ["Owner / assignee", "The person a chat is assigned to."],
   ["Follow-up", "A reminder to get back to a patient at a set time. Cancelled automatically when the patient writes again."],
-  ["Hand-off", "An automation (flow or AI) passing the patient to a person."],
+  ["Hand-off", "An automation (a flow) passing the patient to a person."],
   ["Opt-out", "A patient who doesn't want marketing on a line (or anywhere)."],
   ["Flow", "An automation that answers a campaign's buttons.", "campaign:read"],
   ["Segment", "A saved rule that picks an audience each time it's used.", "segment:read"],
@@ -101,7 +99,6 @@ const TERMS: [string, string, Permission?][] = [
   ["Quality rating", "Meta's GREEN / YELLOW / RED score for a line, driven by patients' blocks and reports.", "stats:read"],
   ["Messaging limit (tier)", "How many different people a line may start conversations with in any 24 hours.", "campaign:read"],
   ["Working time", "Time outside quiet hours. Waiting times and the 30-minute target count only this.", "team:supervise"],
-  ["Knowledge base", "The approved articles the AI assistant answers from."],
 ];
 
 const glossary: DocPage = {

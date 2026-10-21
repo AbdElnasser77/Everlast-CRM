@@ -4,7 +4,6 @@ import { inboxPages } from "./pages/inbox";
 import { contactPages } from "./pages/contacts";
 import { campaignPages } from "./pages/campaigns";
 import { templatePages } from "./pages/templates";
-import { aiPages } from "./pages/ai";
 import { oversightPages } from "./pages/oversight";
 import { adminPages } from "./pages/admin";
 import { technicalPages } from "./pages/technical";
@@ -17,7 +16,6 @@ export const DOC_PAGES: DocPage[] = [
   ...contactPages,
   ...campaignPages,
   ...templatePages,
-  ...aiPages,
   ...oversightPages,
   ...adminPages,
   ...technicalPages,

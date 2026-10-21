@@ -31,8 +31,7 @@ export type Permission =
   | "settings:write"
   | "team:supervise"
   | "optout:lift"
-  | "dev:tools"
-  | "knowledge:read" | "knowledge:write";
+  | "dev:tools";
 
 /** Whatever shape the caller has on hand — /users/me, or a cached login user. */
 type PermissionBearer = { permissions?: string[] | null } | null | undefined;

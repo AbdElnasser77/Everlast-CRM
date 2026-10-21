@@ -2,7 +2,7 @@
 
 import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Cpu, MoonStar, ShieldCheck, Smartphone, Sparkles, UserRound, Users, type LucideIcon } from "lucide-react";
+import { MoonStar, ShieldCheck, Smartphone, UserRound, Users, type LucideIcon } from "lucide-react";
 import { useCurrentUser } from "@/components/CurrentUserProvider";
 import { PageSpinner } from "@/components/ui/spinner";
 import { SectionedLayout } from "@/components/SectionedLayout";
@@ -11,8 +11,6 @@ import { WhatsAppNumbersPanel } from "@/components/settings/WhatsAppNumbersPanel
 import { QuietHoursPanel } from "@/components/settings/QuietHoursPanel";
 import { CampaignSafetyPanel } from "@/components/settings/CampaignSafetyPanel";
 import { MyAccountPanel } from "@/components/settings/MyAccountPanel";
-import { AiAssistantPanel } from "@/components/settings/AiAssistantPanel";
-import { AiModelPanel } from "@/components/settings/AiModelPanel";
 
 // The section lives in the URL (?tab=) so a link — or the old /team page — can
 // open a specific one, and a reload stays where you were. `wide` sections hold
@@ -22,8 +20,6 @@ const TABS = [
   { key: "numbers", label: "WhatsApp numbers", group: "Workspace", icon: Smartphone, wide: true, description: "The WhatsApp lines the team sends and receives on" },
   { key: "quiet-hours", label: "Quiet hours", group: "Messaging", icon: MoonStar, wide: false, description: "When campaign messages are held back" },
   { key: "campaign-safety", label: "Campaign safety", group: "Messaging", icon: ShieldCheck, wide: false, description: "Limits that protect patients and the number's quality" },
-  { key: "ai-assistant", label: "AI assistant", group: "AI", icon: Sparkles, wide: false, description: "Answers patients from the knowledge base and hands off to the team" },
-  { key: "ai-model", label: "AI model & Cloudflare", group: "AI", icon: Cpu, wide: false, description: "Provider account, models and behaviour" },
   { key: "account", label: "My account", group: "Personal", icon: UserRound, wide: false, description: "Your profile and password" },
 ] as const satisfies readonly { key: string; label: string; group: string; icon: LucideIcon; wide: boolean; description: string }[];
 
@@ -71,12 +67,6 @@ function SettingsContent() {
       {tab === "numbers" && <WhatsAppNumbersPanel key="numbers" />}
       {tab === "quiet-hours" && <QuietHoursPanel key="quiet-hours" />}
       {tab === "campaign-safety" && <CampaignSafetyPanel key="campaign-safety" />}
-      {tab === "ai-assistant" && <AiAssistantPanel key="ai-assistant" onOpenModel={() => selectTab("ai-model")} />}
-      {tab === "ai-model" && (
-        <div key="ai-model" className="px-6 py-6">
-          <AiModelPanel />
-        </div>
-      )}
       {tab === "account" && <MyAccountPanel key="account" />}
     </SectionedLayout>
   );

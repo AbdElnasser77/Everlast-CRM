@@ -1,4 +1,4 @@
-import { Bot, MoonStar, Smartphone, Users } from "lucide-react";
+import { MoonStar, Smartphone, Users } from "lucide-react";
 import { rolesWith, type DocPage } from "../model";
 import { Bullets, Callout, Code, DocLink, H, Lead, P, Shot, Steps, Table, Ui, Who } from "../primitives";
 
@@ -124,53 +124,4 @@ const workspace: DocPage = {
   ),
 };
 
-const ai: DocPage = {
-  key: "ai-settings",
-  label: "AI settings",
-  group: GROUP,
-  icon: Bot,
-  description: "Switch the assistant on, its messages, model and Cloudflare",
-  keywords: "ai settings assistant on lines name messages handover urgent cloudflare token model embedding reindex temperature",
-  visible: (ctx) => ctx.can("settings:write"),
-  body: () => (
-    <>
-      <Lead>
-        The assistant has two settings pages: <b>Settings → AI assistant</b> (what it does) and <b>Settings → AI model & Cloudflare</b>{" "}
-        (the AI provider).
-      </Lead>
-      <Shot name="settings-ai-assistant" alt="Settings, AI assistant" />
-      <H>AI assistant</H>
-      <Table
-        head={["Setting", "Notes"]}
-        rows={[
-          ["Assistant on", "Off by default"],
-          ["Lines it answers on", "Tick each line"],
-          ["Assistant's name", "Up to 60 characters; default “Everlast Assistant”"],
-          ["Quiet after a team reply (hours)", "0–168, default 24. 0 means it only stays quiet while the chat is assigned."],
-          ["Hand-over message (+ Arabic)", "Sent when it passes the patient to the team. Required."],
-          ["Urgent message (+ Arabic)", "Sent on red-flag symptoms. Required; the default mentions calling 999."],
-          ["Clinic note", "Optional extra context for the assistant"],
-        ]}
-      />
-      <P>If an Arabic message is left empty, the English one is sent to everyone.</P>
-      <H>AI model & Cloudflare</H>
-      <Bullets
-        items={[
-          <><b>Account ID</b> and <b>API token</b> for Cloudflare Workers AI. A token saved here is encrypted, and only its last 4
-            characters are shown. Saving one needs <Code>SETTINGS_ENCRYPTION_KEY</Code> on the server. Otherwise put{" "}
-            <Code>CLOUDFLARE_AI_TOKEN</Code> in the environment.</>,
-          <><b>Chat model</b> (default <Code>@cf/zai-org/glm-4.7-flash</Code>; it must support tools) and <b>Embedding model</b>{" "}
-            (default <Code>@cf/baai/bge-m3</Code>; it must produce 1024-dimension vectors).</>,
-          <>Changing the embedding model re-indexes the whole knowledge base. Until that finishes, the assistant finds nothing and hands
-            every question over.</>,
-          <>Behaviour: temperature 0.3, max reply 1,500 characters, wait 4 seconds before replying, 12 history messages, 6 search results
-            at similarity 0.45, 45-second timeout. <Ui>Reset to defaults</Ui> restores them.</>,
-          <><Ui>Test connection</Ui> tries the unsaved values. <Ui>Re-index knowledge base</Ui> rebuilds the search index.</>,
-        ]}
-      />
-      <P>See <DocLink to="ai-assistant">How the AI assistant works</DocLink> for what these change in practice.</P>
-    </>
-  ),
-};
-
-export const adminPages: DocPage[] = [users, numbers, workspace, ai];
+export const adminPages: DocPage[] = [users, numbers, workspace];

@@ -1789,11 +1789,7 @@ export default function ConversationPage() {
               (() => {
                 // A flow's message has no human sender: show it as the automation,
                 // never as whoever happens to be looking at the chat.
-                // The AI assistant's messages are BOT messages too, flagged aiGenerated.
-                const isAi = msg.senderType === "BOT" && Boolean(msg.aiGenerated);
-                const agent = isAi
-                  ? { initials: "AI", color: "#64748B", name: "AI assistant" }
-                  : msg.senderType === "BOT"
+                const agent = msg.senderType === "BOT"
                   ? { initials: "⚡", color: "#64748B", name: "Automation" }
                   : getAgentAvatar(
                       msg.senderId,
@@ -1804,19 +1800,14 @@ export default function ConversationPage() {
                 const senderChanged = groupStart;
                 const isBot = msg.senderType === "BOT";
                 // WhatsApp-Web-like: team replies are WhatsApp green, automation
-                // (flows, AI) soft blue, the patient white on a beige canvas — so
+                // (flows) soft blue, the patient white on a beige canvas — so
                 // anyone can tell at a glance who actually wrote it.
                 const bubbleTone = isBot ? "bg-[#DDEBFA] border-[#B9D3F0]" : "bg-[#D9FDD3] border-[#BFE6B6]";
                 const nameLabel = (
                   <p className="text-[11px] font-medium text-gray-500 text-right mb-1 flex items-center justify-end gap-1">
                     {isBot && (
-                      <span
-                        title={isAi ? "Written by the AI assistant" : undefined}
-                        className={`text-[10px] font-semibold uppercase tracking-wide rounded px-1 border ${
-                          isAi ? "text-violet-700 bg-violet-50 border-violet-200" : "text-[#64748B] bg-[#EEF2F6] border-[#DCE3EB]"
-                        }`}
-                      >
-                        {isAi ? "AI" : "Automation"}
+                      <span className="text-[10px] font-semibold uppercase tracking-wide rounded px-1 border text-[#64748B] bg-[#EEF2F6] border-[#DCE3EB]">
+                        Automation
                       </span>
                     )}
                     {!isBot && agent.name}

@@ -24,11 +24,7 @@ export default function ChatsPage() {
             Select a conversation
           </h2>
           <p className="text-[14px] text-gray-500 leading-relaxed">
-            Messages from clients land in your inbox in real-time.{" "}
-            <br />
-            Toggle{" "}
-            <span className="text-brand-fg font-semibold">AI auto-reply</span>{" "}
-            on any thread to have it handled automatically.
+            Messages from clients land in your inbox in real-time.
           </p>
         </div>
       </div>

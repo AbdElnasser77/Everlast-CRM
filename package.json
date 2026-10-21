@@ -38,6 +38,11 @@
     "tailwindcss": "^4",
     "typescript": "^5"
   },
+  "overrides": {
+    "@emoji-mart/react": {
+      "react": "$react"
+    }
+  },
   "engines": {
     "node": "22.x"
   }

@@ -157,15 +157,6 @@ async function main() {
     await shot(page, "template-editor", () => go(page, "/templates/new"));
     await shot(page, "media-library", () => go(page, "/media-library"));
 
-    await shot(page, "knowledge", async () => {
-      await go(page, "/knowledge");
-      await settle(page);
-      await page.getByText("[Demo] HydraFacial").first().click();
-    });
-    await shot(page, "assistant-tester", async () => {
-      await go(page, "/knowledge");
-      await page.getByRole("button", { name: /Test the assistant/ }).first().click();
-    });
 
     await shot(page, "supervision", () => go(page, "/supervision"));
     await shot(page, "supervision-live", () => go(page, "/supervision/live"));
@@ -179,7 +170,6 @@ async function main() {
       await page.getByPlaceholder(/Search team by name or username/).fill("docs_");
     });
     await shot(page, "settings-quiet-hours", () => go(page, "/settings?tab=quiet-hours"));
-    await shot(page, "settings-ai-assistant", () => go(page, "/settings?tab=ai-assistant"));
     await shot(page, "settings-account", () => go(page, "/settings?tab=account"));
     await shot(page, "docs", () => go(page, "/docs"));
     await context.close();

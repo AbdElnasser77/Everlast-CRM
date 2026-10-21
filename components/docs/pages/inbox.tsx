@@ -40,7 +40,7 @@ const inbox: DocPage = {
       <Bullets
         items={[
           <>The <b>name</b> (or number), the time of the last message and a preview. <b>&ldquo;You:&rdquo;</b> means an agent wrote last.
-            A <b>⚡</b> means an automation (flow or AI) wrote last.</>,
+            A <b>⚡</b> means an automation (a flow) wrote last.</>,
           <>A green <b>number bubble</b> counts unread messages.</>,
           <><b>Waiting</b> timer: how long the patient has waited for a reply. Grey under 15 minutes, <span className="text-amber-600 font-semibold">amber from 15</span>, <span className="text-red-600 font-semibold">red from 30</span>.</>,
           <>The owner&apos;s initials, or an amber <b>Unassigned</b>.</>,
@@ -106,8 +106,7 @@ const chatting: DocPage = {
         ]}
       />
       <P>
-        Your messages are green and show your name. Automation messages are grey with an <b>Automation</b> label, and AI messages carry
-        a violet <b>AI</b> label. A patient&apos;s reply to a campaign shows <b>Reply to &ldquo;campaign name&rdquo;</b> above it.
+        Your messages are green and show your name. Automation messages are grey with an <b>Automation</b> label. A patient&apos;s reply to a campaign shows <b>Reply to &ldquo;campaign name&rdquo;</b> above it.
       </P>
       <H>The message menu</H>
       <P>Hover a message and click the small arrow to:</P>
@@ -350,33 +349,25 @@ const alerts: DocPage = {
   label: "Hand-off alerts",
   group: GROUP,
   icon: Bell,
-  description: "The alert cards: hand-offs, urgent messages, follow-ups",
-  keywords: "notification alert card chime desktop handoff urgent medical ai flow",
+  description: "The alert cards: hand-offs and follow-ups",
+  keywords: "notification alert card chime desktop handoff flow follow-up",
   visible: inboxUser,
   body: () => (
     <>
       <Lead>
-        When an automation (a campaign flow or the AI assistant) needs a person, or something needs your attention, a card appears in
+        When a campaign flow needs a person, or something needs your attention, a card appears in
         the bottom-right corner with a chime. Up to five are shown at a time, and they stay until you dismiss them.
       </Lead>
       <Table
         head={["Card", "Means"]}
         rows={[
           [<b key="1">“Name wants to talk to an agent”</b>, "A flow handed the patient over."],
-          [<b key="2">“Name needs the team”</b>, "The AI assistant handed over, with a reason (below) and a one-line summary."],
-          [<b key="3" className="text-red-600">“Urgent · Name may need medical attention”</b>, "Red-flag symptoms. The patient was already sent the urgent message. Act now."],
           [<b key="5">“Follow up now · Name”</b>, "A follow-up you set is due."],
         ]}
       />
       <P>
         An assigned chat&apos;s alerts go only to its owner. Unassigned ones say <b>Waiting in Unassigned</b>. Alerts from another line
         offer <Ui>Switch line & open chat</Ui>. Click <Ui>Enable desktop alerts</Ui> to get them even when the tab is in the background.
-      </P>
-      <H>Why the AI handed over</H>
-      <P>
-        Wants to book · Question not covered · Asked for a person · Complaint · Medical question · Needs the team · Possible medical
-        concern · No usable answer · Answer too long · Answer held back (dose) · Answer held back (price) · Couldn&apos;t settle on an
-        answer. See <DocLink to="ai-assistant">How the AI assistant works</DocLink>.
       </P>
     </>
   ),
