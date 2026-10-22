@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState, useRef, useCallback } from "react";
+import { Suspense, useEffect, useState, useRef, useCallback, type Dispatch, type SetStateAction } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Check, ArrowLeft, Loader2, Search, ChevronRight, ChevronLeft, Lock, Send, AlertCircle, ShieldCheck, Clock } from "lucide-react";
 import type { Template, Customer, Conversation, ContactList, Segment, CampaignCategory, CampaignCapacity } from "@/types";
@@ -377,6 +377,10 @@ function Step2({
   tier,
   segmentAudience,
   onPickSegment,
+  selectedListIds,
+  setSelectedListIds,
+  listMembersCache,
+  setListMembersCache,
 }: {
   selectedIds: Set<number>;
   onToggle: (id: number) => void;
@@ -388,6 +392,10 @@ function Step2({
   tier: string | null | undefined;
   segmentAudience: Segment | null;
   onPickSegment: (segment: Segment | null) => void;
+  selectedListIds: Set<number>;
+  setSelectedListIds: Dispatch<SetStateAction<Set<number>>>;
+  listMembersCache: Record<number, number[]>;
+  setListMembersCache: Dispatch<SetStateAction<Record<number, number[]>>>;
 }) {
   const [mode, setMode] = useState<"contacts" | "lists" | "segments">(
     segmentAudience ? "segments" : "contacts"
@@ -401,13 +409,7 @@ function Step2({
   const [tagFilter, setTagFilter] = useState("All");
   const [lists, setLists] = useState<ContactList[]>([]);
   const [loadingLists, setLoadingLists] = useState(true);
-  const [listMembersCache, setListMembersCache] = useState<Record<number, number[]>>({});
   const [loadingListId, setLoadingListId] = useState<number | null>(null);
-  // Which lists the user explicitly turned on — tracked separately from
-  // selectedIds so two lists sharing contacts don't fight over each other's
-  // toggle state (turning list B "on" just because list A already selected
-  // the same people, or turning both off when only one is unchecked).
-  const [selectedListIds, setSelectedListIds] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     apiGetLists().then((res) => setLists(res.data)).catch(() => {}).finally(() => setLoadingLists(false));
@@ -1394,6 +1396,14 @@ function NewCampaignContent() {
   // in selectedIds are still tracked so the wizard can show a live count, a
   // tier warning and a cost estimate, but they are not what gets submitted.
   const [segmentAudience, setSegmentAudience] = useState<Segment | null>(null);
+  // Which lists the user explicitly turned on — tracked separately from
+  // selectedIds so two lists sharing contacts don't fight over each other's
+  // toggle state (turning list B "on" just because list A already selected
+  // the same people, or turning both off when only one is unchecked). Kept
+  // here, not in Step 2, because the save sends them as audienceLists: where
+  // the recipients came from, which the Marketing dashboard groups by.
+  const [selectedListIds, setSelectedListIds] = useState<Set<number>>(new Set());
+  const [listMembersCache, setListMembersCache] = useState<Record<number, number[]>>({});
   const [convMap, setConvMap] = useState<Map<number, Conversation>>(new Map());
   const [loadingCustomers, setLoadingCustomers] = useState(true);
   const [campaignName, setCampaignName] = useState("");
@@ -1436,6 +1446,11 @@ function NewCampaignContent() {
         if (c.template) {
           setSelectedTemplate(c.template as unknown as Template);
         }
+        // The lists a saved draft was picked from (its audience snapshot).
+        const snap = (c as { audienceSnapshot?: { source?: string; lists?: { id: number }[] } | null }).audienceSnapshot;
+        if (snap?.source === "LIST" && Array.isArray(snap.lists)) {
+          setSelectedListIds(new Set(snap.lists.map((l) => l.id).filter((id) => Number.isInteger(id))));
+        }
         if (c.recipients && c.recipients.length > 0) {
           setSelectedIds(new Set((c.recipients as { customerId: number }[]).map((r) => r.customerId)));
           setStep(3);
@@ -1467,6 +1482,11 @@ function NewCampaignContent() {
     apiGetListMemberIds(listIdParam)
       .then((res) => {
         setSelectedIds((prev) => new Set([...prev, ...res.data.customerIds]));
+        const seedId = Number(listIdParam);
+        if (Number.isInteger(seedId)) {
+          setListMembersCache((prev) => ({ ...prev, [seedId]: res.data.customerIds }));
+          setSelectedListIds((prev) => new Set(prev).add(seedId));
+        }
         toast.info(`${res.data.customerIds.length} recipient${res.data.customerIds.length !== 1 ? "s" : ""} carried over from "${res.data.name}".`);
       })
       .catch(() => toast.error("Couldn't load that list's contacts."));
@@ -1573,6 +1593,16 @@ function NewCampaignContent() {
     });
   };
 
+  // The ticked lists that still contribute someone to the selection (hand
+  // edits may have removed a list's members). A list whose members aren't
+  // loaded here (restored from a draft) is sent as is — the server leaves out
+  // any list none of the recipients belong to.
+  const audienceListIds = () =>
+    [...selectedListIds].filter((id) => {
+      const members = listMembersCache[id];
+      return !members || members.some((m) => selectedIds.has(m));
+    });
+
   const handleSaveDraft = async () => {
     if (!selectedTemplate) {
       router.push("/campaigns");
@@ -1593,6 +1623,7 @@ function NewCampaignContent() {
             name: campaignName || `${selectedTemplate.name} · Draft`,
             templateId: selectedTemplate.id,
             recipientIds: [...selectedIds],
+            audienceLists: audienceListIds(),
             flowId,
             ...(category && { category }),
           };
@@ -1617,7 +1648,7 @@ function NewCampaignContent() {
       const baseName = campaignName || `${selectedTemplate.name} · ${new Date().toLocaleDateString()}`;
       const payload = segmentAudience
         ? { name: baseName, templateId: selectedTemplate.id, segmentId: segmentAudience.id, scheduledAt, flowId, ...(category && { category }) }
-        : { name: baseName, templateId: selectedTemplate.id, recipientIds: [...selectedIds], scheduledAt, flowId, ...(category && { category }) };
+        : { name: baseName, templateId: selectedTemplate.id, recipientIds: [...selectedIds], audienceLists: audienceListIds(), scheduledAt, flowId, ...(category && { category }) };
       let campaignId: number;
       if (draftCampaignId) {
         // null, not undefined: switching back to "now" has to clear a time
@@ -1757,6 +1788,10 @@ function NewCampaignContent() {
                 tier={tier}
                 segmentAudience={segmentAudience}
                 onPickSegment={setSegmentAudience}
+                selectedListIds={selectedListIds}
+                setSelectedListIds={setSelectedListIds}
+                listMembersCache={listMembersCache}
+                setListMembersCache={setListMembersCache}
               />
             )}
             {step === 3 && selectedTemplate && (

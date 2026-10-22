@@ -193,7 +193,9 @@ function DashboardShell({ children }: { children: ReactNode }) {
   // The management screens. Headed "Manage" rather than "Admin" now that
   // MARKETING sees most of them too.
   const adminNav = [
-    { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard",     perm: "stats:read" as const },
+    // MARKETING's Dashboard is the Marketing dashboard (no agent performance);
+    // admins reach it from a tab on the Dashboard.
+    { href: can("stats:marketing") && !can("stats:team") ? "/dashboard/marketing" : "/dashboard", icon: LayoutDashboard, label: "Dashboard", perm: "stats:read" as const },
     { href: "/templates", icon: LayoutTemplate,  label: "Templates",     perm: "template:write" as const, badge: templateUpdates > 0 ? templateUpdates : undefined },
     { href: "/media-library", icon: Images,      label: "Media Library", perm: "media:write" as const },
     { href: "/number-health", icon: ShieldCheck, label: "Number Health", perm: "stats:read" as const },

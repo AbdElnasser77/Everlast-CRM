@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { ListChecks, Users, Trash2, Megaphone } from "lucide-react";
-import { apiGetLists, apiCreateList, apiAddListMembers, apiDeleteList } from "@/lib/api";
+import { apiGetLists, apiCreateList, apiAddListMembers, apiDeleteList, ApiError } from "@/lib/api";
 import ContactPicker from "@/components/ContactPicker";
 import type { ContactList } from "@/types";
 import { useCurrentUser } from "@/components/CurrentUserProvider";
@@ -62,7 +62,21 @@ export default function ContactListsPage() {
 
   async function goToMethodStep() {
     if (!name.trim()) return;
+    // The server refuses a duplicate name too (409); checking the loaded lists
+    // here just says so before the user picks how to fill it.
+    const wanted = name.trim().toLowerCase();
+    if (lists.some((l) => l.name.trim().toLowerCase() === wanted)) {
+      setCreateError("A list with this name already exists");
+      return;
+    }
+    setCreateError(null);
     setCreateStep("method");
+  }
+
+  // A name clash (someone else just made one) sends the user back to the name.
+  function createFailed(err: unknown) {
+    setCreateError(err instanceof Error ? err.message : "Failed to create list");
+    if (err instanceof ApiError && err.status === 409) setCreateStep("info");
   }
 
   async function chooseImportCSV() {
@@ -73,7 +87,7 @@ export default function ContactListsPage() {
       resetCreateFlow();
       router.push(`/customers/lists/${res.data.id}/import`);
     } catch (err) {
-      setCreateError(err instanceof Error ? err.message : "Failed to create list");
+      createFailed(err);
     } finally {
       setCreating(false);
     }
@@ -87,7 +101,7 @@ export default function ContactListsPage() {
       setCreatedListId(res.data.id);
       setShowPicker(true);
     } catch (err) {
-      setCreateError(err instanceof Error ? err.message : "Failed to create list");
+      createFailed(err);
     } finally {
       setCreating(false);
     }

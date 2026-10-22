@@ -180,7 +180,8 @@ export interface StatsOverview {
   messages: { today: number; last7Days: number };
   conversations: { open: number; pending: number; resolved: number; unassigned: number; total: number };
   customers: { total: number; newLast7Days: number };
-  agents: { online: number; onBreak: number; offline: number };
+  /** Staff presence — null without stats:team (marketing never gets it). */
+  agents: { online: number; onBreak: number; offline: number } | null;
   unreadMessages: number;
   // Conversations with at least one unread message (the Inbox badge).
   unreadConversations: number;
@@ -1254,4 +1255,156 @@ export interface ChatsReport extends DetailedReportMeta {
   chats: ChatsReportChat[];
   /** More than 5000 chats in the period — only the first are listed. */
   truncated: boolean;
+}
+
+// ── Marketing dashboard (GET /api/stats/marketing) ──────────────────────────
+// Campaigns and flow runs STARTED in the period; every rate is a share of
+// sent (one decimal, null when nothing was sent, never above 100).
+
+export interface MarketingRates {
+  deliveredPct: number | null;
+  readPct: number | null;
+  repliedPct: number | null;
+  optOutPct: number | null;
+}
+
+export type MarketingFailReason =
+  | "NOT_ON_WHATSAPP"
+  | "OPTED_OUT"
+  | "FREQUENCY_LIMIT"
+  | "NOT_CONFIRMED"
+  | "META_MARKETING_LIMIT"
+  | "OTHER";
+
+export interface MarketingFunnel {
+  campaigns: number;
+  recipients: number;
+  sent: number;
+  delivered: number;
+  read: number;
+  replied: number;
+  failed: number;
+  skipped: number;
+  /** Still waiting for their turn (running, paused or scheduled campaigns). */
+  pending: number;
+  optOutsFromCampaigns: number;
+  rates: MarketingRates;
+  /** Failed and skipped recipients by reason, biggest first (up to 6). */
+  failedReasons: { category: MarketingFailReason; label: string; count: number; example: string | null }[];
+}
+
+export interface MarketingCampaignRow {
+  id: number;
+  name: string;
+  whatsappNumberId: number;
+  line: string | null;
+  template: string | null;
+  category: string;
+  status: CampaignStatus;
+  /** Deleted after completing: counted, but there is no page to open. */
+  deleted: boolean;
+  startedAt: string;
+  completedAt: string | null;
+  recipients: number;
+  sent: number;
+  delivered: number;
+  read: number;
+  replied: number;
+  failed: number;
+  skipped: number;
+  optOuts: number;
+  rates: MarketingRates;
+}
+
+export interface MarketingFlowRow {
+  id: number;
+  name: string;
+  isActive: boolean;
+  started: number;
+  completed: number;
+  handedOff: number;
+  dropped: number;
+  active: number;
+  failed: number;
+  rates: { completedPct: number | null; handedOffPct: number | null; droppedPct: number | null };
+  /** Most-picked buttons / list rows, counted once per run. */
+  topChoices: { choice: string; runs: number }[];
+}
+
+export interface MarketingAudience {
+  totalContacts: number;
+  newContacts: number;
+  reachable: number;
+  optedOutTotal: number;
+  optedOutGlobal: number;
+  optedOutNew: number;
+  /** Settings → Campaign safety; 0 = no limit. */
+  frequencyCapDays: number;
+  /** null when there is no frequency limit. */
+  frequencyCappedNow: number | null;
+  /** The period's campaigns grouped by where their audience came from, most sent first. */
+  performance: MarketingAudienceRow[];
+}
+
+export interface MarketingAudienceRow {
+  key: string;
+  /** MANUAL = picked contacts, and every campaign created before lists were recorded. */
+  kind: "SEGMENT" | "LIST" | "MANUAL";
+  /** "Segment: ...", "List: ...", "Lists: ... + ..." or "Picked contacts". */
+  label: string;
+  segmentId: number | null;
+  listIds: number[];
+  campaigns: number;
+  recipients: number;
+  sent: number;
+  replied: number;
+  repliedPct: number | null;
+  optOuts: number;
+  optOutPct: number | null;
+  failedSkipped: number;
+  lastSentAt: string | null;
+}
+
+export interface MarketingLineHealth {
+  id: number;
+  label: string;
+  displayPhoneNumber: string | null;
+  qualityRating: string | null;
+  metaStatus: string | null;
+  qualityCheckedAt: string | null;
+  /** null when Meta couldn't be asked. */
+  messagingTier: string | null;
+  messagingLimit: number | null;
+  unlimited: boolean;
+  usedLast24h: number;
+  usedPct: number | null;
+  templates: { pending: number; rejected: number; paused: number };
+}
+
+export interface MarketingAttention {
+  pendingApproval: {
+    count: number;
+    campaigns: { id: number; name: string; whatsappNumberId: number; line: string | null; submittedAt: string | null; submittedBy: string | null; recipients: number }[];
+  };
+  rejectedRecently: { id: number; name: string; whatsappNumberId: number; line: string | null; reviewedAt: string | null; reviewedBy: string | null; reason: string | null }[];
+  paused: {
+    id: number; name: string; whatsappNumberId: number; line: string | null;
+    reason: string | null; detail: string | null; resumeAt: string | null; pausedAt: string; sent: number; recipients: number;
+  }[];
+  templates: { id: number; name: string; status: "SUBMITTED" | "REJECTED" | "PAUSED"; reason: string | null; changedAt: string }[];
+  /** "Recently" for rejections, in days. */
+  recentDays: number;
+}
+
+export interface MarketingStats {
+  period: { from: string; to: string; fromDay: string; toDay: string; timezone: string };
+  numberId: number | null;
+  generatedAt: string;
+  definitions: { optOutWindowDays: number; stalledFlowMinutes: number };
+  campaignFunnel: MarketingFunnel;
+  campaigns: MarketingCampaignRow[];
+  flows: MarketingFlowRow[];
+  audience: MarketingAudience;
+  lineHealth: MarketingLineHealth[];
+  attention: MarketingAttention;
 }

@@ -1,4 +1,4 @@
-import { Activity, ClipboardList, Eye, FileBarChart, LayoutDashboard, MonitorPlay } from "lucide-react";
+import { Activity, ClipboardList, Eye, FileBarChart, LayoutDashboard, Megaphone, MonitorPlay } from "lucide-react";
 import { rolesWith, type DocPage } from "../model";
 import { Bullets, Callout, Code, DocLink, H, Lead, P, Shot, Steps, Table, Ui, Who } from "../primitives";
 
@@ -128,10 +128,11 @@ const dashboard: DocPage = {
   icon: LayoutDashboard,
   description: "Activity at a glance",
   keywords: "dashboard stats messages agents performance",
-  visible: (ctx) => ctx.can("stats:read"),
+  // Marketing's Dashboard is the Marketing dashboard (its own page below).
+  visible: (ctx) => ctx.can("stats:read") && !(ctx.can("stats:marketing") && !ctx.can("stats:team")),
   body: (ctx) => (
     <>
-      <Who roles={rolesWith("stats:read")} />
+      <Who roles={rolesWith("stats:team")} />
       <Lead>The Dashboard sums up the current line: open and pending chats, messages today and this week, and new contacts.</Lead>
       <Shot name="dashboard" alt="The Dashboard" />
       <Bullets
@@ -139,8 +140,52 @@ const dashboard: DocPage = {
           <>A <b>Messages</b> chart for the last 7 days, incoming and outgoing.</>,
           <><b>Agent Performance</b>: each agent&apos;s status, assigned chats, messages (7 days) and average reply time.</>,
           <><b>Recent activity</b>: the latest entries from the audit log{ctx.can("audit:read") ? "." : ". It needs the audit permission, so for your role it stays empty."}</>,
+          ...(ctx.can("stats:marketing")
+            ? [<>The <Ui>Marketing</Ui> tab at the top opens the <DocLink to="marketing-dashboard">Marketing dashboard</DocLink>.</>]
+            : []),
         ]}
       />
+    </>
+  ),
+};
+
+const marketingDashboard: DocPage = {
+  key: "marketing-dashboard",
+  label: "Marketing dashboard",
+  group: GROUP,
+  icon: Megaphone,
+  description: "Campaign results, flows, audience and line health",
+  keywords: "marketing dashboard funnel delivered read replied opt-outs flows audience performance reachable lists segments line health tier",
+  visible: (ctx) => ctx.can("stats:marketing"),
+  body: (ctx) => (
+    <>
+      <Who roles={rolesWith("stats:marketing")} />
+      <Lead>
+        {ctx.can("stats:team")
+          ? <>The <Ui>Marketing</Ui> tab on the Dashboard shows how campaigns and flows did and who you can reach.</>
+          : <>Your <Ui>Dashboard</Ui> is the Marketing dashboard: how campaigns and flows did, and who you can reach.</>}{" "}
+        It shows no figures about individual staff.
+      </Lead>
+      <P>
+        Pick a period at the top (<Ui>Today</Ui>, <Ui>7 days</Ui>, <Ui>30 days</Ui> or <Ui>Custom</Ui>, up to 92 days; days are Dubai
+        days) and a WhatsApp line, or <Ui>All lines</Ui>. The ⓘ next to each heading says exactly how it is counted.
+      </P>
+      <Table
+        head={["Section", "Shows"]}
+        rows={[
+          ["Needs attention", "Only when something needs you: campaigns waiting for approval, rejected back to draft, or paused (with the reason), and templates waiting at Meta, paused or rejected. As of now, whatever the period."],
+          ["Campaign funnel", "For campaigns that started in the period: sent → delivered → read → replied, each as a share of sent, plus failed, skipped, still to send, opt-outs, and the top reasons people didn't get it."],
+          ["Campaigns", "One row per campaign with the same figures. Click a column to sort; click a name to open the campaign (it switches to the campaign's line)."],
+          ["Flows", "For flow runs that started in the period: completed, handed off to a person, dropped, and the buttons patients picked most."],
+          ["Audience", "Contacts, new contacts, reachable and opted out (with new opt-outs), plus how many the frequency limit would skip right now when a limit is set. Below, Audience performance groups the period's campaigns by who they went to (a segment, a list, several lists together, or picked contacts) with sent, replied %, opt-out %, failed/skipped and when it was last sent, so you can see which lists and segments respond best. Campaigns created before this was recorded show as Picked contacts."],
+          ["Line health", "For each active line: quality rating and status from Meta, how much of the 24-hour messaging limit was used, and templates waiting, paused or rejected."],
+        ]}
+      />
+      <Callout>
+        <b>Opt-outs from campaigns</b> are patients who opted out of the campaign&apos;s line within 7 days after it reached them, or who
+        answered the campaign with STOP. Each counts once, for that campaign or the latest one before it. <b>Dropped</b> flow runs got
+        no answer within 24 hours, were stopped, or sat idle for over an hour without finishing.
+      </Callout>
     </>
   ),
 };
@@ -219,4 +264,4 @@ const audit: DocPage = {
   ),
 };
 
-export const oversightPages: DocPage[] = [supervision, live, reports, dashboard, health, audit];
+export const oversightPages: DocPage[] = [supervision, live, reports, dashboard, marketingDashboard, health, audit];

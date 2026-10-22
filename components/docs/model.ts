@@ -52,7 +52,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, "*" | Permission[]> = {
     "campaign:read", "campaign:write", "campaign:control",
     "media:read", "media:write",
     "user:read",
-    "stats:read", "number:read", "number:use_any",
+    "stats:read", "stats:marketing", "number:read", "number:use_any",
   ],
   SUPERVISOR: [
     "conversation:read", "conversation:write", "conversation:assign",
@@ -65,7 +65,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, "*" | Permission[]> = {
     "number:read", "number:use_any",
     "team:supervise",
     "campaign:read",
-    "stats:read",
+    "stats:read", "stats:team",
   ],
   AGENT: [
     "conversation:read", "conversation:write", "conversation:assign",

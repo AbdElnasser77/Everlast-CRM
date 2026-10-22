@@ -16,8 +16,9 @@ interface CardProps {
 }
 
 // Same anatomy as the Dashboard's StatCard, made clickable: each card is a
-// shortcut to the chat list filtered to exactly those chats.
-function KpiCard({ title, icon, value, sub, active, alert, onClick }: CardProps) {
+// shortcut to the chat list filtered to exactly those chats. Also the
+// Marketing dashboard's audience tiles.
+export function KpiCard({ title, icon, value, sub, active, alert, onClick }: CardProps) {
   const body = (
     <>
       <span className="flex items-center justify-between gap-2">

@@ -673,6 +673,9 @@ export function apiCreateCampaign(data: {
   // freezes at creation. Passing segmentId is what makes the approved count
   // and the sent count the same number.
   recipientIds?: number[];
+  // With recipientIds: the contact lists they were picked from (provenance
+  // only — the Marketing dashboard groups campaigns by it).
+  audienceLists?: number[];
   segmentId?: number;
   scheduledAt?: string;
   flowId?: number | null;
@@ -742,7 +745,7 @@ export function apiSetCampaignFlow(campaignId: number, flowId: number | null) {
 
 export function apiUpdateCampaign(
   id: number,
-  data: Partial<{ name: string; templateId: number; recipientIds: number[]; segmentId: number | null; scheduledAt: string | null; category: import("@/types").CampaignCategory; flowId: number | null }>
+  data: Partial<{ name: string; templateId: number; recipientIds: number[]; audienceLists: number[]; segmentId: number | null; scheduledAt: string | null; category: import("@/types").CampaignCategory; flowId: number | null }>
 ) {
   return apiFetch<import("@/types").CampaignResponse>(`/api/campaigns/${id}`, {
     method: "PUT",
@@ -1010,6 +1013,11 @@ export function apiGetTeamReport(params: ReportQuery) {
 /** Campaigns started in the period, from sent to replied. */
 export function apiGetCampaignsReport(params: ReportQuery) {
   return apiFetch<{ success: boolean; data: import("@/types").CampaignsReport }>(`/api/supervision/reports/campaigns?${reportQuery(params)}`, {}, { numberScoped: false });
+}
+
+/** The Marketing dashboard: campaign funnel, flows, audience, line health, what needs attention. */
+export function apiGetMarketingStats(params: ReportQuery) {
+  return apiFetch<{ success: boolean; data: import("@/types").MarketingStats }>(`/api/stats/marketing?${reportQuery(params)}`, {}, { numberScoped: false });
 }
 
 /** One row per chat with a message in the period (up to 5000). */

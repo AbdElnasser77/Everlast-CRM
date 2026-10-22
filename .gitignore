@@ -43,3 +43,6 @@ next-env.d.ts
 # AI agent instructions
 CLAUDE.md
 AGENTS.md
+
+# Railway variables (filled in with real values)
+.env.railway

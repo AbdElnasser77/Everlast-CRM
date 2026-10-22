@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Lock } from "lucide-react";
 import {
   apiGetStatsOverview,
@@ -11,6 +12,7 @@ import {
 import type { AuditLog, StatsOverview, MessageChartDay, AgentStat } from "@/types";
 import { useCurrentUser } from "@/components/CurrentUserProvider";
 import { PageSpinner } from "@/components/ui/spinner";
+import { DashboardTabs } from "@/components/marketing/parts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -237,12 +239,22 @@ export default function DashboardPage() {
   // Access comes from the server's permission list, never from the role
   // name: see CurrentUserProvider. `ready` is false until /users/me answers.
   const { ready, can } = useCurrentUser();
-  const allowed = can("stats:read");
+  const router = useRouter();
+  // Agent performance is team data (stats:team: supervisors, admins). Someone
+  // with the Marketing dashboard but not team stats (MARKETING) has that as
+  // their Dashboard instead of this page.
+  const team = can("stats:team");
+  const marketingOnly = can("stats:marketing") && !team;
+  const allowed = can("stats:read") && !marketingOnly;
   const [overview, setOverview] = useState<StatsOverview | null>(null);
   const [chartDays, setChartDays] = useState<{ label: string; incoming: number; outgoing: number }[]>([]);
   const [agents, setAgents] = useState<AgentStat[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (ready && marketingOnly) router.replace("/dashboard/marketing");
+  }, [ready, marketingOnly, router]);
 
   useEffect(() => {
     if (!allowed) {
@@ -255,7 +267,8 @@ export default function DashboardPage() {
       const [overviewRes, messagesRes, agentsRes, auditRes] = await Promise.allSettled([
         apiGetStatsOverview(),
         apiGetStatsMessages(7),
-        apiGetStatsAgents(),
+        // The server refuses it without stats:team as well.
+        team ? apiGetStatsAgents() : Promise.reject(new Error("no team stats")),
         apiGetAuditLog(1, 8),
       ]);
 
@@ -267,7 +280,7 @@ export default function DashboardPage() {
     }
 
     fetchAll();
-  }, [allowed, ready]);
+  }, [allowed, ready, team]);
 
   // ---------------------------------------------------------------------------
   // Loading skeleton
@@ -287,7 +300,7 @@ export default function DashboardPage() {
     );
   }
 
-  if (!ready) return <PageSpinner />;
+  if (marketingOnly) return <PageSpinner />; // on the way to /dashboard/marketing
   if (!allowed) {
     return (
       <div className="flex flex-col items-center justify-center min-h-full gap-3">
@@ -302,13 +315,14 @@ export default function DashboardPage() {
   return (
     <div className="p-6 lg:p-8 bg-gray-50 min-h-full overflow-y-auto">
       {/* Page header */}
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="font-bold text-2xl text-gray-900">Dashboard</h1>
           <p className="text-sm text-gray-400 mt-0.5">
             Overview of activity across the workspace
           </p>
         </div>
+        {can("stats:marketing") && <DashboardTabs current="overview" />}
       </div>
 
       {/* Stat cards */}
@@ -349,8 +363,8 @@ export default function DashboardPage() {
         <ActivityFeed logs={auditLogs} />
       </div>
 
-      {/* Agent performance table */}
-      <div className="mt-6">
+      {/* Agent performance table — team stats only */}
+      {team && <div className="mt-6">
         {loading ? (
           <div className="bg-white rounded-xl border border-gray-100 p-5 animate-pulse">
             <div className="h-4 w-40 bg-gray-100 rounded mb-4" />
@@ -367,7 +381,7 @@ export default function DashboardPage() {
         ) : (
           <AgentPerformanceTable agents={agents} />
         )}
-      </div>
+      </div>}
     </div>
   );
 }
